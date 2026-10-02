@@ -8,7 +8,9 @@
     "lint": "eslint src --ext .ts",
     "format": "prettier --write src",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "migrate": "tsx src/db/migrate.ts",
+    "seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.1",
