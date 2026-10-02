@@ -1,0 +1,48 @@
+{
+  "name": "@ni-doc/backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --loader ts-node/esm src/server.ts",
+    "build": "tsc",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write src",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "argon2": "0.31.2",
+    "cookie-parser": "1.4.6",
+    "cors": "2.8.5",
+    "express": "5.0.1",
+    "express-rate-limit": "7.4.1",
+    "helmet": "8.0.0",
+    "kysely": "0.27.4",
+    "nodemailer": "6.9.16",
+    "pg": "8.13.1",
+    "pino": "9.5.0",
+    "pino-http": "10.3.0",
+    "puppeteer": "22.15.0",
+    "qrcode": "1.5.4",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.17.0",
+    "@types/cookie-parser": "1.4.8",
+    "@types/cors": "2.8.17",
+    "@types/node": "22.10.2",
+    "@types/nodemailer": "6.4.17",
+    "@types/pg": "8.11.10",
+    "@types/qrcode": "1.5.5",
+    "@types/supertest": "6.0.2",
+    "@typescript-eslint/eslint-plugin": "8.18.1",
+    "@typescript-eslint/parser": "8.18.1",
+    "@vitest/coverage-v8": "2.1.8",
+    "eslint": "9.17.0",
+    "prettier": "3.4.2",
+    "supertest": "7.0.0",
+    "ts-node": "10.9.2",
+    "typescript": "5.7.2",
+    "vitest": "2.1.8"
+  }
+}

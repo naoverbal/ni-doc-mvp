@@ -1,0 +1,8 @@
+node_modules/
+.env
+dist/
+pdfs/
+.DS_Store
+coverage/
+*.log
+.nyc_output/

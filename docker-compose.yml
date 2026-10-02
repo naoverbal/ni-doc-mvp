@@ -1,0 +1,66 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: nidoc
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ni-doc-net
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/nidoc
+      NODE_ENV: development
+      PORT: 3000
+    env_file:
+      - .env
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./backend/src:/app/src
+      - ./pdfs:/app/pdfs
+    networks:
+      - ni-doc-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://backend:3000
+    ports:
+      - '5173:5173'
+    volumes:
+      - ./frontend/src:/app/src
+    networks:
+      - ni-doc-net
+
+volumes:
+  postgres_data:
+
+networks:
+  ni-doc-net:
+    driver: bridge
