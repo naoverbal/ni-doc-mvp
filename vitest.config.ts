@@ -1,18 +1,13 @@
 import { defineConfig } from 'vitest/config'
 import { resolve } from 'path'
+
 export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    pool: 'forks',
-    setupFiles: ['src/__tests__/setup.ts'],
-    globalSetup: ['src/__tests__/global-setup.ts'],
-    env: {
-      DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
-      CRYPTO_KEY: Buffer.alloc(32).toString('base64'),
-      SESSION_SECRET: 'test-secret-com-pelo-menos-32-caracteres-aqui',
-      NODE_ENV: 'test',
-    },
+    include: ['backend/src/**/*.test.ts'],
+    setupFiles: ['backend/src/__tests__/setup.ts'],
+    globalSetup: ['backend/src/__tests__/global-setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
@@ -25,14 +20,14 @@ export default defineConfig({
       exclude: [
         'node_modules/**',
         'dist/**',
-        'src/__tests__/**',
-        'src/db/migrations/**',
+        'backend/src/__tests__/**',
+        'backend/src/db/migrations/**',
       ],
     },
   },
   resolve: {
     alias: {
-      '@': resolve(__dirname, './src'),
+      '@': resolve(__dirname, './backend/src'),
     },
   },
 })
