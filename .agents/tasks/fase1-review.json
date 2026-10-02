@@ -1,0 +1,8 @@
+{
+  "verdict": "CHANGES_REQUESTED",
+  "findings": [
+    "scrypt disfarçado de Argon2id — senha.ts armazena hashes com prefixo $argon2id$ mas o algoritmo real é scrypt. Quando o pacote argon2 for desbloqueado, argon2.verify() rejeitará todos os hashes existentes, exigindo migração com reautenticação dos usuários. Usar @node-rs/argon2 ou argon2-wasm-pro antes de qualquer dado chegar ao banco.",
+    "Cobertura de branches insuficiente em senha.ts (40%) e token.ts (66.66%), abaixo da meta de 100% do Marco 2. senha.ts precisa de teste para verificarSenha com hash mal-formado. token.ts precisa de teste para validarTokenPublico com HMAC não-hex, exercitando o catch{} de Buffer.from."
+  ],
+  "reviewDoc": "/Users/nilson/Dev/ni-doc/.agents/tasks/fase1-review.md"
+}

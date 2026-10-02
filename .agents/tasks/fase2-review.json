@@ -1,0 +1,16 @@
+{
+  "verdict": "CHANGES_REQUESTED",
+  "findings": [
+    {
+      "id": "seed-responsaveis-idempotencia",
+      "severity": "blocking",
+      "summary": "`responsaveis_tecnicos` não é idempotente no seed — ON CONFLICT DO NOTHING resolve sobre o PK gerado com gen_random_uuid(), então cada re-execução insere 4 novos registros duplicados. Usar UUIDs fixos ou adicionar UNIQUE (tenant_id, registro_profissional) em 001 e ajustar ON CONFLICT em 003."
+    },
+    {
+      "id": "rls-tenants-ausente",
+      "severity": "blocking",
+      "summary": "Tabela `tenants` não tem RLS em 002 — uma query sem filtro retorna todos os tenants. Adicionar ENABLE ROW LEVEL SECURITY + FORCE + policy USING (id = current_setting('app.current_tenant', TRUE)::uuid)."
+    }
+  ],
+  "reviewDoc": "/Users/nilson/Dev/ni-doc/.agents/tasks/fase2-review.md"
+}
