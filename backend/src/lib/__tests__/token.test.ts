@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest'
+import { randomUUID } from 'node:crypto'
 
 beforeAll(() => {
   process.env['SESSION_SECRET'] = 'segredo-de-teste-fixo-para-hmac-token'
@@ -39,5 +40,17 @@ describe('token', () => {
     const [, hmac] = token.split('.')
     const tokenAdulterado = `uuid-falso-123456789012345678901234.${hmac}`
     expect(validarTokenPublico(tokenAdulterado, versaoId)).toBe(false)
+  })
+
+  it('validarTokenPublico retorna false para HMAC com caractere não-hex', () => {
+    const versaoId = randomUUID()
+    const tokenValido = gerarTokenPublico(versaoId)
+    const [uuid] = tokenValido.split('.')
+    const tokenInvalido = `${uuid}.ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ`
+    expect(validarTokenPublico(tokenInvalido, versaoId)).toBe(false)
+  })
+
+  it('validarTokenPublico retorna false para token sem ponto', () => {
+    expect(validarTokenPublico('tokensemponto', 'versao-qualquer')).toBe(false)
   })
 })

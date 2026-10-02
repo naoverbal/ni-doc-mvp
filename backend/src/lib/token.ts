@@ -24,12 +24,8 @@ export function validarTokenPublico(token: string, versaoId: string): boolean {
   const uuid = token.substring(0, dotIndex)
   const hmacFornecido = token.substring(dotIndex + 1)
   const hmacEsperado = calcularHmac(uuid, versaoId)
-  try {
-    const a = Buffer.from(hmacFornecido, 'hex')
-    const b = Buffer.from(hmacEsperado, 'hex')
-    if (a.length !== b.length) return false
-    return timingSafeEqual(a, b)
-  } catch {
-    return false
-  }
+  const a = Buffer.from(hmacFornecido, 'hex')
+  const b = Buffer.from(hmacEsperado, 'hex')
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
 }

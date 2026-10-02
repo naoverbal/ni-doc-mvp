@@ -27,4 +27,9 @@ describe('senha', () => {
     expect(hash).toContain('t=3')
     expect(hash).toContain('p=4')
   })
+
+  it('verificarSenha retorna false para hash mal-formado', async () => {
+    const resultado = await verificarSenha('qualquer', '$invalido$')
+    expect(resultado).toBe(false)
+  })
 })
