@@ -98,3 +98,10 @@ CREATE POLICY sessoes_tenant_isolation ON sessoes
     WHERE u.id = sessoes.usuario_id
       AND u.tenant_id = current_setting('app.current_tenant', TRUE)::uuid
   ));
+
+-- TENANTS: cada tenant só enxerga a si mesmo
+ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tenants FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY tenants_self_isolation ON tenants
+  USING (id = current_setting('app.current_tenant', TRUE)::uuid);

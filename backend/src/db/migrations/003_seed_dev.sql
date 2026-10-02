@@ -99,13 +99,19 @@ VALUES
 ON CONFLICT (tenant_id, documento_hash) DO NOTHING;
 
 -- RESPONSÁVEIS TÉCNICOS
-INSERT INTO responsaveis_tecnicos (id, tenant_id, nome, registro_profissional)
+-- Responsáveis tenant Alpha
+INSERT INTO responsaveis_tecnicos (id, tenant_id, nome, registro_profissional, ativo)
 VALUES
-  (gen_random_uuid(), 'a0000000-0000-0000-0000-000000000001', 'Eng. Ana Beatriz Lima', 'CREA 123456/D-SP'),
-  (gen_random_uuid(), 'a0000000-0000-0000-0000-000000000001', 'Arq. Carlos Eduardo Neto', 'CAU A123456-7'),
-  (gen_random_uuid(), 'b0000000-0000-0000-0000-000000000002', 'Eng. Mariana Ferreira', 'CREA 654321/D-SP'),
-  (gen_random_uuid(), 'b0000000-0000-0000-0000-000000000002', 'Arq. Roberto Santos', 'CAU A654321-0')
-ON CONFLICT DO NOTHING;
+  ('a0000000-0000-0000-0004-000000000001', 'a0000000-0000-0000-0000-000000000001', 'Eng. Ana Beatriz Lima', 'CREA 123456/D-SP', TRUE),
+  ('a0000000-0000-0000-0004-000000000002', 'a0000000-0000-0000-0000-000000000001', 'Arq. Carlos Mendes', 'CAU A123456-7', TRUE)
+ON CONFLICT (id) DO NOTHING;
+
+-- Responsáveis tenant Beta
+INSERT INTO responsaveis_tecnicos (id, tenant_id, nome, registro_profissional, ativo)
+VALUES
+  ('b0000000-0000-0000-0004-000000000001', 'b0000000-0000-0000-0000-000000000002', 'Eng. Fernanda Costa', 'CREA 654321/D-RJ', TRUE),
+  ('b0000000-0000-0000-0004-000000000002', 'b0000000-0000-0000-0000-000000000002', 'Arq. Rafael Souza', 'CAU A654321-0', TRUE)
+ON CONFLICT (id) DO NOTHING;
 
 -- TEMPLATES (versão 1 para cada tenant)
 INSERT INTO templates (id, tenant_id, versao, layout_json)
