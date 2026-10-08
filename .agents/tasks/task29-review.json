@@ -1,0 +1,7 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    "Janela de corrida na trava de rascunho de `atualizar` (não bloqueante): o serviço faz `buscarPorId` e `atualizar` em transações distintas e o repositório não re-checa `status` no update, então um envio concorrente entre as duas chamadas pode deixar passar uma edição. Mesmo padrão check-then-act dos vizinhos; improvável no MVP. Considere espelhar em `atualizar` a rede de segurança de status que `deletar` já tem no repositório."
+  ],
+  "reviewDoc": "/Users/nilson/Dev/ni-doc/.agents/tasks/task29-review.md"
+}

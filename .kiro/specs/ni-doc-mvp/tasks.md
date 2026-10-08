@@ -188,7 +188,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: transações atômicas; numeração sem race condition
   - _Requirements: RF-005, RF-006_
 
-- [~] 29. Serviço de orçamento
+- [x] 29. Serviço de orçamento
   - Criar `backend/src/services/orcamento.service.ts` e testes
   - Testes: `criar` exige cliente/título/item e calcula totais; `atualizar` só rascunho, recalcula e audita; `deletar` só rascunho; `listar` respeita tenant
   - DoD: auditoria em criar/atualizar/deletar
