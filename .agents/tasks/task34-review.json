@@ -1,0 +1,18 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    {
+      "label": "Imutabilidade só verificada por mock",
+      "severity": "non-blocking",
+      "confidence": "possible",
+      "description": "O DoD (v1 permanece acessível após salvar v2) é afirmado via ausência de updateTable/deleteFrom e via buscarPorId retornando a v1 em testes mock-based; a persistência real, a RLS e a constraint UNIQUE(tenant_id, versao) não são exercitadas. Consistente com a convenção mock-based do projeto; cobrir num teste de integração futuro se quiser garantia end-to-end."
+    },
+    {
+      "label": "Nome diverge da spec",
+      "severity": "non-blocking",
+      "confidence": "confirmed",
+      "description": "A spec descreve criarTemplatePadrao; o código expõe criarPadrao. Comportamento idêntico; alinhar o texto da spec ou o nome por consistência."
+    }
+  ],
+  "reviewDoc": "/Users/nilson/Dev/ni-doc/.agents/tasks/task34-review.md"
+}

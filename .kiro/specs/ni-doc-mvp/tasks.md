@@ -222,7 +222,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
 
 ### Fase 7 — Templates
 
-- [~] 34. Serviço de templates
+- [x] 34. Serviço de templates
   - Criar `backend/src/repositories/template.repository.ts`, `services/template.service.ts` e testes
   - Testes: `criarTemplatePadrao` v1 ao criar tenant; `salvar` cria nova versão; `buscarAtivo`; `buscarPorId` versão específica; auditoria ao salvar
   - DoD: versão antiga permanece acessível
