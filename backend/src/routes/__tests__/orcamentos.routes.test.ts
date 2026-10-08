@@ -7,10 +7,7 @@ import { errorHandler } from '../../middlewares/error-handler.js'
 import { AppError } from '../../errors/app-error.js'
 import type { AuthService } from '../../services/auth.service.js'
 import type { OrcamentoService } from '../../services/orcamento.service.js'
-import type {
-  OrcamentoComItens,
-  ListaOrcamentos,
-} from '../../repositories/orcamento.repository.js'
+import type { OrcamentoComItens, ListaOrcamentos } from '../../repositories/orcamento.repository.js'
 import type { UsuarioPublico } from '../../repositories/usuario.repository.js'
 import type { SessaoAtiva } from '../../repositories/sessao.repository.js'
 
