@@ -103,9 +103,7 @@ describe('Middleware setTenant', () => {
     const db = new Kysely<Database>({
       dialect: new PostgresDialect({ pool: new Pool() }),
     })
-    const executeQuery = vi
-      .spyOn(db, 'executeQuery')
-      .mockResolvedValue({ rows: [] } as never)
+    const executeQuery = vi.spyOn(db, 'executeQuery').mockResolvedValue({ rows: [] } as never)
     return { db, executeQuery }
   }
 

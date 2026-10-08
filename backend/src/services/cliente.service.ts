@@ -29,11 +29,7 @@ export interface ClienteService {
   criar(ctx: ClienteContexto, dados: CriarClienteDados): Promise<ClientePublico>
   buscar(ctx: ClienteContexto, termo: string): Promise<ClientePublico[]>
   buscarPorId(ctx: ClienteContexto, id: string): Promise<ClientePublico>
-  atualizar(
-    ctx: ClienteContexto,
-    id: string,
-    dados: AtualizarClienteInput,
-  ): Promise<ClientePublico>
+  atualizar(ctx: ClienteContexto, id: string, dados: AtualizarClienteInput): Promise<ClientePublico>
   desativar(ctx: ClienteContexto, id: string): Promise<void>
 }
 

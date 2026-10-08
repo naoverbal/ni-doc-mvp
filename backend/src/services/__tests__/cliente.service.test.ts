@@ -1,10 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { criarClienteService } from '../cliente.service.js'
 import { hashDocumento } from '../../lib/crypto.js'
-import type {
-  ClienteRepository,
-  ClientePublico,
-} from '../../repositories/cliente.repository.js'
+import type { ClienteRepository, ClientePublico } from '../../repositories/cliente.repository.js'
 import type { AuditoriaService } from '../auditoria.service.js'
 
 const CPF_VALIDO = '529.982.247-25'
@@ -187,9 +184,9 @@ describe('ClienteService', () => {
       })
       const service = criarClienteService(deps)
 
-      await expect(
-        service.atualizar(ctx, 'inexistente', { nome: 'X' }),
-      ).rejects.toMatchObject({ statusCode: 404 })
+      await expect(service.atualizar(ctx, 'inexistente', { nome: 'X' })).rejects.toMatchObject({
+        statusCode: 404,
+      })
     })
 
     it('registra evento de auditoria ao atualizar', async () => {

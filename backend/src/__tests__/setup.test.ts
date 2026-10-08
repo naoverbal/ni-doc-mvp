@@ -16,12 +16,8 @@ describe('setup do Vitest', () => {
 
   it('aplica as variáveis de ambiente de teste via setupFiles', () => {
     expect(process.env['NODE_ENV']).toBe('test')
-    expect(process.env['DATABASE_URL']).toBe(
-      'postgresql://test:test@localhost:5432/test',
-    )
-    expect(process.env['SESSION_SECRET']).toBe(
-      'test-secret-com-pelo-menos-32-caracteres-aqui',
-    )
+    expect(process.env['DATABASE_URL']).toBe('postgresql://test:test@localhost:5432/test')
+    expect(process.env['SESSION_SECRET']).toBe('test-secret-com-pelo-menos-32-caracteres-aqui')
     expect(process.env['CRYPTO_KEY']).toBeDefined()
   })
 })

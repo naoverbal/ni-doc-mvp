@@ -258,9 +258,7 @@ describe('ClienteRepository', () => {
       const repo = criarClienteRepository(db)
       await repo.desativar('tenant-1', 'cliente-id-1')
 
-      expect(updateBuilder.set).toHaveBeenCalledWith(
-        expect.objectContaining({ ativo: false }),
-      )
+      expect(updateBuilder.set).toHaveBeenCalledWith(expect.objectContaining({ ativo: false }))
     })
   })
 })

@@ -4,26 +4,6 @@
 
 Este documento descreve o plano de implementação do MVP do ni-doc, organizado em fases sequenciais (Fase 0 a Fase 12). Cada tarefa segue o ciclo TDD (escrever teste → ver falhar → implementar → ver passar → refatorar), referencia o requisito que implementa e só é concluída quando todos os testes passam e o lint não acusa erros. As fases são sequenciais: cada uma depende da conclusão da anterior.
 
-## Modo de Execução — Uma Tarefa por Sessão
-
-**Regra:** cada tarefa numerada abaixo deve ser executada em uma **sessão de chat dedicada**. Não encadeie várias tarefas na mesma sessão.
-
-Fluxo por tarefa:
-
-1. Abra uma **nova sessão de chat** para a tarefa (ex.: "Executar a tarefa 22 de `.kiro/specs/ni-doc-mvp/tasks.md`"), ou use o botão **"Start task"** exibido acima do item no editor da spec — ele já inicia a tarefa em contexto próprio.
-2. Execute **apenas aquela tarefa** (incluindo as subtarefas listadas nos bullets). Ao concluir, pare — não avance para a próxima.
-3. Verifique o **Definition of Done** da tarefa: testes passando e lint sem erros.
-4. Marque a tarefa como concluída (`[x]`) e **encerre a sessão**.
-5. Abra uma nova sessão para a próxima tarefa.
-
-Motivos:
-
-- **Contexto limpo:** cada sessão carrega só o necessário para a tarefa, reduzindo ruído e erros.
-- **Rastreabilidade:** uma sessão por tarefa facilita revisar o que foi feito e reverter se preciso.
-- **Respeito às dependências:** a ordem sequencial das fases (ver _Task Dependency Graph_) é preservada — só inicie uma tarefa quando as anteriores da cadeia estiverem concluídas.
-
-> Legenda de status dos checkboxes: `[ ]` pendente · `[~]` em progresso · `[x]` concluída. Inicie cada sessão pela primeira tarefa não concluída da fase atual.
-
 ## Tasks
 
 ### Fase 0 — Fundação do Projeto
@@ -177,26 +157,26 @@ Motivos:
   - Testes: valida CPF/CNPJ; rejeita duplicado no tenant; criptografa+hash; `buscarPorId` descriptografa; busca ILIKE; `atualizar` não afeta versões emitidas; `desativar` soft delete
   - _Requirements: RF-010_
 
-- [~] 23. Rotas de clientes
+- [x] 23. Rotas de clientes
   - Criar `backend/src/routes/clientes.routes.ts`, `schemas/cliente.schema.ts` e testes
   - Testes: GET `?q=`, POST, PUT, GET `:id`; todas exigem autenticação
   - DoD: validação com Zod
   - _Requirements: RF-010_
 
-- [~] 24. Repositório e serviço de empresas
+- [x] 24. Repositório e serviço de empresas
   - Análogo aos clientes, para `empresas` (`repository`, `service`, testes)
   - DoD: autocomplete filtra por tipo (`cliente_pj`)
   - _Requirements: RF-011_
 
-- [~] 25. Rotas de empresas
+- [x] 25. Rotas de empresas
   - Análogo às rotas de clientes, para empresas
   - _Requirements: RF-011_
 
-- [~] 26. Repositório e serviço de responsáveis técnicos
+- [x] 26. Repositório e serviço de responsáveis técnicos
   - Análogo aos clientes, para `responsaveis_tecnicos`
   - _Requirements: RF-012_
 
-- [~] 27. Rotas de responsáveis técnicos
+- [x] 27. Rotas de responsáveis técnicos
   - Análogo às rotas de clientes, para responsáveis técnicos
   - _Requirements: RF-012_
 
@@ -385,7 +365,6 @@ Motivos:
 
 ## Notes
 
-- Execução em sessões dedicadas: **uma tarefa por sessão de chat** (ver _Modo de Execução — Uma Tarefa por Sessão_). Conclua e encerre a sessão antes de iniciar a próxima tarefa.
 - Ciclo TDD obrigatório: testes antes da implementação; tarefa concluída só com testes passando e lint sem erros.
 - Cobertura: `lib/` exige 100%; serviços e repositórios 80%+.
 - Multi-tenancy: a partir da Fase 3, todo acesso a dados respeita isolamento por `tenant_id` via RLS.
