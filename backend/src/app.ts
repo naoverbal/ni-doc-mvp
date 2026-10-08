@@ -10,13 +10,16 @@ import { errorHandler } from './middlewares/error-handler.js'
 import { criarAuthRouter } from './routes/auth.routes.js'
 import { criarClientesRouter } from './routes/clientes.routes.js'
 import { criarEmpresasRouter } from './routes/empresas.routes.js'
+import { criarResponsaveisRouter } from './routes/responsaveis.routes.js'
 import { criarAuthService } from './services/auth.service.js'
 import { criarClienteService } from './services/cliente.service.js'
 import { criarEmpresaService } from './services/empresa.service.js'
+import { criarResponsavelService } from './services/responsavel.service.js'
 import { criarUsuarioRepository } from './repositories/usuario.repository.js'
 import { criarSessaoRepository } from './repositories/sessao.repository.js'
 import { criarClienteRepository } from './repositories/cliente.repository.js'
 import { criarEmpresaRepository } from './repositories/empresa.repository.js'
+import { criarResponsavelRepository } from './repositories/responsavel.repository.js'
 import { criarAuditoriaRepository } from './repositories/auditoria.repository.js'
 import { criarAuditoriaService } from './services/auditoria.service.js'
 import { db } from './config/database.js'
@@ -60,6 +63,11 @@ export function criarApp(): express.Express {
   const empresaRepo = criarEmpresaRepository(db)
   const empresaService = criarEmpresaService({ empresaRepo, auditoriaService })
   app.use('/api/empresas', criarEmpresasRouter(empresaService, authService))
+
+  // Responsável técnico routes
+  const responsavelRepo = criarResponsavelRepository(db)
+  const responsavelService = criarResponsavelService({ responsavelRepo, auditoriaService })
+  app.use('/api/responsaveis', criarResponsaveisRouter(responsavelService, authService))
 
   // Error handler deve ser o último middleware
   app.use(errorHandler)
