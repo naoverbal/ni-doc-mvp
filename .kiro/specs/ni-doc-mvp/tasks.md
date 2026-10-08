@@ -1539,6 +1539,93 @@ graph TD
     F11 --> F12
 ```
 
+As ondas (`waves`) abaixo definem a ordem de execução em formato legível por máquina. Cada onda só pode iniciar após a conclusão das ondas listadas em `dependsOn`; tarefas dentro da mesma onda podem ser executadas em paralelo.
+
+```json
+{
+  "waves": [
+    {
+      "wave": 0,
+      "name": "Fundação do Projeto",
+      "tasks": ["T-001", "T-002", "T-003", "T-004", "T-005", "T-006"],
+      "dependsOn": []
+    },
+    {
+      "wave": 1,
+      "name": "Bibliotecas Base",
+      "tasks": ["T-101", "T-102", "T-103", "T-104", "T-105"],
+      "dependsOn": [0]
+    },
+    {
+      "wave": 2,
+      "name": "Banco de Dados",
+      "tasks": ["T-201", "T-202", "T-203"],
+      "dependsOn": [1]
+    },
+    {
+      "wave": 3,
+      "name": "Autenticação e Multi-tenancy",
+      "tasks": ["T-301", "T-302", "T-303", "T-304", "T-305", "T-306", "T-307"],
+      "dependsOn": [2]
+    },
+    {
+      "wave": 4,
+      "name": "Entidades de Referência",
+      "tasks": ["T-401", "T-402", "T-403", "T-404", "T-405", "T-406"],
+      "dependsOn": [3]
+    },
+    {
+      "wave": 5,
+      "name": "Orçamento Core",
+      "tasks": ["T-501", "T-502", "T-503"],
+      "dependsOn": [4]
+    },
+    {
+      "wave": 6,
+      "name": "Versionamento e Snapshot",
+      "tasks": ["T-601", "T-602", "T-603"],
+      "dependsOn": [5]
+    },
+    {
+      "wave": 7,
+      "name": "Templates",
+      "tasks": ["T-701", "T-702"],
+      "dependsOn": [6]
+    },
+    {
+      "wave": 8,
+      "name": "Geração de PDF",
+      "tasks": ["T-801", "T-802", "T-803", "T-804", "T-805"],
+      "dependsOn": [7]
+    },
+    {
+      "wave": 9,
+      "name": "Aceite e Aprovação",
+      "tasks": ["T-901", "T-902", "T-903"],
+      "dependsOn": [8]
+    },
+    {
+      "wave": 10,
+      "name": "Frontend",
+      "tasks": ["T-1001", "T-1002", "T-1003", "T-1004", "T-1005", "T-1006", "T-1007"],
+      "dependsOn": [9]
+    },
+    {
+      "wave": 11,
+      "name": "Notificações",
+      "tasks": ["T-1101", "T-1102"],
+      "dependsOn": [10]
+    },
+    {
+      "wave": 12,
+      "name": "Deploy e Produção",
+      "tasks": ["T-1201", "T-1202", "T-1203"],
+      "dependsOn": [11]
+    }
+  ]
+}
+```
+
 **Dependências cruzadas relevantes entre tarefas:**
 
 - `T-603` (rota de envio) retorna a versão sem PDF; o `pdf_path` só é preenchido após `T-805` (integração envio → PDF), que por sua vez depende de `T-801` a `T-804`.
