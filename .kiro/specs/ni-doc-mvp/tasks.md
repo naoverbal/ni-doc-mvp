@@ -202,7 +202,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
 
 ### Fase 6 — Versionamento e Snapshot
 
-- [~] 31. Serviço de snapshot
+- [x] 31. Serviço de snapshot
   - Criar `backend/src/services/snapshot.service.ts` e testes
   - Testes: copia cliente/empresa/itens/responsável e totais (não referência); snapshot estável após alterar cliente
   - DoD: JSONB puro; teste de imutabilidade passa

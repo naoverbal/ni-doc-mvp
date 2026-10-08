@@ -1,0 +1,7 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    "Garantia de cópia depende de campos primitivos (informativo, não bloqueante): a imutabilidade do snapshot está correta hoje porque todo campo-folha mapeado é primitivo (string/number/null). Se um campo objeto/array vindo da entrada for mapeado diretamente no futuro sem clone, a invariante de cópia por valor quebra silenciosamente. Nenhuma ação exigida nesta tarefa."
+  ],
+  "reviewDoc": "/Users/nilson/Dev/ni-doc/.agents/tasks/task31-review.md"
+}
