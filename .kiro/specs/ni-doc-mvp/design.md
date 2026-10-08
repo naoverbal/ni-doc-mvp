@@ -1,5 +1,80 @@
 # design.md
 
+## Overview
+
+O **ni-doc** é uma aplicação web com SPA no cliente e API REST no backend (Node.js 22 + Express 5 + PostgreSQL 16). A arquitetura segue um modelo em camadas priorizando segurança, testabilidade e imutabilidade de documentos emitidos. Para o detalhamento completo, veja a seção [1. Visão Geral da Arquitetura](#1-visão-geral-da-arquitetura) abaixo.
+
+## Architecture
+
+A arquitetura é composta por três camadas principais:
+
+1. **Frontend** — React 19 SPA (Vite + TypeScript), comunicando via HTTPS com cookie `session`.
+2. **Backend** — Express 5 + TypeScript em camadas: Rotas → Middlewares → Services → Repositories → PostgreSQL.
+3. **Banco de dados** — PostgreSQL 16 com RLS habilitado em todas as tabelas com `tenant_id`, criptografia AES-256-GCM em colunas sensíveis e sessões server-side.
+
+Veja o diagrama macro e a stack técnica completos na seção [1. Visão Geral da Arquitetura](#1-visão-geral-da-arquitetura) e [2. Stack Técnica](#2-stack-técnica).
+
+## Components and Interfaces
+
+| Componente | Responsabilidade | Interface pública |
+|---|---|---|
+| **Routes** | Recebe requisições HTTP e delega ao service | Endpoints REST (ver seção 8) |
+| **Middlewares** (`auth`, `tenant`, `validate`, `error-handler`, `rate-limit`) | Autenticação, isolamento de tenant, validação Zod, tratamento de erros | `req.usuario`, `req.sessao` |
+| **Services** (`orcamento`, `auth`, `pdf`, `aceite`, `auditoria`, …) | Regras de negócio, orquestração de transações | Funções TypeScript tipadas |
+| **Repositories** (`usuario`, `sessao`, `orcamento`, `cliente`, …) | Acesso ao banco via Kysely | Funções assíncronas com tipos gerados do schema |
+| **Lib** (`crypto`, `token`, `pdf`, `qrcode`, `email`, `hash`) | Utilitários sem estado externo | Funções puras exportadas |
+| **Frontend API client** (`services/api.ts`) | Wrapper sobre `fetch` para todos os endpoints | Funções tipadas por recurso |
+
+Contratos detalhados de cada endpoint estão na seção [8. Contratos de API](#8-contratos-de-api).
+
+## Data Models
+
+O modelo de dados é centrado em `tenants` como raiz de todos os dados com isolamento via RLS. As entidades principais são:
+
+- `tenants` → `usuarios`, `clientes`, `empresas`, `responsaveis_tecnicos`, `templates`, `orcamentos`
+- `orcamentos` → `orcamento_itens` (rascunho editável) + `orcamento_versoes` (snapshots imutáveis)
+- `orcamento_versoes` → `orcamento_aceites` (aceite único por versão)
+- `eventos_auditoria` (log imutável de todas as operações sensíveis)
+
+O schema SQL completo, o diagrama ER e a estrutura do snapshot JSONB estão na seção [4. Modelo de Dados](#4-modelo-de-dados).
+
+## Correctness Properties
+
+1. **Isolamento de tenant:** toda query com `tenant_id` é coberta por RLS — `SET LOCAL app.current_tenant = '<uuid>'` é executado em cada transação pelo middleware `tenant.ts`.
+2. **Imutabilidade de versões emitidas:** após `status = 'enviado'`, `orcamento_versoes` e seus snapshots JSONB nunca são modificados; PDFs armazenados nunca são regenerados.
+3. **Integridade do snapshot:** o snapshot captura uma cópia completa de cliente, empresa, itens e responsáveis no momento da emissão; alterações posteriores nesses cadastros não afetam versões já emitidas.
+4. **Integridade do PDF:** o hash SHA-256 é calculado no momento da geração e armazenado em `pdf_hash`; qualquer adulteração do arquivo em disco torna o hash inválido.
+5. **Token público não adivinável:** `token_publico = UUID-v4 + HMAC-SHA256`, garantindo que a posse do token seja necessária para acessar o orçamento.
+6. **Unicidade de aceite:** a constraint `UNIQUE (versao_id)` em `orcamento_aceites` impede duplo aceite para a mesma versão.
+7. **Senhas protegidas por Argon2id:** parâmetros OWASP 2024; o hash nunca é exposto em logs ou respostas de API.
+
+## Error Handling
+
+| Categoria | Código HTTP | Comportamento |
+|---|---|---|
+| Não autenticado (sem cookie ou sessão inválida) | 401 | `{ erro: "Não autenticado" }` + limpa cookie |
+| Sessão expirada | 401 | `{ erro: "Sessão expirada" }` + limpa cookie |
+| Sem permissão (papel insuficiente) | 403 | `{ erro: "Sem permissão" }` |
+| Recurso não encontrado | 404 | `{ erro: "Não encontrado" }` |
+| Violação de regra de negócio | 422 | `{ erro: "<mensagem>", detalhes?: ... }` |
+| Payload inválido (falha Zod) | 400 | `{ erro: "Dados inválidos", detalhes: ZodError }` |
+| Rate limit excedido | 429 | `{ erro: "Muitas requisições" }` |
+| Erro interno | 500 | `{ erro: "Erro interno" }` (sem stack trace em produção) |
+
+Todos os erros passam pelo middleware `error-handler.ts`, que usa a classe `AppError` para distinguir erros operacionais de erros de programação. Erros 5xx são logados com `pino` em nível `error` com stack trace completo. Em produção, o stack trace nunca é exposto na resposta HTTP.
+
+## Testing Strategy
+
+A estratégia segue TDD: nenhum código novo sem teste que o valide. A pirâmide é:
+
+- **Unitários (maioria) — Vitest:** funções puras em `lib/` (cobertura 100%), services (≥90%) e schemas Zod.
+- **Integração (alguns) — Vitest + Supertest + PostgreSQL real:** fluxos completos de API, validação de RLS cross-tenant, imutabilidade de snapshots após emissão, sessão expirada retorna 401, PDF ausente retorna erro sem regenerar.
+- **E2E (poucos, opcional fase 2) — Playwright:** fluxo operador→cliente→aceite.
+
+Metas de cobertura: Services 90% · Repositories 80% · Lib 100% · Rotas 70%. Exemplos detalhados de testes prioritários estão na seção [15. Estratégia de Testes (TDD)](#15-estratégia-de-testes-tdd).
+
+---
+
 ## 1. Visão Geral da Arquitetura
 
 O **ni-doc** é uma aplicação web server-side com SPA no cliente. A arquitetura segue um modelo em camadas, priorizando:

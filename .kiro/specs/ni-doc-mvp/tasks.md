@@ -1,6 +1,10 @@
-# tasks.md
+# Implementation Plan
 
-## Como Executar
+## Overview
+
+Este documento descreve o plano de implementação do MVP do ni-doc, organizado em fases sequenciais (Fase 0 a Fase 12) e marcos de verificação. Cada fase agrupa tarefas (`T-XXX`) que entregam uma capacidade coesa do sistema, da fundação do projeto ao deploy em produção.
+
+**Como executar:**
 
 - Cada tarefa segue o ciclo **TDD**: escrever teste → ver falhar → implementar → ver passar → refatorar.
 - Uma tarefa só é considerada concluída quando **todos os testes passam** e o **lint não acusa erros**.
@@ -8,7 +12,7 @@
 - Ordem sequencial: tarefas com dependências aparecem depois de suas bases.
 - Estimativas em horas (h) são aproximadas e pressupõem foco.
 
----
+## Tasks
 
 ## Fase 0 — Fundação do Projeto
 
@@ -1498,3 +1502,57 @@ Testes primeiro:
 | **Total** | **~122h** |
 
 Considerando dedicação parcial (10-15h/semana), estimativa de **8 a 12 semanas** para o MVP completo.
+
+---
+
+## Task Dependency Graph
+
+As fases são sequenciais: cada fase depende da conclusão da anterior. O diagrama abaixo mostra as dependências entre fases e as principais dependências cruzadas entre tarefas.
+
+```mermaid
+graph TD
+    F0["Fase 0 — Fundação<br/>T-001 a T-006"]
+    F1["Fase 1 — Bibliotecas Base<br/>T-101 a T-105"]
+    F2["Fase 2 — Banco de Dados<br/>T-201 a T-203"]
+    F3["Fase 3 — Auth e Multi-tenancy<br/>T-301 a T-307"]
+    F4["Fase 4 — Entidades de Referência<br/>T-401 a T-406"]
+    F5["Fase 5 — Orçamento Core<br/>T-501 a T-503"]
+    F6["Fase 6 — Versionamento e Snapshot<br/>T-601 a T-603"]
+    F7["Fase 7 — Templates<br/>T-701 a T-702"]
+    F8["Fase 8 — Geração de PDF<br/>T-801 a T-805"]
+    F9["Fase 9 — Aceite e Aprovação<br/>T-901 a T-903"]
+    F10["Fase 10 — Frontend<br/>T-1001 a T-1007"]
+    F11["Fase 11 — Notificações<br/>T-1101 a T-1102"]
+    F12["Fase 12 — Deploy e Produção<br/>T-1201 a T-1203"]
+
+    F0 --> F1
+    F1 --> F2
+    F2 --> F3
+    F3 --> F4
+    F4 --> F5
+    F5 --> F6
+    F6 --> F7
+    F7 --> F8
+    F8 --> F9
+    F9 --> F10
+    F10 --> F11
+    F11 --> F12
+```
+
+**Dependências cruzadas relevantes entre tarefas:**
+
+- `T-603` (rota de envio) retorna a versão sem PDF; o `pdf_path` só é preenchido após `T-805` (integração envio → PDF), que por sua vez depende de `T-801` a `T-804`.
+- `T-805` ajusta `T-602` (serviço de versionamento) para encadear snapshot → PDF → hash.
+- `T-804` (QR Code) é embutido no HTML renderizado por `T-801`.
+- `T-901` (serviço de aceite) reutiliza a geração de PDF da Fase 8 para o comprovante de aceite.
+- As tarefas de frontend (`T-1002` a `T-1007`) dependem das rotas correspondentes do backend (auth, orçamentos, templates, públicas).
+- `T-1101`/`T-1102` (notificações) dependem dos eventos de envio e aceite das Fases 6 e 9.
+
+## Notes
+
+- **Ciclo TDD obrigatório:** toda tarefa de código deve escrever os testes antes da implementação. A tarefa só é concluída com todos os testes passando e lint sem erros.
+- **Cobertura:** bibliotecas base (`lib/`) exigem 100% de cobertura; serviços e repositórios, 80%+.
+- **Marcos de verificação:** os marcos (📍) são pontos de checagem — não avance de fase sem o checklist do marco anterior concluído.
+- **Multi-tenancy:** a partir da Fase 3, todo acesso a dados deve respeitar o isolamento por `tenant_id` via RLS.
+- **Imutabilidade:** snapshots e PDFs emitidos são imutáveis; alterações posteriores em entidades de referência não devem afetar versões já emitidas.
+- **Estimativas:** os valores em horas são aproximados e pressupõem foco; o total estimado é de ~122h (8 a 12 semanas em dedicação parcial).

@@ -1,10 +1,10 @@
-# requirements.md
+# Requirements Document
 
-## 1. Visão Geral
+## Introduction
 
 O **ni-doc** é uma aplicação web server-side para emissão, versionamento, envio e acompanhamento de orçamentos. O sistema permite que operadores de múltiplas empresas (tenants) criem orçamentos, personalizem templates de PDF, enviem propostas a clientes e coletem aprovação via QR Code, mantendo trilha de auditoria completa.
 
-### 1.1. Objetivos do Produto
+### Objetivos do Produto
 
 - Reduzir o tempo de emissão de orçamentos
 - Padronizar a apresentação visual das propostas
@@ -12,7 +12,7 @@ O **ni-doc** é uma aplicação web server-side para emissão, versionamento, en
 - Facilitar a aprovação do cliente via canal digital
 - Centralizar histórico de versões e aceites
 
-### 1.2. Fora de Escopo (Fase 1)
+### Fora de Escopo (Fase 1)
 
 - Emissão de nota fiscal (NFe/NFSe)
 - Integração com gateway de pagamento
@@ -23,7 +23,7 @@ O **ni-doc** é uma aplicação web server-side para emissão, versionamento, en
 
 ---
 
-## 2. Glossário
+## Glossary
 
 | Termo | Definição |
 |-------|-----------|
@@ -45,7 +45,7 @@ O **ni-doc** é uma aplicação web server-side para emissão, versionamento, en
 
 ---
 
-## 3. Atores e Perfis
+## Atores e Perfis
 
 | Ator | Descrição | Acesso |
 |------|-----------|--------|
@@ -55,7 +55,7 @@ O **ni-doc** é uma aplicação web server-side para emissão, versionamento, en
 
 ---
 
-## 4. Requisitos Funcionais
+## Requirements
 
 ### Módulo 1 — Fundação
 
@@ -383,7 +383,7 @@ O **ni-doc** é uma aplicação web server-side para emissão, versionamento, en
 
 ---
 
-## 5. Requisitos Não-Funcionais
+## Requisitos Não-Funcionais
 
 ### RNF-001 — Performance
 
@@ -427,7 +427,7 @@ O **ni-doc** é uma aplicação web server-side para emissão, versionamento, en
 
 ---
 
-## 6. Rastreabilidade
+## Rastreabilidade
 
 | Requisito | Módulo | Prioridade |
 |-----------|--------|------------|
