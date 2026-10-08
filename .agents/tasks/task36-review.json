@@ -1,0 +1,18 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    {
+      "label": "Descrição do corpo ausente usa string vazia",
+      "confidence": "possible",
+      "blocking": false,
+      "detail": "Quando o template não traz layout.corpo, o <body> final contém apenas a tabela de itens, sem cabeçalho/dados. É o fallback declarado em D7 e aceitável no MVP; o chamador da Tarefa 40 deve sempre fornecer um corpo real."
+    },
+    {
+      "label": "item.descricao renderizada mas sem placeholder próprio",
+      "confidence": "possible",
+      "blocking": false,
+      "detail": "A tabela expõe descricao numa coluna (correto); apenas registrar que não há placeholder {descricao} no mapa de dados do corpo. Comportamento esperado, sem ação."
+    }
+  ],
+  "reviewDoc": "/Users/nilson/Dev/ni-doc/backend/../.agents/tasks/task36-review.md"
+}

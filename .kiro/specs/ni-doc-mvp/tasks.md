@@ -236,7 +236,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
 
 ### Fase 8 — Geração de PDF
 
-- [~] 36. Renderizador de HTML
+- [x] 36. Renderizador de HTML
   - Criar `backend/src/services/html-renderer.service.ts` e testes
   - Testes: substitui `{cliente}`/`{numero}`; itera itens; aplica CSS; embute imagens base64
   - DoD: HTML válido, placeholders substituídos
