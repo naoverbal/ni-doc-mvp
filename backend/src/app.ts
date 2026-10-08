@@ -9,11 +9,14 @@ import { env } from './config/env.js'
 import { errorHandler } from './middlewares/error-handler.js'
 import { criarAuthRouter } from './routes/auth.routes.js'
 import { criarClientesRouter } from './routes/clientes.routes.js'
+import { criarEmpresasRouter } from './routes/empresas.routes.js'
 import { criarAuthService } from './services/auth.service.js'
 import { criarClienteService } from './services/cliente.service.js'
+import { criarEmpresaService } from './services/empresa.service.js'
 import { criarUsuarioRepository } from './repositories/usuario.repository.js'
 import { criarSessaoRepository } from './repositories/sessao.repository.js'
 import { criarClienteRepository } from './repositories/cliente.repository.js'
+import { criarEmpresaRepository } from './repositories/empresa.repository.js'
 import { criarAuditoriaRepository } from './repositories/auditoria.repository.js'
 import { criarAuditoriaService } from './services/auditoria.service.js'
 import { db } from './config/database.js'
@@ -52,6 +55,11 @@ export function criarApp(): express.Express {
   const clienteRepo = criarClienteRepository(db)
   const clienteService = criarClienteService({ clienteRepo, auditoriaService })
   app.use('/api/clientes', criarClientesRouter(clienteService, authService))
+
+  // Empresa routes
+  const empresaRepo = criarEmpresaRepository(db)
+  const empresaService = criarEmpresaService({ empresaRepo, auditoriaService })
+  app.use('/api/empresas', criarEmpresasRouter(empresaService, authService))
 
   // Error handler deve ser o último middleware
   app.use(errorHandler)
