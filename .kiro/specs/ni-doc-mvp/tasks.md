@@ -254,7 +254,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: PDF em < 2s, hash calculado, arquivo imutável
   - _Requirements: RF-016, RF-017_
 
-- [~] 39. QR Code no PDF
+- [x] 39. QR Code no PDF
   - Criar `backend/src/lib/qrcode.ts` e testes
   - Testes: `gerarQrCodeDataUrl` retorna data URL; URL contém token; tamanho mínimo escaneável
   - DoD: QR embutido no HTML, URL `/publico/orcamento/:token`
