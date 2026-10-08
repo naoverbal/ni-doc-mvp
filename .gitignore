@@ -6,3 +6,4 @@ pdfs/
 coverage/
 *.log
 .nyc_output/
+backend/.agents/
