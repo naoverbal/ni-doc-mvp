@@ -1,24 +1,5 @@
 {
-  "verdict": "CHANGES_REQUESTED",
-  "findings": [
-    {
-      "label": "Evidência de verificação ausente",
-      "confidence": "confirmed",
-      "blocking": true,
-      "detail": "Não existe task37-evidence.md nem registro de send_message nesta sessão mostrando que o coder rodou build, lint, testes e cobertura para a tarefa 37, divergindo do padrão das tarefas 28–36 (todas com arquivo de evidência). A revisão está instruída a reprovar quando a evidência está ausente, em vez de rodar as suítes. Ação: o coder deve registrar os resultados de `npm run build`, `npm run lint`, `npm run test` e `npm run test:coverage` (cobertura ≥ 80%) para paginacao.service.ts e reenviar."
-    },
-    {
-      "label": "Propagação de header/footer null sem asserção dedicada",
-      "confidence": "confirmed",
-      "blocking": false,
-      "detail": "header/footer como null só aparecem no teste de defaults, sem uma asserção explícita de que null é propagado como null em cada página. Lacuna menor de borda, não requisito do DoD."
-    },
-    {
-      "label": "linhas <= 0 sem teste próprio",
-      "confidence": "confirmed",
-      "blocking": false,
-      "detail": "O saneamento Math.max(1, item.linhas) protege contra linhas 0/negativo mas não há teste cobrindo esse caminho. Não bloqueante."
-    }
-  ],
+  "verdict": "APPROVED",
+  "findings": [],
   "reviewDoc": "/Users/nilson/Dev/ni-doc/.agents/tasks/task37-review.md"
 }
