@@ -242,7 +242,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: HTML válido, placeholders substituídos
   - _Requirements: RF-016_
 
-- [~] 37. Quebra de página automática
+- [x] 37. Quebra de página automática
   - Criar `backend/src/services/paginacao.service.ts` e testes
   - Testes: 5 itens/área p/3 → 2 páginas; cabem → 1 página; header/footer repetidos; nenhum item cortado; ordem preservada
   - DoD: cobre bordas (1, 0, item maior que a área)
