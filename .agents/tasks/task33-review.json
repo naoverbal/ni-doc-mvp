@@ -1,0 +1,8 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    "Origem do pdfPath nulo (não-bloqueante): o nulo vem do repositório de versões, não de uma decisão da rota; correto para esta tarefa, mas a tarefa 40 precisará popular esses campos sem alterar a assinatura da rota.",
+    "Atomicidade não coberta por teste de rota (não-bloqueante): os testes de rota mockam o service, então a transação atômica (versão + token + invalidação de aceite + status→enviado + auditoria) não é verificada aqui; confirmar que existe cobertura de integração daquela transação nos testes de service/repositório (fora do escopo desta tarefa)."
+  ],
+  "reviewDoc": "/Users/nilson/Dev/ni-doc/.agents/tasks/task33-review.md"
+}
