@@ -171,6 +171,36 @@ describe('paginacao.service', () => {
       expect(resultado.paginas).toHaveLength(1)
       expect(resultado.paginas[0]?.itens.map((i) => i.ordem)).toEqual([1])
     })
+
+    it('saneia linhas <= 0 tratando o item como 1 linha', () => {
+      // area de 30mm, alturaLinha=10, padding=0 → comporta 3 itens de 1 linha.
+      // Itens com linhas 0 e negativo devem contar como 1 linha (10mm cada),
+      // de modo que os 3 ainda cabem numa única página.
+      const resultado = service.paginar(
+        inputMock({
+          itens: [
+            itemMock(1, { linhas: 0 }),
+            itemMock(2, { linhas: -5 }),
+            itemMock(3, { linhas: 1 }),
+          ],
+        }),
+      )
+
+      expect(resultado.paginas).toHaveLength(1)
+      expect(resultado.paginas[0]?.itens.map((i) => i.ordem)).toEqual([1, 2, 3])
+    })
+
+    it('propaga header/footer null como null em cada página', () => {
+      // 5 itens numa área p/ 3 → 2 páginas; header/footer null devem permanecer
+      // null em todas as páginas (não viram objeto vazio).
+      const resultado = service.paginar(inputMock({ header: null, footer: null }))
+
+      expect(resultado.paginas.length).toBeGreaterThan(1)
+      for (const pagina of resultado.paginas) {
+        expect(pagina.header).toBeNull()
+        expect(pagina.footer).toBeNull()
+      }
+    })
   })
 
   describe('validação', () => {
