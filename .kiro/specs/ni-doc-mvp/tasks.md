@@ -214,7 +214,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: versionamento sequencial, token único por versão
   - _Requirements: RF-008, RF-009_
 
-- [~] 33. Rota de envio
+- [x] 33. Rota de envio
   - Adicionar `POST /:id/enviar` em `orcamentos.routes.ts` e testes (PDF integrado depois na tarefa 42)
   - Testes: retorna versão criada; rascunho vazio → 400; já aprovado → 409
   - DoD: endpoint funciona (`pdf_path` nulo até a integração de PDF)
