@@ -6,10 +6,11 @@ import type {
   OrcamentoContexto,
   CriarOrcamentoDados,
 } from '../services/orcamento.service.js'
-import type {
-  AtualizarOrcamentoInput,
-  ListarOrcamentosFiltro,
-  OrcamentoStatus,
+import {
+  STATUS_ORCAMENTO,
+  type AtualizarOrcamentoInput,
+  type ListarOrcamentosFiltro,
+  type OrcamentoStatus,
 } from '../repositories/orcamento.repository.js'
 import {
   criarOrcamentoSchema,
@@ -20,15 +21,6 @@ import {
 import { validate } from '../middlewares/validate.js'
 import { criarMiddlewareAuth } from '../middlewares/auth.js'
 import { AppError } from '../errors/app-error.js'
-
-const STATUS_ORCAMENTO = [
-  'rascunho',
-  'enviado',
-  'aprovado',
-  'reprovado',
-  'expirado',
-  'cancelado',
-] as const
 
 export function criarOrcamentosRouter(
   orcamentoService: OrcamentoService,

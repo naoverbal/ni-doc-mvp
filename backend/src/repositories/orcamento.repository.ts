@@ -7,13 +7,16 @@ import { calcularSubtotal, calcularTotal, calcularTotalItem } from '../lib/orcam
 // -----------------------------------------------------------------------------
 // Tipos de status do orçamento (espelha o CHECK da migration 001).
 // -----------------------------------------------------------------------------
-export type OrcamentoStatus =
-  | 'rascunho'
-  | 'enviado'
-  | 'aprovado'
-  | 'reprovado'
-  | 'expirado'
-  | 'cancelado'
+export const STATUS_ORCAMENTO = [
+  'rascunho',
+  'enviado',
+  'aprovado',
+  'reprovado',
+  'expirado',
+  'cancelado',
+] as const
+
+export type OrcamentoStatus = (typeof STATUS_ORCAMENTO)[number]
 
 export type DescontoTipo = 'percentual' | 'fixo'
 
