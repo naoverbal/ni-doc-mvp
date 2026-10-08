@@ -172,7 +172,7 @@ Motivos:
 
 ### Fase 4 — Entidades de Referência
 
-- [ ] 22. Repositório e serviço de clientes
+- [x] 22. Repositório e serviço de clientes
   - Criar `backend/src/repositories/cliente.repository.ts`, `services/cliente.service.ts` e testes
   - Testes: valida CPF/CNPJ; rejeita duplicado no tenant; criptografa+hash; `buscarPorId` descriptografa; busca ILIKE; `atualizar` não afeta versões emitidas; `desativar` soft delete
   - _Requirements: RF-010_
