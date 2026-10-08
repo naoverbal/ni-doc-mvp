@@ -1,0 +1,12 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    {
+      "label": "TOCTOU on generation path (non-blocking)",
+      "severity": "non-blocking",
+      "confidence": "possible",
+      "detail": "A concurrent double-send could race between the `access` existence check and `writeFile` in `gerarPdf`. Harmless for the current single-writer immutable model; worth a note only if Task 40 introduces concurrent generation. No action required for Task 38."
+    }
+  ],
+  "reviewDoc": "/Users/nilson/Dev/ni-doc/.agents/tasks/task38-review.md"
+}

@@ -248,7 +248,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: cobre bordas (1, 0, item maior que a área)
   - _Requirements: RF-015_
 
-- [~] 38. Gerador de PDF com Puppeteer
+- [x] 38. Gerador de PDF com Puppeteer
   - Criar `backend/src/lib/pdf.ts`, `services/pdf.service.ts` e testes
   - Testes: `gerarPdf` Buffer válido, A4, hash SHA-256, salva em disco; `buscarPdf` retorna armazenado; erro se ausente (não regenera)
   - DoD: PDF em < 2s, hash calculado, arquivo imutável
