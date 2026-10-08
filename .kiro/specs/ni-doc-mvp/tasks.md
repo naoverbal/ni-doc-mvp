@@ -194,7 +194,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: auditoria em criar/atualizar/deletar
   - _Requirements: RF-005, RF-006, RF-007_
 
-- [~] 30. Rotas de orçamentos
+- [x] 30. Rotas de orçamentos
   - Criar `backend/src/routes/orcamentos.routes.ts`, `schemas/orcamento.schema.ts` e testes
   - Testes: POST, GET lista, GET `:id`, PUT rascunho, DELETE rascunho, PUT em enviado → 409
   - DoD: endpoints RESTful, validação Zod
