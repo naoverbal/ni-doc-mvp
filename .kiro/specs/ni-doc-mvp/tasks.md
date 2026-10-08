@@ -182,7 +182,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
 
 ### Fase 5 — Orçamento (Core)
 
-- [~] 28. Repositório de orçamentos
+- [x] 28. Repositório de orçamentos
   - Criar `backend/src/repositories/orcamento.repository.ts` e testes
   - Testes: `criar` em transação; número sequencial por tenant (`ORC-{ANO}-{SEQ}`); `buscarPorId` com itens; `atualizar` substitui itens; `listarPorTenant` paginado e por status; `deletar` só rascunho
   - DoD: transações atômicas; numeração sem race condition

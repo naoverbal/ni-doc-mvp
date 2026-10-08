@@ -1,0 +1,30 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    {
+      "label": "Verificação de race é indireta",
+      "severity": "non-blocking",
+      "confidence": "confirmed",
+      "detail": "A ausência de race na numeração é garantida pelo design (advisory lock transacional + leitura do MAX na mesma transação), mas testada apenas por ordem de SQL em mock; a prova sob concorrência real depende de teste de integração ausente. É a convenção mock-based do projeto e o UNIQUE (tenant_id, numero) é a rede final."
+    },
+    {
+      "label": "Colisão de hashtext na chave do advisory lock",
+      "severity": "non-blocking",
+      "confidence": "confirmed",
+      "detail": "hashtext(tenant:ano) reduz a chave a int32, então pares tenant+ano distintos podem colidir e serializar sem necessidade. Seguro em correção (nunca gera numeração incorreta) e protegido pelo UNIQUE; vale um comentário, não é bug."
+    },
+    {
+      "label": "Ano no app vs. CURRENT_DATE no banco",
+      "severity": "non-blocking",
+      "confidence": "confirmed",
+      "detail": "O prefixo do número usa new Date().getFullYear() no app enquanto data_emissao usa o default CURRENT_DATE; numa virada de ano com skew de timezone os dois poderiam divergir por um dia. Premissa já documentada no plano."
+    },
+    {
+      "label": "atualizar não restringe edição a rascunho",
+      "severity": "non-blocking",
+      "confidence": "confirmed",
+      "detail": "atualizar não valida status == 'rascunho'. Intencional nesta camada: a regra RF-005.5 cabe ao service (Tarefa 29). Mencionado apenas para alinhamento de escopo, não é defeito do repositório."
+    }
+  ],
+  "reviewDoc": "/Users/nilson/Dev/ni-doc/.agents/tasks/task28-review.md"
+}

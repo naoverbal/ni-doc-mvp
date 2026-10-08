@@ -4,6 +4,7 @@
   "private": true,
   "workspaces": ["backend", "frontend"],
   "scripts": {
+    "commit:msg": "bash scripts/gerar-mensagem-commit.sh",
     "lint": "npm run lint --workspaces --if-present",
     "format": "npm run format --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",

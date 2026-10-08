@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+#
+# prepare-commit-msg — pré-preenche a mensagem de commit com uma sugestão
+# convencional gerada localmente (sem LLM, zero custo).
+#
+# Só age quando o commit NÃO tem mensagem própria (ou seja, você rodou
+# `git commit` sem -m e sem ser merge/squash/amend). Nesses casos abre o
+# editor com a sugestão já na primeira linha, pronta para revisar ou editar.
+#
+# Nunca falha o commit: se o gerador der erro, segue sem sugestão.
+set -u
+
+ARQ_MSG="$1"
+ORIGEM="${2:-}"   # message | template | merge | squash | commit (amend) | vazio
+
+# Não interfere quando já há mensagem/origem definida.
+case "$ORIGEM" in
+  message|merge|squash|commit) exit 0 ;;
+esac
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+[[ -z "$REPO_ROOT" ]] && exit 0
+
+SUGESTAO="$("$REPO_ROOT/scripts/gerar-mensagem-commit.sh" 2>/dev/null || true)"
+[[ -z "$SUGESTAO" ]] && exit 0
+
+# Só preenche se a primeira linha do arquivo estiver vazia (não sobrescreve
+# nada que o git já tenha colocado, como comentários de template).
+PRIMEIRA_LINHA="$(head -n1 "$ARQ_MSG" 2>/dev/null || true)"
+if [[ -n "$PRIMEIRA_LINHA" && "${PRIMEIRA_LINHA:0:1}" != "#" ]]; then
+  exit 0
+fi
+
+TMP="$(mktemp)"
+{
+  printf '%s\n' "$SUGESTAO"
+  echo
+  echo "# Sugestão gerada automaticamente (scripts/gerar-mensagem-commit.sh)."
+  echo "# Revise/edite a linha acima. O que começa com '#' é ignorado."
+  cat "$ARQ_MSG"
+} > "$TMP"
+mv "$TMP" "$ARQ_MSG"
+
+exit 0
