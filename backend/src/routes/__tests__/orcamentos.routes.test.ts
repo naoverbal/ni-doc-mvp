@@ -7,6 +7,7 @@ import { errorHandler } from '../../middlewares/error-handler.js'
 import { AppError } from '../../errors/app-error.js'
 import type { AuthService } from '../../services/auth.service.js'
 import type { OrcamentoService } from '../../services/orcamento.service.js'
+import type { VersionamentoService, VersaoEnviada } from '../../services/versionamento.service.js'
 import type { OrcamentoComItens, ListaOrcamentos } from '../../repositories/orcamento.repository.js'
 import type { UsuarioPublico } from '../../repositories/usuario.repository.js'
 import type { SessaoAtiva } from '../../repositories/sessao.repository.js'
@@ -88,6 +89,18 @@ const listaOrcamentosMock: ListaOrcamentos = {
   tamanhoPagina: 20,
 }
 
+const versaoEnviadaMock: VersaoEnviada = {
+  id: 'versao-1',
+  orcamentoId: 'orcamento-1',
+  versao: 1,
+  tokenPublico: 'token-publico-1',
+  templateId: 'template-1',
+  pdfPath: null,
+  pdfHash: null,
+  enviadoEm: new Date('2024-01-01'),
+  expiraEm: null,
+}
+
 const bodyValido = {
   clienteId: CLIENTE_ID,
   titulo: 'Projeto X',
@@ -114,11 +127,25 @@ function makeOrcamentoService(overrides?: Partial<OrcamentoService>): OrcamentoS
   }
 }
 
-function makeApp(orcamentoService: OrcamentoService, authService: AuthService) {
+function makeVersionamentoService(overrides?: Partial<VersionamentoService>): VersionamentoService {
+  return {
+    enviar: vi.fn().mockResolvedValue(versaoEnviadaMock),
+    ...overrides,
+  }
+}
+
+function makeApp(
+  orcamentoService: OrcamentoService,
+  authService: AuthService,
+  versionamentoService: VersionamentoService = makeVersionamentoService(),
+) {
   const app = express()
   app.use(express.json())
   app.use(cookieParser())
-  app.use('/api/orcamentos', criarOrcamentosRouter(orcamentoService, authService))
+  app.use(
+    '/api/orcamentos',
+    criarOrcamentosRouter(orcamentoService, versionamentoService, authService),
+  )
   app.use(errorHandler)
   return app
 }
@@ -491,5 +518,91 @@ describe('DELETE /api/orcamentos/:id', () => {
     const res = await request(app).delete('/api/orcamentos/orcamento-1')
 
     expect(res.status).toBe(401)
+  })
+})
+
+describe('POST /api/orcamentos/:id/enviar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('retorna 201 e a versão criada em caso de sucesso', async () => {
+    const orcamentoService = makeOrcamentoService()
+    const authService = makeAuthService()
+    const versionamentoService = makeVersionamentoService()
+    const app = makeApp(orcamentoService, authService, versionamentoService)
+
+    const res = await request(app)
+      .post('/api/orcamentos/orcamento-1/enviar')
+      .set('Cookie', 'session=sessao-id-1')
+
+    expect(res.status).toBe(201)
+    expect(res.body.id).toBe('versao-1')
+    expect(res.body.versao).toBe(1)
+    expect(res.body.tokenPublico).toBe('token-publico-1')
+    expect(res.body.pdfPath).toBeNull()
+    expect(versionamentoService.enviar).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
+      'orcamento-1',
+    )
+  })
+
+  it('retorna 400 quando o rascunho não tem itens (service lança)', async () => {
+    const orcamentoService = makeOrcamentoService()
+    const authService = makeAuthService()
+    const versionamentoService = makeVersionamentoService({
+      enviar: vi.fn().mockRejectedValue(new AppError(400, 'Orçamento deve ter ao menos um item')),
+    })
+    const app = makeApp(orcamentoService, authService, versionamentoService)
+
+    const res = await request(app)
+      .post('/api/orcamentos/orcamento-1/enviar')
+      .set('Cookie', 'session=sessao-id-1')
+
+    expect(res.status).toBe(400)
+  })
+
+  it('retorna 409 quando o orçamento não é rascunho (service lança)', async () => {
+    const orcamentoService = makeOrcamentoService()
+    const authService = makeAuthService()
+    const versionamentoService = makeVersionamentoService({
+      enviar: vi
+        .fn()
+        .mockRejectedValue(new AppError(409, 'Só é possível enviar orçamentos em rascunho')),
+    })
+    const app = makeApp(orcamentoService, authService, versionamentoService)
+
+    const res = await request(app)
+      .post('/api/orcamentos/orcamento-1/enviar')
+      .set('Cookie', 'session=sessao-id-1')
+
+    expect(res.status).toBe(409)
+  })
+
+  it('propaga AppError 404 do service', async () => {
+    const orcamentoService = makeOrcamentoService()
+    const authService = makeAuthService()
+    const versionamentoService = makeVersionamentoService({
+      enviar: vi.fn().mockRejectedValue(new AppError(404, 'Orçamento não encontrado')),
+    })
+    const app = makeApp(orcamentoService, authService, versionamentoService)
+
+    const res = await request(app)
+      .post('/api/orcamentos/inexistente/enviar')
+      .set('Cookie', 'session=sessao-id-1')
+
+    expect(res.status).toBe(404)
+  })
+
+  it('retorna 401 sem cookie session', async () => {
+    const orcamentoService = makeOrcamentoService()
+    const authService = makeAuthService()
+    const versionamentoService = makeVersionamentoService()
+    const app = makeApp(orcamentoService, authService, versionamentoService)
+
+    const res = await request(app).post('/api/orcamentos/orcamento-1/enviar')
+
+    expect(res.status).toBe(401)
+    expect(versionamentoService.enviar).not.toHaveBeenCalled()
   })
 })

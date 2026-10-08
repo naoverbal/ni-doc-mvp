@@ -6,6 +6,7 @@ import type {
   OrcamentoContexto,
   CriarOrcamentoDados,
 } from '../services/orcamento.service.js'
+import type { VersionamentoService } from '../services/versionamento.service.js'
 import {
   STATUS_ORCAMENTO,
   type AtualizarOrcamentoInput,
@@ -24,6 +25,7 @@ import { AppError } from '../errors/app-error.js'
 
 export function criarOrcamentosRouter(
   orcamentoService: OrcamentoService,
+  versionamentoService: VersionamentoService,
   authService: AuthService,
 ): Router {
   const router = Router()
@@ -115,6 +117,18 @@ export function criarOrcamentosRouter(
       const id = req.params['id'] as string
       await orcamentoService.deletar(ctx, id)
       res.status(204).end()
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // POST /api/orcamentos/:id/enviar — versiona e envia o rascunho (400/404/409 vêm do service).
+  router.post('/:id/enviar', async (req, res, next) => {
+    try {
+      const ctx = construirContexto(req)
+      const id = req.params['id'] as string
+      const versao = await versionamentoService.enviar(ctx, id)
+      res.status(201).json(versao)
     } catch (err) {
       next(err)
     }
