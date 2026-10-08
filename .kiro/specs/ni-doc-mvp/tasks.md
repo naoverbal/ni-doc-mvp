@@ -363,11 +363,49 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: job roda, PDFs antigos removidos, auditoria registrada
   - _Requirements: cleanup_
 
+### Fase 13 — Ativação do RLS por Request (Correção de Segurança)
+
+> **Motivação:** investigação (`.agents/tasks/settenant-rls-investigation.md`) constatou que o
+> middleware `setTenant` existe mas nunca é registrado no pipeline Express, então
+> `app.current_tenant` nunca é setado em runtime e as policies de RLS da migration
+> `002_rls_policies.sql` ficam inertes. Hoje o isolamento entre tenants depende
+> exclusivamente do filtro aplicacional `WHERE tenant_id` nos repositórios, o que
+> contraria o RF-002 (critérios 2 e 3), o ADR-006 e a Correctness Property nº 1 do
+> design. Esta fase ativa o RLS como camada de defesa efetiva no banco. É uma correção
+> transversal, independente das fases de feature, e pode ser executada assim que a
+> infraestrutura de dados (Fase 2) e de auth/tenant (Fase 3) estiver pronta.
+
+- [ ] 56. Ativar RLS por request (conexão por request + `setTenant` + papel sem BYPASSRLS)
+  - **Papel de banco:** criar/documentar um papel de aplicação sem `BYPASSRLS` e que não
+    seja superusuário/owner das tabelas, usado pelo backend em runtime; reservar o papel
+    privilegiado apenas para `migrate`/`seed`. Ajustar `.env.example` (`DATABASE_URL`) e
+    docker-compose conforme necessário.
+  - **Conexão por request:** introduzir um escopo transacional/conexão fixa por request
+    (ex.: `AsyncLocalStorage` guardando a `Transaction`/conexão, ou repasse de `trx` pelo
+    contexto do service) para que `set_config('app.current_tenant', <uuid>, true)` persista
+    por todas as queries do request. Ajustar `config/database.ts` e a injeção de dependências
+    em `app.ts` para que os repositórios usem a conexão do request, não o pool global.
+  - **Registrar `setTenant`:** aplicar o middleware `tenant.ts` logo após `autenticar` em
+    todos os routers de domínio (`clientes`, `empresas`, `responsaveis`, `orcamentos`,
+    `templates`), setando o GUC dentro do escopo transacional do request.
+  - **Repositórios:** manter os `WHERE tenant_id = ...` existentes como defesa em profundidade;
+    garantir que as queries em tabelas-filhas (`orcamento_itens`, `orcamento_versoes`,
+    `orcamento_aceites`) fiquem cobertas pelas policies via `EXISTS`.
+  - **Testes de integração (TDD):** criar testes com PostgreSQL real (serviço do docker-compose
+    ou Testcontainers) conectando com o papel não-privilegiado, provando: (a) com o GUC setado,
+    só o tenant corrente enxerga suas linhas; (b) sem o GUC, nenhuma linha retorna; (c) tentativa
+    de acesso cross-tenant falha no banco mesmo se o filtro aplicacional for omitido; (d) acesso
+    a recurso de outro tenant resulta em 404 na API (RF-002, critério 4).
+  - DoD: `setTenant` registrado e efetivo; RLS barra acesso cross-tenant no banco de forma
+    comprovada por teste de integração; backend roda com papel que respeita RLS; filtro
+    aplicacional mantido como redundância; lint/build/testes passam.
+  - _Requirements: RF-002_
+
 ## Notes
 
 - Ciclo TDD obrigatório: testes antes da implementação; tarefa concluída só com testes passando e lint sem erros.
 - Cobertura: `lib/` exige 100%; serviços e repositórios 80%+.
-- Multi-tenancy: a partir da Fase 3, todo acesso a dados respeita isolamento por `tenant_id` via RLS.
+- Multi-tenancy: a partir da Fase 3, todo acesso a dados respeita isolamento por `tenant_id`. O isolamento no banco via RLS (`SET LOCAL app.current_tenant`) só passa a ser efetivamente ativo após a Fase 13 (tarefa 56); até lá o isolamento é garantido apenas pelo filtro aplicacional `WHERE tenant_id` nos repositórios.
 - Imutabilidade: snapshots e PDFs emitidos são imutáveis; alterações posteriores em entidades de referência não afetam versões já emitidas.
 - Dependências cruzadas: a tarefa 33 (rota de envio) retorna versão sem PDF; `pdf_path` só é preenchido pela tarefa 40 (integração envio → PDF), que depende das tarefas 36–39. A tarefa 41 (aceite) reutiliza a geração de PDF da Fase 8. As telas de frontend dependem das rotas de backend correspondentes.
 
@@ -390,8 +428,12 @@ graph TD
     F10["Fase 10 — Frontend (44–50)"]
     F11["Fase 11 — Notificações (51–52)"]
     F12["Fase 12 — Deploy (53–55)"]
+    F13["Fase 13 — Ativação do RLS (56)"]
     F0 --> F1 --> F2 --> F3 --> F4 --> F5 --> F6 --> F7 --> F8 --> F9 --> F10 --> F11 --> F12
+    F3 --> F13
 ```
+
+A Fase 13 (ativação do RLS) é uma correção de segurança transversal: depende apenas da infraestrutura de banco (Fase 2) e de auth/tenant (Fase 3), não das fases de feature. Pode ser priorizada e executada de forma independente.
 
 ```json
 {
@@ -408,7 +450,8 @@ graph TD
     { "wave": 9, "name": "Aceite e Aprovação", "tasks": ["41", "42", "43"], "dependsOn": [8] },
     { "wave": 10, "name": "Frontend", "tasks": ["44", "45", "46", "47", "48", "49", "50"], "dependsOn": [9] },
     { "wave": 11, "name": "Notificações", "tasks": ["51", "52"], "dependsOn": [10] },
-    { "wave": 12, "name": "Deploy e Produção", "tasks": ["53", "54", "55"], "dependsOn": [11] }
+    { "wave": 12, "name": "Deploy e Produção", "tasks": ["53", "54", "55"], "dependsOn": [11] },
+    { "wave": 13, "name": "Ativação do RLS por Request", "tasks": ["56"], "dependsOn": [3] }
   ]
 }
 ```

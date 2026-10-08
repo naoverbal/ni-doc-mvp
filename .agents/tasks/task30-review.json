@@ -1,0 +1,8 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    "setTenant ausente (pré-existente, não bloqueante): o requisito cita 'autenticar + setTenant', mas nenhum router do projeto usa setTenant; a tenancy é propagada via tenantId no contexto e o router de orçamentos espelha corretamente os irmãos (clientes/empresas/responsaveis). Ativar RLS por request seria mudança transversal com testes de integração, em tarefa separada.",
+    "STATUS_ORCAMENTO duplicado na rota (não-bloqueante): a lista de status na rota duplica a união OrcamentoStatus do repositório; um status novo no domínio precisa ser replicado à mão ou o filtro rejeitará valor válido. Considerar derivar de fonte única."
+  ],
+  "reviewDoc": "/Users/nilson/Dev/ni-doc/.agents/tasks/task30-review.md"
+}
