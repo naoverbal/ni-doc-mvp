@@ -228,7 +228,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: versão antiga permanece acessível
   - _Requirements: RF-013, RF-014_
 
-- [~] 35. Rotas de template
+- [x] 35. Rotas de template
   - Criar `backend/src/routes/templates.routes.ts`, `schemas/template.schema.ts` e testes
   - Testes: GET `/atual`; PUT `/atual` cria versão (admin); operador → 403
   - DoD: restrição de papel aplicada
