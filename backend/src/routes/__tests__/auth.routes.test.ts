@@ -84,9 +84,7 @@ describe('POST /api/auth/login', () => {
     const authService = makeAuthService()
     const app = makeApp(authService)
 
-    const res = await request(app)
-      .post('/api/auth/login')
-      .send({ email: 'ana@exemplo.com' })
+    const res = await request(app).post('/api/auth/login').send({ email: 'ana@exemplo.com' })
 
     expect(res.status).toBe(400)
   })
@@ -121,9 +119,7 @@ describe('POST /api/auth/logout', () => {
     const authService = makeAuthService()
     const app = makeApp(authService)
 
-    const res = await request(app)
-      .post('/api/auth/logout')
-      .set('Cookie', 'session=sessao-id-1')
+    const res = await request(app).post('/api/auth/logout').set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(200)
     const setCookie = res.headers['set-cookie'] as string[] | undefined
@@ -155,9 +151,7 @@ describe('GET /api/auth/me', () => {
     const authService = makeAuthService()
     const app = makeApp(authService)
 
-    const res = await request(app)
-      .get('/api/auth/me')
-      .set('Cookie', 'session=sessao-id-1')
+    const res = await request(app).get('/api/auth/me').set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(200)
     expect(res.body.usuario.id).toBe('user-1')

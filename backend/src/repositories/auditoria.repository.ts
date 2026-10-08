@@ -44,11 +44,8 @@ export function criarAuditoriaRepository(db: Kysely<Database>): AuditoriaReposit
           entidade: input.entidade,
           entidade_id: input.entidadeId ?? null,
           estado_anterior:
-            input.estadoAnterior !== undefined
-              ? JSON.stringify(input.estadoAnterior)
-              : null,
-          estado_novo:
-            input.estadoNovo !== undefined ? JSON.stringify(input.estadoNovo) : null,
+            input.estadoAnterior !== undefined ? JSON.stringify(input.estadoAnterior) : null,
+          estado_novo: input.estadoNovo !== undefined ? JSON.stringify(input.estadoNovo) : null,
           ip: input.ip ?? null,
           user_agent: input.userAgent ?? null,
         })

@@ -26,7 +26,11 @@ export function errorHandler(
 
   const isDev = process.env['NODE_ENV'] !== 'production'
   const message =
-    err instanceof Error ? (isDev ? err.message : 'Erro interno do servidor') : 'Erro interno do servidor'
+    err instanceof Error
+      ? isDev
+        ? err.message
+        : 'Erro interno do servidor'
+      : 'Erro interno do servidor'
 
   res.status(500).json({ erro: message })
 }

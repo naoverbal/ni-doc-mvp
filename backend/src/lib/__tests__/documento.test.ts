@@ -15,6 +15,10 @@ describe('documento', () => {
       expect(validarCPF('529.982.247-00')).toBe(false)
     })
 
+    it('CPF 123.456.789-00 com dígito errado retorna false', () => {
+      expect(validarCPF('123.456.789-00')).toBe(false)
+    })
+
     it('CPF não numérico retorna false', () => {
       expect(validarCPF('abc.def.ghi-jk')).toBe(false)
     })
@@ -29,8 +33,16 @@ describe('documento', () => {
       expect(validarCNPJ('11.222.333/0001-81')).toBe(true)
     })
 
+    it('CNPJ 12.345.678/0001-95 válido retorna true', () => {
+      expect(validarCNPJ('12.345.678/0001-95')).toBe(true)
+    })
+
     it('CNPJ com dígito verificador errado retorna false', () => {
       expect(validarCNPJ('11.222.333/0001-00')).toBe(false)
+    })
+
+    it('CNPJ 12.345.678/0001-00 com dígito errado retorna false', () => {
+      expect(validarCNPJ('12.345.678/0001-00')).toBe(false)
     })
 
     it('CNPJ com todos dígitos iguais retorna false', () => {

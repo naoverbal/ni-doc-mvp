@@ -7,9 +7,7 @@ function getSecret(): string {
 }
 
 function calcularHmac(uuid: string, versaoId: string): string {
-  return createHmac('sha256', getSecret())
-    .update(`${uuid}:${versaoId}`)
-    .digest('hex')
+  return createHmac('sha256', getSecret()).update(`${uuid}:${versaoId}`).digest('hex')
 }
 
 export function gerarTokenPublico(versaoId: string): string {

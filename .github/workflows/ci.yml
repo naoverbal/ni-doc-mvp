@@ -30,46 +30,31 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nidoc_test
+      CRYPTO_KEY: dGVzdGtleXRlc3RrZXl0ZXN0a2V5dGVzdGtleXQ=
+      SESSION_SECRET: test-session-secret-for-ci-only
+      NODE_ENV: test
+      PORT: 3001
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'npm'
 
-      - name: Instalar dependências (raiz)
-        run: npm install
-        working-directory: ./backend
+      - name: Instalar dependências
+        run: npm ci
 
-      - name: Instalar dependências (frontend)
-        run: npm install
-        working-directory: ./frontend
-
-      - name: Lint (backend)
+      - name: Lint
         run: npm run lint
-        working-directory: ./backend
 
-      - name: Lint (frontend)
-        run: npm run lint
-        working-directory: ./frontend
-
-      - name: Build (backend)
+      - name: Build
         run: npm run build
-        working-directory: ./backend
 
-      - name: Build (frontend)
-        run: npm run build
-        working-directory: ./frontend
-
-      - name: Testes (backend)
+      - name: Testes
         run: npm test
-        working-directory: ./backend
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nidoc_test
-          CRYPTO_KEY: dGVzdGtleXRlc3RrZXl0ZXN0a2V5dGVzdGtleXQ=
-          SESSION_SECRET: test-session-secret-for-ci-only
-          NODE_ENV: test
-          PORT: 3001

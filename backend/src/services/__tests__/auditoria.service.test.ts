@@ -1,6 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { criarAuditoriaService } from '../auditoria.service.js'
-import type { AuditoriaRepository, EventoAuditoria } from '../../repositories/auditoria.repository.js'
+import type {
+  AuditoriaRepository,
+  EventoAuditoria,
+} from '../../repositories/auditoria.repository.js'
 
 function makeRepo(overrides?: Partial<AuditoriaRepository>): AuditoriaRepository {
   return {

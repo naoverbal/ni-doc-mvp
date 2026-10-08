@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterEach } from 'vitest'
 
 // Definir CRYPTO_KEY antes de importar o módulo
 beforeAll(() => {
@@ -8,7 +8,26 @@ beforeAll(() => {
 // Importação dinâmica para garantir que env está definida
 const { criptografar, descriptografar, hashDocumento } = await import('../crypto.js')
 
+const CHAVE_VALIDA = Buffer.from('12345678901234567890123456789012').toString('base64')
+
 describe('crypto', () => {
+  afterEach(() => {
+    // Restaura a chave válida após testes que a alteram
+    process.env['CRYPTO_KEY'] = CHAVE_VALIDA
+  })
+
+  describe('getKey (validação de CRYPTO_KEY)', () => {
+    it('lança erro se CRYPTO_KEY não estiver definida', () => {
+      delete process.env['CRYPTO_KEY']
+      expect(() => criptografar('x')).toThrow('CRYPTO_KEY não definida')
+    })
+
+    it('lança erro se CRYPTO_KEY não decodificar para 32 bytes', () => {
+      process.env['CRYPTO_KEY'] = Buffer.from('curta').toString('base64')
+      expect(() => criptografar('x')).toThrow('CRYPTO_KEY deve ter 32 bytes')
+    })
+  })
+
   describe('criptografar / descriptografar', () => {
     it('criptografar retorna string diferente do input', () => {
       const resultado = criptografar('texto secreto')

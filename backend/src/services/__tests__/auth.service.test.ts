@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { criarAuthService } from '../auth.service.js'
 import { AppError } from '../../errors/app-error.js'
-import type { UsuarioRepository, UsuarioComSenha, UsuarioPublico } from '../../repositories/usuario.repository.js'
+import type {
+  UsuarioRepository,
+  UsuarioComSenha,
+  UsuarioPublico,
+} from '../../repositories/usuario.repository.js'
 import type { SessaoRepository, SessaoAtiva } from '../../repositories/sessao.repository.js'
 import type { AuditoriaService } from '../auditoria.service.js'
 import * as senhaLib from '../../lib/senha.js'

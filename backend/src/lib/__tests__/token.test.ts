@@ -53,4 +53,14 @@ describe('token', () => {
   it('validarTokenPublico retorna false para token sem ponto', () => {
     expect(validarTokenPublico('tokensemponto', 'versao-qualquer')).toBe(false)
   })
+
+  it('lança erro quando SESSION_SECRET não está definida', () => {
+    const original = process.env['SESSION_SECRET']
+    delete process.env['SESSION_SECRET']
+    try {
+      expect(() => gerarTokenPublico('versao-sem-secret')).toThrow('SESSION_SECRET não definida')
+    } finally {
+      process.env['SESSION_SECRET'] = original
+    }
+  })
 })

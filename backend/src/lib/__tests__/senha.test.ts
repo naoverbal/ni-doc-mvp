@@ -32,4 +32,10 @@ describe('senha', () => {
     const resultado = await verificarSenha('qualquer', '$invalido$')
     expect(resultado).toBe(false)
   })
+
+  it('verificarSenha retorna false quando a verificação lança erro', async () => {
+    // String vazia faz o argon2 lançar erro; o catch deve devolver false
+    const resultado = await verificarSenha('qualquer', '')
+    expect(resultado).toBe(false)
+  })
 })

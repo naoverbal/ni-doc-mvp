@@ -2,17 +2,21 @@ export function normalizarDocumento(doc: string): string {
   return doc.replace(/[.\-/]/g, '')
 }
 
+/**
+ * Calcula um dígito verificador (módulo 11) para a base informada.
+ * `base` e `pesos` devem ter o mesmo comprimento (garantido pelos chamadores).
+ */
+function calcDigito(base: string, pesos: number[]): number {
+  const soma = pesos.reduce((acc, peso, i) => acc + Number(base.charAt(i)) * peso, 0)
+  const resto = soma % 11
+  return resto < 2 ? 0 : 11 - resto
+}
+
 export function validarCPF(cpf: string): boolean {
   const nums = normalizarDocumento(cpf)
   if (nums.length !== 11 || !/^\d{11}$/.test(nums)) return false
   // Rejeita todos dígitos iguais
   if (/^(\d)\1{10}$/.test(nums)) return false
-
-  const calcDigito = (base: string, pesos: number[]): number => {
-    const soma = base.split('').reduce((acc, d, i) => acc + Number(d) * (pesos[i] ?? 0), 0)
-    const resto = soma % 11
-    return resto < 2 ? 0 : 11 - resto
-  }
 
   const pesos1 = [10, 9, 8, 7, 6, 5, 4, 3, 2]
   const pesos2 = [11, 10, 9, 8, 7, 6, 5, 4, 3, 2]
@@ -28,12 +32,6 @@ export function validarCNPJ(cnpj: string): boolean {
   if (nums.length !== 14 || !/^\d{14}$/.test(nums)) return false
   // Rejeita todos dígitos iguais
   if (/^(\d)\1{13}$/.test(nums)) return false
-
-  const calcDigito = (base: string, pesos: number[]): number => {
-    const soma = base.split('').reduce((acc, d, i) => acc + Number(d) * (pesos[i] ?? 0), 0)
-    const resto = soma % 11
-    return resto < 2 ? 0 : 11 - resto
-  }
 
   const pesos1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
   const pesos2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]

@@ -69,15 +69,7 @@ export function criarUsuarioRepository(db: Kysely<Database>): UsuarioRepository 
           senha_hash: senhaHash,
           papel: input.papel,
         })
-        .returning([
-          'id',
-          'tenant_id',
-          'nome',
-          'email_encrypted',
-          'papel',
-          'ativo',
-          'criado_em',
-        ])
+        .returning(['id', 'tenant_id', 'nome', 'email_encrypted', 'papel', 'ativo', 'criado_em'])
         .executeTakeFirstOrThrow()
 
       return mapRowToPublico(row)
@@ -112,15 +104,7 @@ export function criarUsuarioRepository(db: Kysely<Database>): UsuarioRepository 
     async buscarPorId(id: string): Promise<UsuarioPublico | null> {
       const row = await db
         .selectFrom('usuarios')
-        .select([
-          'id',
-          'tenant_id',
-          'nome',
-          'email_encrypted',
-          'papel',
-          'ativo',
-          'criado_em',
-        ])
+        .select(['id', 'tenant_id', 'nome', 'email_encrypted', 'papel', 'ativo', 'criado_em'])
         .where('id', '=', id)
         .executeTakeFirst()
 

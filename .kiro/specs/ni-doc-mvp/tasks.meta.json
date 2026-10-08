@@ -1,0 +1,605 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1. Estrutura inicial do monorepo": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982277
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791468024136
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791468153301
+      }
+    ],
+    "2. Configurar TypeScript estrito": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982343
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791468158392
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791468252240
+      }
+    ],
+    "3. Configurar ESLint + Prettier": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982375
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791468256370
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791468439167
+      }
+    ],
+    "4. Configurar Vitest no backend": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982409
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791468442825
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791468605000
+      }
+    ],
+    "5. Configurar Docker Compose para desenvolvimento": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982451
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791468608835
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791468748917
+      }
+    ],
+    "6. CI básico no GitHub Actions": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982498
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791468754054
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791468845952
+      }
+    ],
+    "7. Implementar criptografia AES-256-GCM": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982531
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791468850493
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791468926744
+      }
+    ],
+    "8. Implementar hash de senha com Argon2id": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982565
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791468930514
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791469068243
+      }
+    ],
+    "9. Implementar geração de token público": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982633
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791469072077
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791469159411
+      }
+    ],
+    "10. Implementar validação de CPF/CNPJ": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982665
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791469163681
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791469294386
+      }
+    ],
+    "11. Implementar cálculo de totais de orçamento": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982702
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791469301240
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791469419145
+      }
+    ],
+    "12. Migration inicial de schema": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982735
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791469424111
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791469577760
+      }
+    ],
+    "13. Migration de RLS": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982769
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791469584212
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791469701847
+      }
+    ],
+    "14. Seed de desenvolvimento": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982801
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791469706250
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791469952173
+      }
+    ],
+    "15. Configuração do Express": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982836
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791469956419
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791470095327
+      }
+    ],
+    "16. Implementar repositório de usuários": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982869
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791470099397
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791470197957
+      }
+    ],
+    "17. Implementar serviço de autenticação": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982902
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791470205160
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791470338940
+      }
+    ],
+    "18. Rotas de autenticação": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982936
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791470343123
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791470450533
+      }
+    ],
+    "19. Middlewares de auth e tenant": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467982969
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791470454578
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791470639611
+      }
+    ],
+    "20. Rate limiting no login": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983001
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791470644030
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791470723327
+      }
+    ],
+    "21. Serviço de auditoria": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983042
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791470727963
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791470856242
+      }
+    ],
+    "22. Repositório e serviço de clientes": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983076
+      },
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791470860643
+      }
+    ],
+    "23. Rotas de clientes": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983106
+      }
+    ],
+    "24. Repositório e serviço de empresas": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983134
+      }
+    ],
+    "25. Rotas de empresas": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983168
+      }
+    ],
+    "26. Repositório e serviço de responsáveis técnicos": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983201
+      }
+    ],
+    "27. Rotas de responsáveis técnicos": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983235
+      }
+    ],
+    "28. Repositório de orçamentos": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983268
+      }
+    ],
+    "29. Serviço de orçamento": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983300
+      }
+    ],
+    "30. Rotas de orçamentos": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983335
+      }
+    ],
+    "31. Serviço de snapshot": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983368
+      }
+    ],
+    "32. Serviço de versionamento": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983401
+      }
+    ],
+    "33. Rota de envio": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983467
+      }
+    ],
+    "34. Serviço de templates": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983498
+      }
+    ],
+    "35. Rotas de template": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983526
+      }
+    ],
+    "36. Renderizador de HTML": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983559
+      }
+    ],
+    "37. Quebra de página automática": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983597
+      }
+    ],
+    "38. Gerador de PDF com Puppeteer": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983625
+      }
+    ],
+    "39. QR Code no PDF": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983658
+      }
+    ],
+    "40. Integração envio → PDF": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983692
+      }
+    ],
+    "41. Serviço de aceite": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983726
+      }
+    ],
+    "42. Rotas públicas": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983765
+      }
+    ],
+    "43. Rota de aceite manual": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983801
+      }
+    ],
+    "44. Setup do React + Vite": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983835
+      }
+    ],
+    "45. Tela de login": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983868
+      }
+    ],
+    "46. Lista de orçamentos": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983899
+      }
+    ],
+    "47. Editor de orçamento": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983931
+      }
+    ],
+    "48. Envio e versionamento (frontend)": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983959
+      }
+    ],
+    "49. Editor de template": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467983993
+      }
+    ],
+    "50. Página pública de aprovação": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467984024
+      }
+    ],
+    "51. Lib de e-mail": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467984056
+      }
+    ],
+    "52. Templates de e-mail": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467984084
+      }
+    ],
+    "53. Configurar Nginx na VPS": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467984118
+      }
+    ],
+    "54. Pipeline de deploy": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467984151
+      }
+    ],
+    "55. Job de limpeza de PDFs": [
+      {
+        "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
+        "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
+        "timestamp": 1791467984183
+      }
+    ]
+  }
+}

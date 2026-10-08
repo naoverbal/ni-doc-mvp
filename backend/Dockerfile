@@ -25,4 +25,4 @@ COPY . .
 
 EXPOSE 3000
 
-CMD ["node", "--watch", "--loader", "ts-node/esm", "src/server.ts"]
+CMD ["npm", "run", "dev"]
