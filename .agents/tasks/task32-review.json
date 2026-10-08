@@ -1,0 +1,24 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    {
+      "label": "Auditoria pós-commit sem compensação",
+      "severity": "non-blocking",
+      "confidence": "confirmed",
+      "description": "A versão é commitada na transação do repositório antes de auditoriaService.registrar; se a auditoria falhar, o envio fica sem trilha. Mesmo trade-off dos demais serviços do projeto; aceitável, mas digno de nota."
+    },
+    {
+      "label": "expiraEm sempre null",
+      "severity": "non-blocking",
+      "confidence": "confirmed",
+      "description": "O parâmetro expiraEm existe no contrato do repositório e é cabeado pelo serviço, mas apenas null é passado (expiração é tarefa 42). Cabeamento intencional antecipado."
+    },
+    {
+      "label": "RLS × transação própria do repositório",
+      "severity": "non-blocking",
+      "confidence": "confirmed",
+      "description": "criarVersaoEnviar abre db.transaction() próprio; a aplicação da RLS depende de app.current_tenant setado pelo middleware. Segue o padrão existente (orcamento.repository) e é deferido a testes de integração. Pré-existente."
+    }
+  ],
+  "reviewDoc": "/Users/nilson/Dev/ni-doc/.agents/tasks/task32-review.md"
+}

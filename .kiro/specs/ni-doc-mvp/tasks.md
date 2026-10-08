@@ -208,7 +208,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: JSONB puro; teste de imutabilidade passa
   - _Requirements: RF-008_
 
-- [~] 32. Serviço de versionamento
+- [x] 32. Serviço de versionamento
   - Criar `backend/src/services/versionamento.service.ts` e testes
   - Testes: `enviar` só rascunho com itens; cria v1 e v(N+1); gera token; status `enviado`; invalida aceite anterior; auditoria
   - DoD: versionamento sequencial, token único por versão
