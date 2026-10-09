@@ -6,6 +6,7 @@ import type {
   OrcamentoStatus,
 } from '../../repositories/orcamento.repository.js'
 import type {
+  CriarVersaoEnviarInput,
   OrcamentoVersaoPublica,
   OrcamentoVersaoRepository,
 } from '../../repositories/orcamento-versao.repository.js'
@@ -17,6 +18,10 @@ import type {
 } from '../../repositories/responsavel.repository.js'
 import type { SnapshotService } from '../snapshot.service.js'
 import type { AuditoriaService } from '../auditoria.service.js'
+import type { PdfService } from '../pdf.service.js'
+import type { HtmlRendererService } from '../html-renderer.service.js'
+import type { TemplatePublico, TemplateRepository } from '../../repositories/template.repository.js'
+import { AppError } from '../../errors/app-error.js'
 
 function itemMock(overrides: Record<string, unknown> = {}) {
   return {
@@ -115,6 +120,33 @@ const versaoPublicaMock: OrcamentoVersaoPublica = {
   expiraEm: null,
 }
 
+const templateMock: TemplatePublico = {
+  id: 'template-1',
+  tenantId: 'tenant-1',
+  versao: 1,
+  layoutJson: { corpo: '{itens}', imagens: { logo: 'data:image/png;base64,LOGO' } },
+  criadoEm: new Date('2026-01-01'),
+}
+
+// Simula o comportamento transacional real de `criarVersaoEnviar`: dentro da
+// "transação", invoca o callback `gerarPdfDaVersao` (quando presente) e reflete
+// `pdfPath`/`pdfHash` resultantes na versão retornada. Se o callback rejeita, a
+// rejeição propaga (como o rollback real da trx faria).
+function criarVersaoEnviarMock() {
+  return vi.fn(async (input: CriarVersaoEnviarInput): Promise<OrcamentoVersaoPublica> => {
+    if (input.gerarPdfDaVersao) {
+      const { pdfPath, pdfHash } = await input.gerarPdfDaVersao({
+        versao: versaoPublicaMock.versao,
+        numero: input.numero,
+        tokenPublico: versaoPublicaMock.tokenPublico,
+        templateId: versaoPublicaMock.templateId,
+      })
+      return { ...versaoPublicaMock, pdfPath, pdfHash }
+    }
+    return versaoPublicaMock
+  })
+}
+
 function makeDeps(overrides?: {
   orcamentoRepo?: Partial<OrcamentoRepository>
   orcamentoVersaoRepo?: Partial<OrcamentoVersaoRepository>
@@ -123,6 +155,9 @@ function makeDeps(overrides?: {
   responsavelRepo?: Partial<ResponsavelRepository>
   snapshotService?: Partial<SnapshotService>
   auditoriaService?: Partial<AuditoriaService>
+  pdfService?: Partial<PdfService>
+  htmlRenderer?: Partial<HtmlRendererService>
+  templateRepo?: Partial<TemplateRepository>
 }) {
   const orcamentoRepo = {
     criar: vi.fn(),
@@ -134,7 +169,7 @@ function makeDeps(overrides?: {
   } as unknown as OrcamentoRepository
 
   const orcamentoVersaoRepo = {
-    criarVersaoEnviar: vi.fn().mockResolvedValue(versaoPublicaMock),
+    criarVersaoEnviar: criarVersaoEnviarMock(),
     ...overrides?.orcamentoVersaoRepo,
   } as unknown as OrcamentoVersaoRepository
 
@@ -180,6 +215,29 @@ function makeDeps(overrides?: {
     ...overrides?.auditoriaService,
   } as unknown as AuditoriaService
 
+  const pdfService = {
+    gerarPdf: vi.fn().mockResolvedValue({
+      buffer: Buffer.from('%PDF-1.7'),
+      caminho: '/var/ni-doc/pdfs/ORC-2026-0001-v1.pdf',
+      hash: 'abc123',
+    }),
+    buscarPdf: vi.fn(),
+    ...overrides?.pdfService,
+  } as unknown as PdfService
+
+  const htmlRenderer = {
+    renderizar: vi.fn().mockReturnValue('<html></html>'),
+    ...overrides?.htmlRenderer,
+  } as unknown as HtmlRendererService
+
+  const templateRepo = {
+    criarTemplatePadrao: vi.fn(),
+    salvar: vi.fn(),
+    buscarAtivo: vi.fn().mockResolvedValue(templateMock),
+    buscarPorId: vi.fn(),
+    ...overrides?.templateRepo,
+  } as unknown as TemplateRepository
+
   return {
     orcamentoRepo,
     orcamentoVersaoRepo,
@@ -188,6 +246,9 @@ function makeDeps(overrides?: {
     responsavelRepo,
     snapshotService,
     auditoriaService,
+    pdfService,
+    htmlRenderer,
+    templateRepo,
   }
 }
 
@@ -214,10 +275,82 @@ describe('VersionamentoService', () => {
     expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', orcamentoId: 'orcamento-1' }),
     )
-    expect(versao.pdfPath).toBeNull()
-    expect(versao.pdfHash).toBeNull()
     expect(versao.versao).toBe(1)
     expect(versao.tokenPublico).toBe('uuid.hmac')
+  })
+
+  it('gera o PDF no envio e persiste pdf_path e pdf_hash na versão', async () => {
+    const deps = makeDeps()
+    const service = criarVersionamentoService(deps)
+
+    const versao = await service.enviar(ctx, 'orcamento-1')
+
+    // Template ativo do tenant é carregado para a renderização.
+    expect(deps.templateRepo.buscarAtivo).toHaveBeenCalledWith('tenant-1')
+    // HTML renderizado com layout + snapshot + numero + versao.
+    expect(deps.htmlRenderer.renderizar).toHaveBeenCalledWith(
+      expect.objectContaining({ numero: 'ORC-2026-0001', versao: 1 }),
+    )
+    // PDF gerado com o HTML montado e o identificador numero/versao.
+    expect(deps.pdfService.gerarPdf).toHaveBeenCalledWith(
+      expect.objectContaining({ html: '<html></html>', numero: 'ORC-2026-0001', versao: 1 }),
+    )
+    // O repositório recebe o callback de geração + o numero do arquivo.
+    expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        numero: 'ORC-2026-0001',
+        gerarPdfDaVersao: expect.any(Function),
+      }),
+    )
+    // A versão retornada carrega pdf_path e pdf_hash preenchidos.
+    expect(versao.pdfPath).toBe('/var/ni-doc/pdfs/ORC-2026-0001-v1.pdf')
+    expect(versao.pdfHash).toBe('abc123')
+  })
+
+  it('embute o QR Code da URL pública no layout antes de renderizar o HTML', async () => {
+    const deps = makeDeps()
+    const service = criarVersionamentoService(deps)
+
+    await service.enviar(ctx, 'orcamento-1')
+
+    const renderArg = (deps.htmlRenderer.renderizar as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[0] as { layout: { imagens: Record<string, string> } }
+    // A imagem `qrcode` é adicionada sem descartar imagens já existentes do layout.
+    expect(renderArg.layout.imagens.qrcode).toMatch(/^data:image\/png;base64,/)
+    expect(renderArg.layout.imagens.logo).toBe('data:image/png;base64,LOGO')
+  })
+
+  it('é imutável: delega a geração ao pdfService.gerarPdf sem regenerar por conta própria', async () => {
+    const deps = makeDeps()
+    const service = criarVersionamentoService(deps)
+
+    await service.enviar(ctx, 'orcamento-1')
+
+    // Um único ponto de geração: o serviço chama gerarPdf exatamente uma vez e
+    // não implementa regeneração própria (a imutabilidade/reuso vive no pdfService).
+    expect(deps.pdfService.gerarPdf).toHaveBeenCalledTimes(1)
+    expect(deps.htmlRenderer.renderizar).toHaveBeenCalledTimes(1)
+  })
+
+  it('faz rollback quando a geração de PDF falha: propaga o erro e não registra auditoria', async () => {
+    const deps = makeDeps({
+      pdfService: {
+        gerarPdf: vi.fn().mockRejectedValue(new AppError(500, 'falha ao gerar PDF')),
+      },
+    })
+    const service = criarVersionamentoService(deps)
+
+    await expect(service.enviar(ctx, 'orcamento-1')).rejects.toMatchObject({ statusCode: 500 })
+    // Nenhum estado parcial: auditoria só roda após a persistência bem-sucedida.
+    expect(deps.auditoriaService.registrar).not.toHaveBeenCalled()
+  })
+
+  it('lança AppError(409) quando o tenant não possui template ativo', async () => {
+    const deps = makeDeps({ templateRepo: { buscarAtivo: vi.fn().mockResolvedValue(null) } })
+    const service = criarVersionamentoService(deps)
+
+    await expect(service.enviar(ctx, 'orcamento-1')).rejects.toMatchObject({ statusCode: 409 })
+    expect(deps.pdfService.gerarPdf).not.toHaveBeenCalled()
   })
 
   it('lança AppError(404) quando o orçamento não existe', async () => {

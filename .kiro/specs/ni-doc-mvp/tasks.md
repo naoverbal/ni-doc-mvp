@@ -260,7 +260,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: QR embutido no HTML, URL `/publico/orcamento/:token`
   - _Requirements: RF-018_
 
-- [~] 40. Integração envio → PDF
+- [x] 40. Integração envio → PDF
   - Ajustar `versionamento.service.ts`
   - No envio, após snapshot, chamar `pdfService.gerar()`; armazenar `pdf_path` e `pdf_hash`; rollback se falhar
   - Teste: envio gera PDF e o PDF é imutável
@@ -268,7 +268,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
 
 ### Fase 9 — Aceite e Aprovação
 
-- [~] 41. Serviço de aceite
+- [x] 41. Serviço de aceite
   - Criar `backend/src/services/aceite.service.ts` e testes
   - Testes: `aprovarViaCliente` valida token, registra IP/UA/hash/método, muda status, rejeita expirado/duplicado; `aceiteManual` exige justificativa e registra operador; gera comprovante PDF
   - DoD: evidências registradas, comprovante gerado, auditoria

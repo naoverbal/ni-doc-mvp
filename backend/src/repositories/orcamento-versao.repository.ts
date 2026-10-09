@@ -4,23 +4,42 @@ import { sql } from 'kysely'
 import type { Database } from '../types/database.js'
 import { AppError } from '../errors/app-error.js'
 import { gerarTokenPublico } from '../lib/token.js'
+import type { OrcamentoStatus } from './orcamento.repository.js'
 
 // -----------------------------------------------------------------------------
 // Repositório das versões imutáveis do orçamento (tabela orcamento_versoes).
 // Dono do SQL do envio: calcula a próxima versão sequencial, resolve o template
 // ativo do tenant, invalida o aceite anterior, insere a versão com token público
 // único e marca o orçamento como `enviado` — tudo em uma transação atômica
-// (RF-008, RF-009). A geração de PDF é da tarefa 40: `pdf_path`/`pdf_hash` ficam
-// nulos aqui.
+// (RF-008, RF-009). A geração de PDF (RF-016) é orquestrada pelo serviço e
+// executada DENTRO desta transação via o callback opcional `gerarPdfDaVersao`,
+// de modo que uma falha no PDF reverte o envio inteiro.
 // -----------------------------------------------------------------------------
+
+// Dados que a geração de PDF precisa conhecer, resolvidos dentro da transação
+// (versão sequencial, nome do arquivo, token público e template ativo).
+export interface DadosGeracaoPdf {
+  versao: number
+  numero: string
+  tokenPublico: string
+  templateId: string
+}
 
 export interface CriarVersaoEnviarInput {
   tenantId: string
   orcamentoId: string
+  // Número do orçamento (ex.: 'ORC-2026-0001') — compõe o nome do arquivo PDF.
+  numero: string
   // Snapshot imutável montado pelo serviço (snapshot.service). Serializável em JSONB.
   snapshot: unknown
   // Derivado de validade; pode ser null no MVP (expiração é da tarefa 42).
   expiraEm?: Date | null
+  // Callback OPCIONAL de geração de PDF (orquestrado pelo serviço — tarefa 40).
+  // Executado DENTRO da transação, após a versão/token/template serem resolvidos
+  // e ANTES do INSERT: o retorno popula pdf_path/pdf_hash no mesmo insert. Se o
+  // callback lançar, a transação do Kysely reverte tudo (versão + status), de
+  // modo que nenhum estado parcial persiste (RF-016). Ausente → pdf nulo (como antes).
+  gerarPdfDaVersao?: (dados: DadosGeracaoPdf) => Promise<{ pdfPath: string; pdfHash: string }>
 }
 
 export interface OrcamentoVersaoPublica {
@@ -35,8 +54,34 @@ export interface OrcamentoVersaoPublica {
   expiraEm: Date | null
 }
 
+// Leitura usada pelo serviço de aceite: liga a versão ao orçamento (join com
+// `orcamentos`) e projeta exatamente o que o aceite precisa para validar o token
+// e aprovar — tenant (isolamento), número (nome do PDF), hash do documento
+// (integridade), token (validação do HMAC), expiração e status do orçamento.
+export interface VersaoPorToken {
+  versaoId: string
+  orcamentoId: string
+  tenantId: string
+  numero: string
+  versao: number
+  pdfHash: string | null
+  tokenPublico: string
+  expiraEm: Date | null
+  statusOrcamento: OrcamentoStatus
+}
+
 export interface OrcamentoVersaoRepository {
   criarVersaoEnviar(input: CriarVersaoEnviarInput): Promise<OrcamentoVersaoPublica>
+  // Localiza a versão pelo token público (coluna UNIQUE). O token tem formato
+  // `uuid.hmac` ligado ao id da versão; como o serviço não deriva o id do token,
+  // a busca é pela coluna `token_publico`. Retorna null quando não existe.
+  buscarPorToken(token: string): Promise<VersaoPorToken | null>
+  // Versão de maior número (vigente) de um orçamento, usada pelo aceite manual
+  // (que recebe orcamentoId, não token). Retorna null se não houver versão.
+  buscarVersaoAtualPorOrcamento(
+    tenantId: string,
+    orcamentoId: string,
+  ): Promise<VersaoPorToken | null>
 }
 
 // -----------------------------------------------------------------------------
@@ -67,6 +112,46 @@ function mapRowVersao(row: OrcamentoVersaoRow): OrcamentoVersaoPublica {
     expiraEm: row.expira_em,
   }
 }
+
+// Linha do join versão↔orçamento (snake_case). As colunas vêm aliasadas no
+// SELECT para evitar colisão de nomes homônimos entre as duas tabelas.
+interface VersaoPorTokenRow {
+  versao_id: string
+  orcamento_id: string
+  tenant_id: string
+  numero: string
+  versao: number
+  pdf_hash: string | null
+  token_publico: string
+  expira_em: Date | null
+  status_orcamento: OrcamentoStatus
+}
+
+function mapRowVersaoPorToken(row: VersaoPorTokenRow): VersaoPorToken {
+  return {
+    versaoId: row.versao_id,
+    orcamentoId: row.orcamento_id,
+    tenantId: row.tenant_id,
+    numero: row.numero,
+    versao: row.versao,
+    pdfHash: row.pdf_hash,
+    tokenPublico: row.token_publico,
+    expiraEm: row.expira_em,
+    statusOrcamento: row.status_orcamento,
+  }
+}
+
+const COLUNAS_VERSAO_POR_TOKEN = [
+  'v.id as versao_id',
+  'v.orcamento_id as orcamento_id',
+  'o.tenant_id as tenant_id',
+  'o.numero as numero',
+  'v.versao as versao',
+  'v.pdf_hash as pdf_hash',
+  'v.token_publico as token_publico',
+  'v.expira_em as expira_em',
+  'o.status as status_orcamento',
+] as const
 
 const COLUNAS_VERSAO = [
   'id',
@@ -145,6 +230,22 @@ export function criarOrcamentoVersaoRepository(deps: {
         const versaoId = randomUUID()
         const tokenPublico = gerarTokenPublico(versaoId)
 
+        // Geração de PDF dentro da MESMA transação (tarefa 40): se o callback
+        // lançar, a trx reverte e nenhuma versão/estado parcial persiste. Sem
+        // callback, mantém o comportamento anterior (pdf nulo).
+        let pdfPath: string | null = null
+        let pdfHash: string | null = null
+        if (input.gerarPdfDaVersao) {
+          const pdf = await input.gerarPdfDaVersao({
+            versao,
+            numero: input.numero,
+            tokenPublico,
+            templateId,
+          })
+          pdfPath = pdf.pdfPath
+          pdfHash = pdf.pdfHash
+        }
+
         const row = await trx
           .insertInto('orcamento_versoes')
           .values({
@@ -153,8 +254,8 @@ export function criarOrcamentoVersaoRepository(deps: {
             versao,
             snapshot: JSON.stringify(input.snapshot),
             template_id: templateId,
-            pdf_path: null,
-            pdf_hash: null,
+            pdf_path: pdfPath,
+            pdf_hash: pdfHash,
             token_publico: tokenPublico,
             expira_em: input.expiraEm ?? null,
           })
@@ -170,6 +271,36 @@ export function criarOrcamentoVersaoRepository(deps: {
 
         return mapRowVersao(row as OrcamentoVersaoRow)
       })
+    },
+
+    async buscarPorToken(token: string): Promise<VersaoPorToken | null> {
+      const row = await db
+        .selectFrom('orcamento_versoes as v')
+        .innerJoin('orcamentos as o', 'o.id', 'v.orcamento_id')
+        .select(COLUNAS_VERSAO_POR_TOKEN)
+        .where('v.token_publico', '=', token)
+        .executeTakeFirst()
+
+      if (!row) return null
+      return mapRowVersaoPorToken(row as unknown as VersaoPorTokenRow)
+    },
+
+    async buscarVersaoAtualPorOrcamento(
+      tenantId: string,
+      orcamentoId: string,
+    ): Promise<VersaoPorToken | null> {
+      const row = await db
+        .selectFrom('orcamento_versoes as v')
+        .innerJoin('orcamentos as o', 'o.id', 'v.orcamento_id')
+        .select(COLUNAS_VERSAO_POR_TOKEN)
+        .where('v.orcamento_id', '=', orcamentoId)
+        .where('o.tenant_id', '=', tenantId)
+        .orderBy('v.versao', 'desc')
+        .limit(1)
+        .executeTakeFirst()
+
+      if (!row) return null
+      return mapRowVersaoPorToken(row as unknown as VersaoPorTokenRow)
     },
   }
 }

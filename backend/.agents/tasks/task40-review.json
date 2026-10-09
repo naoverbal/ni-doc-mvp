@@ -1,0 +1,8 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    "templateId resolvido por duas fontes (não bloqueante): o serviço lê o template ativo via templateRepo.buscarAtivo(tenantId) para o layout, enquanto o repositório relê template_id de tenants_template_ativo dentro da trx. São leituras independentes que poderiam divergir se o template ativo mudasse entre elas. Aceito como tradeoff de MVP (um único template ativo por tenant faz as duas convergirem) e já documentado no comentário do enviar; a unificação fica para tarefa futura.",
+    "Rollback end-to-end sem cobertura de integração (não bloqueante): a reversão real da trx quando o PDF falha é verificada por asserções de mock nos dois níveis (serviço e repositório), não por teste contra Postgres real. Aceite explícito, consistente com a estratégia de testes unitários de serviço do projeto; a semântica transacional real fica para teste de integração/repositório futuro."
+  ],
+  "reviewDoc": "/Users/nilson/Dev/ni-doc/backend/.agents/tasks/task40-review.md"
+}

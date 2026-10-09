@@ -1,0 +1,21 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    {
+      "severity": "non-blocking",
+      "label": "RLS não setada na transação de aceite",
+      "detail": "aprovarAceite usa db.transaction() sem SET LOCAL app.current_tenant; isolamento depende só do WHERE tenant_id aplicacional. Consistente com a convenção MVP (RLS efetiva na Fase 13), não bloqueante; revisitar na Fase 13 para garantir cobertura das policies de orcamento_aceites."
+    },
+    {
+      "severity": "non-blocking",
+      "label": "Duplicidade concorrente só coberta em integração",
+      "detail": "A colisão de dois aceites concorrentes no UNIQUE(versao_id) após passarem pelo advisory lock vira erro de driver do Postgres, não AppError(409), e não é exercida pelos testes mock. Cobrir no teste de integração da Fase 13 e, se desejável, mapear o erro de unique para 409 no repositório."
+    },
+    {
+      "severity": "non-blocking",
+      "label": "Comprovante PDF não persiste vínculo com o aceite",
+      "detail": "comprovantePdfPath/comprovantePdfHash são retornados mas não gravados em orcamento_aceites (a tabela não tem colunas para isso). Recuperável pelo nome determinístico do arquivo e fora do escopo da 41; registrar como lacuna caso RF-021 exija rastreabilidade persistida (nova coluna/migração)."
+    }
+  ],
+  "reviewDoc": "/Users/nilson/Dev/ni-doc/.agents/tasks/task41-review.md"
+}
