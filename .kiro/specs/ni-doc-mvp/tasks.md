@@ -346,13 +346,13 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
 
 ### Fase 11 — Notificações (MVP Simplificado)
 
-- [ ] 51. Lib de e-mail
+- [x] 51. Lib de e-mail
   - Criar `backend/src/lib/email.ts` e testes
   - Testes: usa SMTP configurado; serializa destinatário; falhas são logadas sem quebrar o fluxo
   - DoD: envio funciona com SMTP real (ou mock)
   - _Requirements: RF-022_
 
-- [ ] 52. Templates de e-mail
+- [~] 52. Templates de e-mail
   - Criar `backend/src/lib/email-templates.ts`
   - Templates "orçamento enviado" (com link), "aprovado" (notifica operador), "reprovado"
   - DoD: e-mails enviados nos eventos corretos, log na auditoria
