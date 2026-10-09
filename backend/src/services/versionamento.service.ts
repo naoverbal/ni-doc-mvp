@@ -12,6 +12,8 @@ import type { AuditoriaService } from './auditoria.service.js'
 import type { PdfService } from './pdf.service.js'
 import type { HtmlRendererService } from './html-renderer.service.js'
 import type { LayoutTemplate, TemplateRepository } from '../repositories/template.repository.js'
+import type { Email } from '../lib/email.js'
+import { montarEmailOrcamentoEnviado } from '../lib/email-templates.js'
 import { gerarQrCodeDataUrl } from '../lib/qrcode.js'
 
 // -----------------------------------------------------------------------------
@@ -63,6 +65,9 @@ interface VersionamentoServiceDeps {
   pdfService: PdfService
   htmlRenderer: HtmlRendererService
   templateRepo: TemplateRepository
+  // OPCIONAL: serviço de e-mail (RF-022). Ausente quando o SMTP não está
+  // configurado — nesse caso o envio é simplesmente ignorado, sem erro.
+  email?: Email
 }
 
 export function criarVersionamentoService(deps: VersionamentoServiceDeps): VersionamentoService {
@@ -77,6 +82,7 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
     pdfService,
     htmlRenderer,
     templateRepo,
+    email,
   } = deps
 
   return {
@@ -190,6 +196,22 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
         ip: ctx.ip,
         userAgent: ctx.userAgent,
       })
+
+      // Notifica o cliente por e-mail (RF-022.1), em melhor esforço: só quando o
+      // serviço de e-mail está configurado e o cliente tem endereço. O `enviar`
+      // da lib já engole falhas e devolve booleano — nunca lança —, então uma
+      // indisponibilidade de SMTP não quebra o envio já persistido. O link é o
+      // MESMO path relativo do QR Code (base URL absoluta é tarefa futura).
+      if (email && cliente.email && cliente.email.length > 0) {
+        await email.enviar(
+          montarEmailOrcamentoEnviado({
+            destinatario: cliente.email,
+            nomeCliente: cliente.nome,
+            numero: orcamento.numero,
+            linkPublico: `/publico/orcamento/${versao.tokenPublico}`,
+          }),
+        )
+      }
 
       return {
         id: versao.id,

@@ -39,6 +39,7 @@ import { criarOrcamentoVersaoRepository } from './repositories/orcamento-versao.
 import { criarTemplateRepository } from './repositories/template.repository.js'
 import { criarAuditoriaRepository } from './repositories/auditoria.repository.js'
 import { criarAuditoriaService } from './services/auditoria.service.js'
+import { criarEmail, criarTransporteSmtp, type Email } from './lib/email.js'
 import { db } from './config/database.js'
 
 export function criarApp(): express.Express {
@@ -86,6 +87,21 @@ export function criarApp(): express.Express {
   const responsavelService = criarResponsavelService({ responsavelRepo, auditoriaService })
   app.use('/api/responsaveis', criarResponsaveisRouter(responsavelService, authService))
 
+  // Serviço de e-mail (RF-022): montado APENAS quando o SMTP está configurado
+  // (host, porta e remetente presentes). Sem configuração, `email` fica
+  // undefined e os serviços simplesmente não notificam — comportamento esperado
+  // ("notificar o cliente por e-mail, se configurado").
+  let email: Email | undefined
+  if (env.SMTP_HOST !== undefined && env.SMTP_PORT !== undefined && env.SMTP_FROM !== undefined) {
+    const transporte = criarTransporteSmtp({
+      host: env.SMTP_HOST,
+      porta: env.SMTP_PORT,
+      usuario: env.SMTP_USER,
+      senha: env.SMTP_PASS,
+    })
+    email = criarEmail({ transporte, remetente: env.SMTP_FROM })
+  }
+
   // Template (repositório compartilhado com o versionamento, para renderizar o
   // PDF a partir do layout ativo do tenant).
   const templateRepo = criarTemplateRepository({ db })
@@ -108,6 +124,7 @@ export function criarApp(): express.Express {
     pdfService,
     htmlRenderer,
     templateRepo,
+    email,
   })
   // Template routes
   const templateService = criarTemplateService({ templateRepo, auditoriaService })
@@ -123,6 +140,9 @@ export function criarApp(): express.Express {
     auditoriaService,
     pdfService,
     htmlRenderer,
+    usuarioRepo,
+    clienteRepo,
+    email,
   })
 
   // Orçamento routes (dependem do aceiteService para o aceite manual).

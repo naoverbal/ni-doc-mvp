@@ -10,9 +10,16 @@ import type {
   VersaoSnapshotPorToken,
 } from '../repositories/orcamento-versao.repository.js'
 import type { OrcamentoRepository } from '../repositories/orcamento.repository.js'
+import type { UsuarioRepository } from '../repositories/usuario.repository.js'
+import type { ClienteRepository } from '../repositories/cliente.repository.js'
 import type { AuditoriaService } from './auditoria.service.js'
 import type { PdfService } from './pdf.service.js'
 import type { HtmlRendererService } from './html-renderer.service.js'
+import type { Email } from '../lib/email.js'
+import {
+  montarEmailOrcamentoAprovado,
+  montarEmailOrcamentoReprovado,
+} from '../lib/email-templates.js'
 
 // -----------------------------------------------------------------------------
 // Serviço de aceite (RF-019, RF-020, RF-021). Dois fluxos de aprovação de um
@@ -97,6 +104,11 @@ interface AceiteServiceDeps {
   auditoriaService: AuditoriaService
   pdfService: PdfService
   htmlRenderer: HtmlRendererService
+  // OPCIONAIS: usados apenas para notificar o operador por e-mail (RF-022.2/.3).
+  // Ausentes quando o SMTP não está configurado — nesse caso nada é enviado.
+  usuarioRepo?: UsuarioRepository
+  clienteRepo?: ClienteRepository
+  email?: Email
   // Fonte de tempo injetável para testes determinísticos de expiração.
   relogio?: () => Date
 }
@@ -155,11 +167,64 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
     auditoriaService,
     pdfService,
     htmlRenderer: _htmlRenderer,
+    usuarioRepo,
+    clienteRepo,
+    email,
     relogio = () => new Date(),
   } = deps
   // htmlRenderer é injetado para compor o wiring futuro, mas o comprovante usa
   // HTML próprio (determinístico) — por isso fica deliberadamente sem uso aqui.
   void _htmlRenderer
+
+  // Monta e dispara (melhor esforço) o e-mail de notificação ao operador
+  // responsável. Resolve operador e cliente a partir do orçamento ligado à
+  // versão. No-op quando faltam dependências (e-mail/repos não configurados),
+  // quando o orçamento/operador não são encontrados ou quando o operador não tem
+  // endereço de e-mail. Nunca lança (não pode quebrar o fluxo de decisão).
+  async function notificarOperador(
+    versao: VersaoPorToken,
+    acao: 'aprovar' | 'reprovar' | 'aceite_manual',
+    justificativa?: string,
+  ): Promise<void> {
+    if (!email || !usuarioRepo) {
+      return
+    }
+
+    const orcamento = await orcamentoRepo.buscarPorId(versao.tenantId, versao.orcamentoId)
+    if (!orcamento) {
+      return
+    }
+
+    const operador = await usuarioRepo.buscarPorId(orcamento.usuarioId)
+    if (!operador || operador.email.length === 0) {
+      return
+    }
+
+    // Nome do cliente para a notificação: lido do cadastro quando o repositório
+    // está disponível; cai para string vazia caso contrário (o template tolera).
+    const cliente = clienteRepo
+      ? await clienteRepo.buscarPorId(versao.tenantId, orcamento.clienteId)
+      : null
+    const nomeCliente = cliente?.nome ?? ''
+
+    const mensagem =
+      acao === 'reprovar'
+        ? montarEmailOrcamentoReprovado({
+            destinatario: operador.email,
+            nomeOperador: operador.nome,
+            numero: versao.numero,
+            nomeCliente,
+            justificativa,
+          })
+        : montarEmailOrcamentoAprovado({
+            destinatario: operador.email,
+            nomeOperador: operador.nome,
+            numero: versao.numero,
+            nomeCliente,
+          })
+
+    await email.enviar(mensagem)
+  }
 
   // Persiste a decisão, (opcionalmente) gera o comprovante PDF e registra
   // auditoria. Compartilhado pelos fluxos: muda o repo chamado (aprovar/reprovar),
@@ -217,6 +282,13 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
       ip: args.ip,
       userAgent: args.userAgent,
     })
+
+    // Notifica o operador responsável por e-mail (RF-022.2/.3), em melhor
+    // esforço: só quando o serviço de e-mail e os repositórios de operador/cliente
+    // estão configurados. Executado APÓS a auditoria; o `enviar` da lib engole
+    // falhas e devolve booleano — nunca lança —, então uma indisponibilidade de
+    // SMTP não quebra o aceite/reprovação já persistido.
+    await notificarOperador(versao, args.acao, args.aceiteInput.justificativa)
 
     return {
       id: aceite.id,
