@@ -52,8 +52,8 @@ docker compose exec backend npm run seed       # popula dados de desenvolvimento
 
 Acessos:
 
-- Frontend: http://localhost:5173
-- Backend: http://localhost:3000 (o Vite faz proxy de `/api` para o backend)
+- Frontend: (http://localhost:5173{target=_blank})
+- Backend: (http://localhost:3000{target=_blank}) (o Vite faz proxy de `/api` para o backend)
 
 ## Rodando localmente (sem Docker)
 
