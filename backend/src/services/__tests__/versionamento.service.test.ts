@@ -21,6 +21,7 @@ import type { AuditoriaService } from '../auditoria.service.js'
 import type { PdfService } from '../pdf.service.js'
 import type { HtmlRendererService } from '../html-renderer.service.js'
 import type { TemplatePublico, TemplateRepository } from '../../repositories/template.repository.js'
+import type { Email } from '../../lib/email.js'
 import { AppError } from '../../errors/app-error.js'
 
 function itemMock(overrides: Record<string, unknown> = {}) {
@@ -158,6 +159,7 @@ function makeDeps(overrides?: {
   pdfService?: Partial<PdfService>
   htmlRenderer?: Partial<HtmlRendererService>
   templateRepo?: Partial<TemplateRepository>
+  email?: Email
 }) {
   const orcamentoRepo = {
     criar: vi.fn(),
@@ -249,6 +251,9 @@ function makeDeps(overrides?: {
     pdfService,
     htmlRenderer,
     templateRepo,
+    // `email` é OPCIONAL: só entra nos deps quando o teste o fornece, de modo que
+    // os cenários "sem e-mail configurado" exercitem o caminho sem envio.
+    ...(overrides?.email ? { email: overrides.email } : {}),
   }
 }
 
@@ -492,5 +497,98 @@ describe('VersionamentoService', () => {
 
     await expect(service.enviar(ctx, 'orcamento-1')).rejects.toMatchObject({ statusCode: 409 })
     expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).not.toHaveBeenCalled()
+  })
+
+  // ---------------------------------------------------------------------------
+  // Envio de e-mail ao cliente no evento "orçamento enviado" (RF-022.1). Melhor
+  // esforço: o envio é opcional (só quando o serviço de e-mail está configurado
+  // e o cliente tem e-mail) e nunca pode quebrar o fluxo de envio.
+  // ---------------------------------------------------------------------------
+  describe('notificação de e-mail (RF-022.1)', () => {
+    it('envia o e-mail "orçamento enviado" ao cliente com o link público', async () => {
+      const email = { enviar: vi.fn().mockResolvedValue(true) } as unknown as Email
+      const deps = makeDeps({
+        email,
+        clienteRepo: {
+          buscarPorId: vi.fn().mockResolvedValue({ ...clienteMock, email: 'cliente@exemplo.com' }),
+        },
+      })
+      const service = criarVersionamentoService(deps)
+
+      await service.enviar(ctx, 'orcamento-1')
+
+      expect(email.enviar).toHaveBeenCalledTimes(1)
+      const arg = (email.enviar as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as {
+        destinatario: string
+        assunto: string
+        texto?: string
+        html?: string
+      }
+      expect(arg.destinatario).toBe('cliente@exemplo.com')
+      expect(arg.assunto).toContain('ORC-2026-0001')
+      // O link público relativo da versão aparece no corpo (mesmo path do QR).
+      expect(arg.texto).toContain('/publico/orcamento/uuid.hmac')
+      expect(arg.html).toContain('/publico/orcamento/uuid.hmac')
+    })
+
+    it('registra auditoria ANTES do envio do e-mail (envio é pós-persistência)', async () => {
+      const email = { enviar: vi.fn().mockResolvedValue(true) } as unknown as Email
+      const deps = makeDeps({
+        email,
+        clienteRepo: {
+          buscarPorId: vi.fn().mockResolvedValue({ ...clienteMock, email: 'cliente@exemplo.com' }),
+        },
+      })
+      const service = criarVersionamentoService(deps)
+
+      await service.enviar(ctx, 'orcamento-1')
+
+      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+      expect(email.enviar).toHaveBeenCalledTimes(1)
+    })
+
+    it('não envia e-mail quando o serviço de e-mail não está injetado (não configurado)', async () => {
+      const deps = makeDeps({
+        clienteRepo: {
+          buscarPorId: vi.fn().mockResolvedValue({ ...clienteMock, email: 'cliente@exemplo.com' }),
+        },
+      })
+      const service = criarVersionamentoService(deps)
+
+      const versao = await service.enviar(ctx, 'orcamento-1')
+
+      // Fluxo segue normal: versão persistida e auditoria registrada.
+      expect(versao.versao).toBe(1)
+      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+    })
+
+    it('não envia e-mail quando o cliente não tem e-mail', async () => {
+      const email = { enviar: vi.fn().mockResolvedValue(true) } as unknown as Email
+      // clienteMock.email é null por padrão.
+      const deps = makeDeps({ email })
+      const service = criarVersionamentoService(deps)
+
+      await service.enviar(ctx, 'orcamento-1')
+
+      expect(email.enviar).not.toHaveBeenCalled()
+      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+    })
+
+    it('não quebra o fluxo quando o envio retorna false (melhor esforço)', async () => {
+      const email = { enviar: vi.fn().mockResolvedValue(false) } as unknown as Email
+      const deps = makeDeps({
+        email,
+        clienteRepo: {
+          buscarPorId: vi.fn().mockResolvedValue({ ...clienteMock, email: 'cliente@exemplo.com' }),
+        },
+      })
+      const service = criarVersionamentoService(deps)
+
+      const versao = await service.enviar(ctx, 'orcamento-1')
+
+      expect(versao.versao).toBe(1)
+      expect(email.enviar).toHaveBeenCalledTimes(1)
+      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+    })
   })
 })

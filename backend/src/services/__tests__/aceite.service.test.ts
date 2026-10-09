@@ -10,9 +10,12 @@ import type {
   VersaoSnapshotPorToken,
 } from '../../repositories/orcamento-versao.repository.js'
 import type { OrcamentoRepository } from '../../repositories/orcamento.repository.js'
+import type { UsuarioRepository } from '../../repositories/usuario.repository.js'
+import type { ClienteRepository } from '../../repositories/cliente.repository.js'
 import type { AuditoriaService } from '../auditoria.service.js'
 import type { PdfService } from '../pdf.service.js'
 import type { HtmlRendererService } from '../html-renderer.service.js'
+import type { Email } from '../../lib/email.js'
 import { gerarTokenPublico } from '../../lib/token.js'
 
 // -----------------------------------------------------------------------------
@@ -78,9 +81,12 @@ function makeDeps(overrides?: {
   orcamentoVersaoRepo?: Partial<OrcamentoVersaoRepository>
   aceiteRepo?: Partial<OrcamentoAceiteRepository>
   orcamentoRepo?: Partial<OrcamentoRepository>
+  usuarioRepo?: Partial<UsuarioRepository>
+  clienteRepo?: Partial<ClienteRepository>
   auditoriaService?: Partial<AuditoriaService>
   pdfService?: Partial<PdfService>
   htmlRenderer?: Partial<HtmlRendererService>
+  email?: Email
   relogio?: () => Date
 }) {
   const orcamentoVersaoRepo = {
@@ -100,12 +106,36 @@ function makeDeps(overrides?: {
 
   const orcamentoRepo = {
     criar: vi.fn(),
-    buscarPorId: vi.fn().mockResolvedValue({ id: 'orc-1', numero: 'ORC-2026-0001' }),
+    buscarPorId: vi.fn().mockResolvedValue({
+      id: 'orc-1',
+      numero: 'ORC-2026-0001',
+      usuarioId: 'op-1',
+      clienteId: 'cliente-1',
+    }),
     atualizar: vi.fn(),
     listarPorTenant: vi.fn(),
     deletar: vi.fn(),
     ...overrides?.orcamentoRepo,
   } as unknown as OrcamentoRepository
+
+  const usuarioRepo = {
+    criar: vi.fn(),
+    buscarPorEmail: vi.fn(),
+    buscarPorId: vi
+      .fn()
+      .mockResolvedValue({ id: 'op-1', nome: 'Operador', email: 'operador@exemplo.com' }),
+    ...overrides?.usuarioRepo,
+  } as unknown as UsuarioRepository
+
+  const clienteRepo = {
+    criar: vi.fn(),
+    buscarPorDocumentoHash: vi.fn(),
+    buscarPorId: vi.fn().mockResolvedValue({ id: 'cliente-1', nome: 'Cliente LTDA' }),
+    buscarPorNome: vi.fn(),
+    atualizar: vi.fn(),
+    desativar: vi.fn(),
+    ...overrides?.clienteRepo,
+  } as unknown as ClienteRepository
 
   const auditoriaService = {
     registrar: vi.fn().mockResolvedValue(undefined),
@@ -132,9 +162,13 @@ function makeDeps(overrides?: {
     orcamentoVersaoRepo,
     aceiteRepo,
     orcamentoRepo,
+    usuarioRepo,
+    clienteRepo,
     auditoriaService,
     pdfService,
     htmlRenderer,
+    // `email` é OPCIONAL: só entra nos deps quando o teste o fornece.
+    ...(overrides?.email ? { email: overrides.email } : {}),
     ...(overrides?.relogio ? { relogio: overrides.relogio } : {}),
   }
 }
@@ -618,6 +652,118 @@ describe('AceiteService', () => {
         statusCode: 409,
       })
       expect(deps.auditoriaService.registrar).not.toHaveBeenCalled()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Notificação do OPERADOR por e-mail nos eventos de decisão (RF-022.2/.3).
+  // Melhor esforço: opcional (só com serviço de e-mail configurado e operador
+  // com endereço) e nunca pode quebrar o fluxo de aceite/reprovação já
+  // persistido. O destinatário é o operador responsável (orcamentos.usuario_id).
+  // ---------------------------------------------------------------------------
+  describe('notificação do operador por e-mail (RF-022.2/.3)', () => {
+    it('aprovação via cliente envia o e-mail "aprovado" ao operador com o nome do cliente', async () => {
+      const email = { enviar: vi.fn().mockResolvedValue(true) } as unknown as Email
+      const deps = makeDeps({ email })
+      const service = criarAceiteService(deps)
+
+      await service.aprovarViaCliente({ token: tokenValido })
+
+      // Busca o orçamento (operador + cliente) e carrega os dados do operador.
+      expect(deps.orcamentoRepo.buscarPorId).toHaveBeenCalledWith('tenant-1', 'orc-1')
+      expect((deps as { usuarioRepo: UsuarioRepository }).usuarioRepo.buscarPorId).toHaveBeenCalledWith('op-1')
+      expect(email.enviar).toHaveBeenCalledTimes(1)
+      const arg = (email.enviar as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as {
+        destinatario: string
+        assunto: string
+        texto?: string
+      }
+      expect(arg.destinatario).toBe('operador@exemplo.com')
+      expect(arg.assunto).toContain('aprovado')
+      expect(arg.texto).toContain('Cliente LTDA')
+      expect(arg.texto).toContain('ORC-2026-0001')
+    })
+
+    it('aceite manual envia o e-mail "aprovado" ao operador', async () => {
+      const email = { enviar: vi.fn().mockResolvedValue(true) } as unknown as Email
+      const deps = makeDeps({ email })
+      const service = criarAceiteService(deps)
+
+      await service.aceiteManual({
+        tenantId: 'tenant-1',
+        orcamentoId: 'orc-1',
+        usuarioId: 'op-1',
+        justificativa: 'cliente confirmou por telefone',
+      })
+
+      expect(email.enviar).toHaveBeenCalledTimes(1)
+      const arg = (email.enviar as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as {
+        destinatario: string
+        assunto: string
+      }
+      expect(arg.destinatario).toBe('operador@exemplo.com')
+      expect(arg.assunto).toContain('aprovado')
+    })
+
+    it('reprovação envia o e-mail "reprovado" ao operador incluindo a justificativa', async () => {
+      const email = { enviar: vi.fn().mockResolvedValue(true) } as unknown as Email
+      const deps = makeDeps({ email })
+      const service = criarAceiteService(deps)
+
+      await service.reprovarViaCliente({
+        token: tokenValido,
+        justificativa: 'preço acima do orçado',
+      })
+
+      expect(email.enviar).toHaveBeenCalledTimes(1)
+      const arg = (email.enviar as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as {
+        destinatario: string
+        assunto: string
+        texto?: string
+      }
+      expect(arg.destinatario).toBe('operador@exemplo.com')
+      expect(arg.assunto).toContain('reprovado')
+      expect(arg.texto).toContain('preço acima do orçado')
+    })
+
+    it('não envia e-mail quando o serviço de e-mail não está injetado (não configurado)', async () => {
+      const deps = makeDeps()
+      const service = criarAceiteService(deps)
+
+      const resultado = await service.aprovarViaCliente({ token: tokenValido })
+
+      // Fluxo intacto: aceite persistido, comprovante gerado e auditoria registrada.
+      expect(resultado.metodo).toBe('cliente')
+      expect(deps.pdfService.gerarPdf).toHaveBeenCalledTimes(1)
+      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+    })
+
+    it('não envia e-mail quando o operador não tem endereço', async () => {
+      const email = { enviar: vi.fn().mockResolvedValue(true) } as unknown as Email
+      const deps = makeDeps({
+        email,
+        usuarioRepo: {
+          buscarPorId: vi.fn().mockResolvedValue({ id: 'op-1', nome: 'Operador', email: '' }),
+        },
+      })
+      const service = criarAceiteService(deps)
+
+      await service.aprovarViaCliente({ token: tokenValido })
+
+      expect(email.enviar).not.toHaveBeenCalled()
+      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+    })
+
+    it('não quebra o fluxo quando o envio retorna false (melhor esforço)', async () => {
+      const email = { enviar: vi.fn().mockResolvedValue(false) } as unknown as Email
+      const deps = makeDeps({ email })
+      const service = criarAceiteService(deps)
+
+      const resultado = await service.aprovarViaCliente({ token: tokenValido })
+
+      expect(resultado.metodo).toBe('cliente')
+      expect(email.enviar).toHaveBeenCalledTimes(1)
+      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
     })
   })
 })
