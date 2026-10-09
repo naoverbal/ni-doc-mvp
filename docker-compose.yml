@@ -50,7 +50,7 @@ services:
     depends_on:
       - backend
     environment:
-      VITE_API_URL: http://backend:3000
+      VITE_PROXY_TARGET: http://backend:3000
     ports:
       - '5173:5173'
     volumes:
