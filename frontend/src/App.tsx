@@ -6,6 +6,7 @@ import { Login } from '@/pages/Login'
 import { Dashboard } from '@/pages/Dashboard'
 import { OrcamentoLista } from '@/pages/OrcamentoLista'
 import { OrcamentoEditor } from '@/pages/OrcamentoEditor'
+import { TemplateEditor } from '@/pages/TemplateEditor'
 import { PublicoOrcamento } from '@/pages/PublicoOrcamento'
 import { NaoEncontrado } from '@/pages/NaoEncontrado'
 
@@ -52,6 +53,14 @@ export function App(): ReactElement {
           element={
             <PrivateRoute>
               <OrcamentoEditor />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/template"
+          element={
+            <PrivateRoute>
+              <TemplateEditor />
             </PrivateRoute>
           }
         />

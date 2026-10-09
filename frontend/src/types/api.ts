@@ -164,3 +164,92 @@ export interface VersaoEnviada {
   enviadoEm: string
   expiraEm: string | null
 }
+
+// -----------------------------------------------------------------------------
+// Template visual (RF-014). O backend trafega o layout como JSONB genérico
+// (LayoutTemplate = objeto); aqui tipamos o shape produzido pelo editor visual
+// (tarefa 49), que é a fonte de verdade do formato. Dimensões em milímetros
+// (canvas A4 = 210mm x 297mm). Datas chegam como string ISO no JSON.
+// -----------------------------------------------------------------------------
+
+export type TipoElementoTemplate = 'texto' | 'imagem' | 'area-itens'
+
+// Base comum a todo elemento posicionável no canvas.
+export interface ElementoTemplateBase {
+  // Identificador estável do elemento, usado como key e nome acessível.
+  id: string
+  tipo: TipoElementoTemplate
+  // Posição e tamanho em milímetros, relativos ao canto superior esquerdo.
+  x: number
+  y: number
+  largura: number
+  altura: number
+}
+
+export interface ElementoTexto extends ElementoTemplateBase {
+  tipo: 'texto'
+  // Conteúdo com placeholders (ex.: "{cliente}") ou texto livre.
+  conteudo: string
+  fonte: string
+  tamanho: number
+  alinhamento: 'left' | 'center' | 'right'
+  cor: string
+  // Nível de heading (RF-014.11): 0 = parágrafo, 1..3 = h1..h3.
+  nivelTitulo: 0 | 1 | 2 | 3
+}
+
+export interface ElementoImagem extends ElementoTemplateBase {
+  tipo: 'imagem'
+  // Imagem embutida como data URL (base64).
+  src: string
+  ajuste: 'contain' | 'cover' | 'fill'
+  rotacao: number
+  // Descrição textual (alt) da imagem para acessibilidade.
+  descricao: string
+}
+
+export interface ElementoAreaItens extends ElementoTemplateBase {
+  tipo: 'area-itens'
+  // Altura máxima (mm) antes de quebrar para a próxima página (RF-015).
+  alturaMaxima: number
+  quebraPagina: boolean
+}
+
+export type ElementoTemplate = ElementoTexto | ElementoImagem | ElementoAreaItens
+
+// Fonte customizada carregada pelo usuário, agrupada por família (RF-014.5/6).
+export interface FonteTemplate {
+  familia: string
+  // Arquivo embutido como data URL (base64).
+  src: string
+  formato: 'ttf' | 'otf' | 'woff' | 'woff2'
+}
+
+export interface PaginaTemplate {
+  // PDF/imagem de fundo embutido como data URL (base64), opcional.
+  fundo: string | null
+  largura: number
+  altura: number
+  elementos: ElementoTemplate[]
+}
+
+export interface LayoutTemplate {
+  versao: number
+  paginas: PaginaTemplate[]
+  fontes: FonteTemplate[]
+}
+
+// Resposta de GET /templates/atual e PUT /templates/atual. Espelha
+// TemplatePublico do backend; `layoutJson` é o LayoutTemplate acima.
+export interface TemplatePublico {
+  id: string
+  tenantId: string
+  versao: number
+  layoutJson: LayoutTemplate
+  criadoEm: string
+}
+
+// Payload de PUT /templates/atual (AtualizarTemplatePayload no backend).
+export interface SalvarTemplatePayload {
+  layoutJson: LayoutTemplate
+}
