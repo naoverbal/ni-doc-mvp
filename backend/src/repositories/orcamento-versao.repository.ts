@@ -10,17 +10,35 @@ import { gerarTokenPublico } from '../lib/token.js'
 // Dono do SQL do envio: calcula a próxima versão sequencial, resolve o template
 // ativo do tenant, invalida o aceite anterior, insere a versão com token público
 // único e marca o orçamento como `enviado` — tudo em uma transação atômica
-// (RF-008, RF-009). A geração de PDF é da tarefa 40: `pdf_path`/`pdf_hash` ficam
-// nulos aqui.
+// (RF-008, RF-009). A geração de PDF (RF-016) é orquestrada pelo serviço e
+// executada DENTRO desta transação via o callback opcional `gerarPdfDaVersao`,
+// de modo que uma falha no PDF reverte o envio inteiro.
 // -----------------------------------------------------------------------------
+
+// Dados que a geração de PDF precisa conhecer, resolvidos dentro da transação
+// (versão sequencial, nome do arquivo, token público e template ativo).
+export interface DadosGeracaoPdf {
+  versao: number
+  numero: string
+  tokenPublico: string
+  templateId: string
+}
 
 export interface CriarVersaoEnviarInput {
   tenantId: string
   orcamentoId: string
+  // Número do orçamento (ex.: 'ORC-2026-0001') — compõe o nome do arquivo PDF.
+  numero: string
   // Snapshot imutável montado pelo serviço (snapshot.service). Serializável em JSONB.
   snapshot: unknown
   // Derivado de validade; pode ser null no MVP (expiração é da tarefa 42).
   expiraEm?: Date | null
+  // Callback OPCIONAL de geração de PDF (orquestrado pelo serviço — tarefa 40).
+  // Executado DENTRO da transação, após a versão/token/template serem resolvidos
+  // e ANTES do INSERT: o retorno popula pdf_path/pdf_hash no mesmo insert. Se o
+  // callback lançar, a transação do Kysely reverte tudo (versão + status), de
+  // modo que nenhum estado parcial persiste (RF-016). Ausente → pdf nulo (como antes).
+  gerarPdfDaVersao?: (dados: DadosGeracaoPdf) => Promise<{ pdfPath: string; pdfHash: string }>
 }
 
 export interface OrcamentoVersaoPublica {
@@ -145,6 +163,22 @@ export function criarOrcamentoVersaoRepository(deps: {
         const versaoId = randomUUID()
         const tokenPublico = gerarTokenPublico(versaoId)
 
+        // Geração de PDF dentro da MESMA transação (tarefa 40): se o callback
+        // lançar, a trx reverte e nenhuma versão/estado parcial persiste. Sem
+        // callback, mantém o comportamento anterior (pdf nulo).
+        let pdfPath: string | null = null
+        let pdfHash: string | null = null
+        if (input.gerarPdfDaVersao) {
+          const pdf = await input.gerarPdfDaVersao({
+            versao,
+            numero: input.numero,
+            tokenPublico,
+            templateId,
+          })
+          pdfPath = pdf.pdfPath
+          pdfHash = pdf.pdfHash
+        }
+
         const row = await trx
           .insertInto('orcamento_versoes')
           .values({
@@ -153,8 +187,8 @@ export function criarOrcamentoVersaoRepository(deps: {
             versao,
             snapshot: JSON.stringify(input.snapshot),
             template_id: templateId,
-            pdf_path: null,
-            pdf_hash: null,
+            pdf_path: pdfPath,
+            pdf_hash: pdfHash,
             token_publico: tokenPublico,
             expira_em: input.expiraEm ?? null,
           })

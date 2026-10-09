@@ -67,6 +67,7 @@ function versaoRowBase(overrides: Record<string, unknown> = {}) {
 const inputBase: CriarVersaoEnviarInput = {
   tenantId: 'tenant-1',
   orcamentoId: 'orc-1',
+  numero: 'ORC-2026-0001',
   snapshot: { cliente: { id: 'cliente-1' }, itens: [] },
   expiraEm: null,
 }
@@ -240,7 +241,7 @@ describe('OrcamentoVersaoRepository', () => {
     expect(deleteAceites.where).toHaveBeenCalled()
   })
 
-  it('insere pdf_path e pdf_hash nulos (geração de PDF fora de escopo)', async () => {
+  it('insere pdf_path e pdf_hash nulos quando não há callback de geração de PDF', async () => {
     const insertVersao = makeInsertBuilder(versaoRowBase())
     const updateOrcamento = makeUpdateBuilder()
     const deleteAceites = makeDeleteBuilder()
@@ -253,6 +254,61 @@ describe('OrcamentoVersaoRepository', () => {
     expect(insertVersao.values).toHaveBeenCalledWith(
       expect.objectContaining({ pdf_path: null, pdf_hash: null }),
     )
+  })
+
+  it('invoca gerarPdfDaVersao na transação e persiste pdf_path/pdf_hash no insert', async () => {
+    const insertVersao = makeInsertBuilder(
+      versaoRowBase({ pdf_path: '/pdfs/ORC-2026-0001-v1.pdf', pdf_hash: 'abc123' }),
+    )
+    const updateOrcamento = makeUpdateBuilder()
+    const deleteAceites = makeDeleteBuilder()
+    const trx = makeTrx({
+      insertVersao,
+      updateOrcamento,
+      deleteAceites,
+      maxVersao: null,
+      templateId: 'template-ativo',
+    })
+    const db = makeDbComTransacao(trx)
+
+    const gerarPdfDaVersao = vi
+      .fn()
+      .mockResolvedValue({ pdfPath: '/pdfs/ORC-2026-0001-v1.pdf', pdfHash: 'abc123' })
+
+    const repo = criarOrcamentoVersaoRepository({ db })
+    await repo.criarVersaoEnviar({ ...inputBase, gerarPdfDaVersao })
+
+    // O callback recebe os dados resolvidos dentro da transação.
+    expect(gerarPdfDaVersao).toHaveBeenCalledWith(
+      expect.objectContaining({
+        versao: 1,
+        numero: 'ORC-2026-0001',
+        templateId: 'template-ativo',
+        tokenPublico: expect.any(String),
+      }),
+    )
+    // O retorno popula pdf_path/pdf_hash no mesmo insert.
+    expect(insertVersao.values).toHaveBeenCalledWith(
+      expect.objectContaining({ pdf_path: '/pdfs/ORC-2026-0001-v1.pdf', pdf_hash: 'abc123' }),
+    )
+  })
+
+  it('propaga erro do gerarPdfDaVersao e não executa o insert da versão (rollback)', async () => {
+    const insertVersao = makeInsertBuilder(versaoRowBase())
+    const updateOrcamento = makeUpdateBuilder()
+    const deleteAceites = makeDeleteBuilder()
+    const trx = makeTrx({ insertVersao, updateOrcamento, deleteAceites, maxVersao: null })
+    const db = makeDbComTransacao(trx)
+
+    const gerarPdfDaVersao = vi.fn().mockRejectedValue(new AppError(500, 'falha ao gerar PDF'))
+
+    const repo = criarOrcamentoVersaoRepository({ db })
+    await expect(
+      repo.criarVersaoEnviar({ ...inputBase, gerarPdfDaVersao }),
+    ).rejects.toMatchObject({ statusCode: 500 })
+
+    expect(insertVersao.values).not.toHaveBeenCalled()
+    expect(updateOrcamento.set).not.toHaveBeenCalled()
   })
 
   it('emite o advisory lock ANTES do SELECT MAX (sem race condition)', async () => {

@@ -260,7 +260,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: QR embutido no HTML, URL `/publico/orcamento/:token`
   - _Requirements: RF-018_
 
-- [~] 40. Integração envio → PDF
+- [x] 40. Integração envio → PDF
   - Ajustar `versionamento.service.ts`
   - No envio, após snapshot, chamar `pdfService.gerar()`; armazenar `pdf_path` e `pdf_hash`; rollback se falhar
   - Teste: envio gera PDF e o PDF é imutável

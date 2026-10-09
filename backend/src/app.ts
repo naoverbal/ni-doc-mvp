@@ -21,6 +21,8 @@ import { criarOrcamentoService } from './services/orcamento.service.js'
 import { criarVersionamentoService } from './services/versionamento.service.js'
 import { criarSnapshotService } from './services/snapshot.service.js'
 import { criarTemplateService } from './services/template.service.js'
+import { criarHtmlRendererService } from './services/html-renderer.service.js'
+import { criarPdfService } from './services/pdf.service.js'
 import { criarUsuarioRepository } from './repositories/usuario.repository.js'
 import { criarSessaoRepository } from './repositories/sessao.repository.js'
 import { criarClienteRepository } from './repositories/cliente.repository.js'
@@ -78,11 +80,17 @@ export function criarApp(): express.Express {
   const responsavelService = criarResponsavelService({ responsavelRepo, auditoriaService })
   app.use('/api/responsaveis', criarResponsaveisRouter(responsavelService, authService))
 
+  // Template (repositório compartilhado com o versionamento, para renderizar o
+  // PDF a partir do layout ativo do tenant).
+  const templateRepo = criarTemplateRepository({ db })
+
   // Orçamento routes
   const orcamentoRepo = criarOrcamentoRepository({ db })
   const orcamentoService = criarOrcamentoService({ orcamentoRepo, auditoriaService })
   const orcamentoVersaoRepo = criarOrcamentoVersaoRepository({ db })
   const snapshotService = criarSnapshotService()
+  const htmlRenderer = criarHtmlRendererService()
+  const pdfService = criarPdfService({ pdfsDir: env.PDFS_DIR })
   const versionamentoService = criarVersionamentoService({
     orcamentoRepo,
     orcamentoVersaoRepo,
@@ -91,6 +99,9 @@ export function criarApp(): express.Express {
     responsavelRepo,
     snapshotService,
     auditoriaService,
+    pdfService,
+    htmlRenderer,
+    templateRepo,
   })
   app.use(
     '/api/orcamentos',
@@ -98,7 +109,6 @@ export function criarApp(): express.Express {
   )
 
   // Template routes
-  const templateRepo = criarTemplateRepository({ db })
   const templateService = criarTemplateService({ templateRepo, auditoriaService })
   app.use('/api/templates', criarTemplatesRouter(templateService, authService))
 

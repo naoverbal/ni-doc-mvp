@@ -9,13 +9,24 @@ import type {
 } from '../repositories/responsavel.repository.js'
 import type { SnapshotService } from './snapshot.service.js'
 import type { AuditoriaService } from './auditoria.service.js'
+import type { PdfService } from './pdf.service.js'
+import type { HtmlRendererService } from './html-renderer.service.js'
+import type { LayoutTemplate, TemplateRepository } from '../repositories/template.repository.js'
+import { gerarQrCodeDataUrl } from '../lib/qrcode.js'
 
 // -----------------------------------------------------------------------------
-// Serviço de versionamento (RF-008, RF-009). Transforma um orçamento `rascunho`
-// em uma versão imutável enviada: monta o snapshot (snapshot.service), delega a
-// persistência atômica ao repositório de versões (próxima versão sequencial,
-// token público único, invalidação do aceite anterior, status → `enviado`) e
-// registra auditoria. A geração de PDF é da tarefa 40: pdf_path/pdf_hash nulos.
+// Serviço de versionamento (RF-008, RF-009, RF-016). Transforma um orçamento
+// `rascunho` em uma versão imutável enviada: monta o snapshot (snapshot.service),
+// carrega o template ativo e orquestra a geração do PDF (html-renderer + QR +
+// pdf.service) DENTRO da transação de persistência do repositório — se o PDF
+// falhar, o envio inteiro reverte (nenhuma versão/estado parcial persiste). A
+// persistência atômica (próxima versão sequencial, token público único,
+// invalidação do aceite anterior, status → `enviado`, pdf_path/pdf_hash) é
+// delegada ao repositório; ao final registra auditoria.
+//
+// Imutabilidade (RF-016): o PDF não é regenerado em acessos posteriores — isso é
+// garantido por `pdf.service.gerarPdf` (reusa os bytes se o arquivo já existir)
+// e por `buscarPdf`; aqui apenas delegamos, sem lógica de regeneração própria.
 // -----------------------------------------------------------------------------
 
 export interface VersionamentoContexto {
@@ -49,6 +60,9 @@ interface VersionamentoServiceDeps {
   responsavelRepo: ResponsavelRepository
   snapshotService: SnapshotService
   auditoriaService: AuditoriaService
+  pdfService: PdfService
+  htmlRenderer: HtmlRendererService
+  templateRepo: TemplateRepository
 }
 
 export function criarVersionamentoService(deps: VersionamentoServiceDeps): VersionamentoService {
@@ -60,6 +74,9 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
     responsavelRepo,
     snapshotService,
     auditoriaService,
+    pdfService,
+    htmlRenderer,
+    templateRepo,
   } = deps
 
   return {
@@ -111,11 +128,49 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
         responsaveisPorId,
       })
 
+      // Template ativo do tenant (respeita o isolamento por tenant). A coluna
+      // template_id da versão é NOT NULL; sem template ativo o envio não segue.
+      // Nota (MVP): o layout vem desta leitura e o template_id persistido é
+      // relido dentro da transação do repositório (tenants_template_ativo). Com
+      // um único template ativo por tenant no MVP as duas fontes convergem; a
+      // janela de divergência (troca de template entre as leituras) é aceitável
+      // neste escopo e fica para uma futura unificação.
+      const template = await templateRepo.buscarAtivo(ctx.tenantId)
+      if (!template) {
+        throw new AppError(409, 'Tenant não possui template ativo')
+      }
+
       const versao = await orcamentoVersaoRepo.criarVersaoEnviar({
         tenantId: ctx.tenantId,
         orcamentoId,
+        numero: orcamento.numero,
         snapshot,
         expiraEm: null,
+        // Geração do PDF dentro da transação do repositório: renderiza o HTML
+        // (com o QR Code da URL pública embutido) e delega ao pdfService. Uma
+        // falha aqui propaga e a transação reverte o envio inteiro (RF-016).
+        gerarPdfDaVersao: async ({ versao, numero, tokenPublico }) => {
+          // URL pública relativa; a base URL absoluta é item de tarefa futura
+          // (não há env de base URL no escopo desta tarefa).
+          const urlPublica = `/publico/orcamento/${tokenPublico}`
+          const qrCodeDataUrl = await gerarQrCodeDataUrl(urlPublica)
+
+          // Embute o QR nas imagens do layout sem descartar as existentes; o
+          // renderer resolve `{img:qrcode}`.
+          const imagensExistentes =
+            typeof template.layoutJson['imagens'] === 'object' &&
+            template.layoutJson['imagens'] !== null
+              ? (template.layoutJson['imagens'] as Record<string, unknown>)
+              : {}
+          const layoutComQr: LayoutTemplate = {
+            ...template.layoutJson,
+            imagens: { ...imagensExistentes, qrcode: qrCodeDataUrl },
+          }
+
+          const html = htmlRenderer.renderizar({ layout: layoutComQr, snapshot, numero, versao })
+          const pdf = await pdfService.gerarPdf({ html, numero, versao })
+          return { pdfPath: pdf.caminho, pdfHash: pdf.hash }
+        },
       })
 
       await auditoriaService.registrar({
