@@ -80,12 +80,15 @@ npm run dev            # http://localhost:5173
 O seed cria dois tenants isolados, cada um com um admin e um operador. O seed é
 bloqueado quando `NODE_ENV=production`.
 
-| Papel          | E-mail               | Senha                     |
-| -------------- | -------------------- | ------------------------- |
-| Admin Alpha    | admin@alpha.dev      | `dev_admin_alpha_123`     |
-| Operador Alpha | operador@alpha.dev   | `dev_operador_alpha_123`  |
-| Admin Beta     | admin@beta.dev       | `dev_admin_beta_123`      |
-| Operador Beta  | operador@beta.dev    | `dev_operador_beta_123`   |
+Há apenas dois papéis no sistema — `admin` e `operador` — replicados nos dois
+tenants (Alpha e Beta), totalizando quatro usuários de teste:
+
+| Tenant | Papel      | E-mail             | Senha                    |
+| ------ | ---------- | ------------------ | ------------------------ |
+| Alpha  | `admin`    | admin@alpha.dev    | `dev_admin_alpha_123`    |
+| Alpha  | `operador` | operador@alpha.dev | `dev_operador_alpha_123` |
+| Beta   | `admin`    | admin@beta.dev     | `dev_admin_beta_123`     |
+| Beta   | `operador` | operador@beta.dev  | `dev_operador_beta_123`  |
 
 Também são criados clientes, responsáveis, um template ativo e um orçamento
 rascunho por tenant.
