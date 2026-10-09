@@ -80,7 +80,7 @@ conforme a convenção do workspace.
     testes/lint/build passam
   - _Requisitos: RF-L01, RF-L05, RF-L06_
 
-- [~] 5. Verificação de acessibilidade e navegação por teclado
+- [x] 5. Verificação de acessibilidade e navegação por teclado
   - Rodar `npm run lint` no frontend e resolver quaisquer avisos de
     `eslint-plugin-jsx-a11y`
   - Verificar o fluxo por teclado (Tab/Shift+Tab/Enter): foco visível, ordem
