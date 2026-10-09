@@ -27,3 +27,21 @@ export const apiRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 })
+
+/**
+ * Cria um rate limiter para as rotas públicas (visualização e aceite via token).
+ *
+ * São endpoints sem autenticação, expostos ao cliente final — o limite por IP
+ * contém abuso/força bruta de token sem atrapalhar o uso legítimo (abrir o link,
+ * ver o PDF e aprovar/reprovar). Store em memória; fábrica para que cada router
+ * tenha seu próprio store (sem vazamento de estado entre testes).
+ */
+export function criarPublicoRateLimit(): RateLimitRequestHandler {
+  return rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 min
+    max: 60,
+    message: { erro: 'Muitas requisições. Tente novamente mais tarde.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+}

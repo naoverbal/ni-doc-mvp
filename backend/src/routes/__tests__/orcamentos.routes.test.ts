@@ -8,6 +8,7 @@ import { AppError } from '../../errors/app-error.js'
 import type { AuthService } from '../../services/auth.service.js'
 import type { OrcamentoService } from '../../services/orcamento.service.js'
 import type { VersionamentoService, VersaoEnviada } from '../../services/versionamento.service.js'
+import type { AceiteService, AceiteRegistrado } from '../../services/aceite.service.js'
 import type { OrcamentoComItens, ListaOrcamentos } from '../../repositories/orcamento.repository.js'
 import type { UsuarioPublico } from '../../repositories/usuario.repository.js'
 import type { SessaoAtiva } from '../../repositories/sessao.repository.js'
@@ -134,17 +135,39 @@ function makeVersionamentoService(overrides?: Partial<VersionamentoService>): Ve
   }
 }
 
+const aceiteRegistradoMock: AceiteRegistrado = {
+  id: 'aceite-1',
+  versaoId: 'versao-1',
+  orcamentoId: 'orcamento-1',
+  metodo: 'operador',
+  hashDocumento: 'a'.repeat(64),
+  comprovantePdfPath: '/pdfs/ORC-2024-0001-aceite-v1.pdf',
+  comprovantePdfHash: 'b'.repeat(64),
+  criadoEm: new Date('2024-01-02'),
+}
+
+function makeAceiteService(overrides?: Partial<AceiteService>): AceiteService {
+  return {
+    aprovarViaCliente: vi.fn().mockResolvedValue(aceiteRegistradoMock),
+    reprovarViaCliente: vi.fn().mockResolvedValue(aceiteRegistradoMock),
+    visualizarPorToken: vi.fn().mockResolvedValue(undefined),
+    aceiteManual: vi.fn().mockResolvedValue(aceiteRegistradoMock),
+    ...overrides,
+  }
+}
+
 function makeApp(
   orcamentoService: OrcamentoService,
   authService: AuthService,
   versionamentoService: VersionamentoService = makeVersionamentoService(),
+  aceiteService: AceiteService = makeAceiteService(),
 ) {
   const app = express()
   app.use(express.json())
   app.use(cookieParser())
   app.use(
     '/api/orcamentos',
-    criarOrcamentosRouter(orcamentoService, versionamentoService, authService),
+    criarOrcamentosRouter(orcamentoService, versionamentoService, aceiteService, authService),
   )
   app.use(errorHandler)
   return app
@@ -604,5 +627,117 @@ describe('POST /api/orcamentos/:id/enviar', () => {
 
     expect(res.status).toBe(401)
     expect(versionamentoService.enviar).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /api/orcamentos/:id/aceite-manual', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('retorna 201 e registra o operador e a justificativa (status vira aprovado no service)', async () => {
+    const orcamentoService = makeOrcamentoService()
+    const authService = makeAuthService()
+    const versionamentoService = makeVersionamentoService()
+    const aceiteService = makeAceiteService()
+    const app = makeApp(orcamentoService, authService, versionamentoService, aceiteService)
+
+    const res = await request(app)
+      .post('/api/orcamentos/orcamento-1/aceite-manual')
+      .set('Cookie', 'session=sessao-id-1')
+      .send({ justificativa: 'Cliente aprovou por telefone' })
+
+    expect(res.status).toBe(201)
+    expect(res.body.id).toBe('aceite-1')
+    expect(res.body.metodo).toBe('operador')
+    expect(aceiteService.aceiteManual).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        orcamentoId: 'orcamento-1',
+        usuarioId: 'user-1',
+        justificativa: 'Cliente aprovou por telefone',
+      }),
+    )
+  })
+
+  it('retorna 400 sem justificativa (Zod) e não chama o service', async () => {
+    const orcamentoService = makeOrcamentoService()
+    const authService = makeAuthService()
+    const versionamentoService = makeVersionamentoService()
+    const aceiteService = makeAceiteService()
+    const app = makeApp(orcamentoService, authService, versionamentoService, aceiteService)
+
+    const res = await request(app)
+      .post('/api/orcamentos/orcamento-1/aceite-manual')
+      .set('Cookie', 'session=sessao-id-1')
+      .send({})
+
+    expect(res.status).toBe(400)
+    expect(aceiteService.aceiteManual).not.toHaveBeenCalled()
+  })
+
+  it('retorna 400 com justificativa só de espaços (Zod trim) e não chama o service', async () => {
+    const orcamentoService = makeOrcamentoService()
+    const authService = makeAuthService()
+    const versionamentoService = makeVersionamentoService()
+    const aceiteService = makeAceiteService()
+    const app = makeApp(orcamentoService, authService, versionamentoService, aceiteService)
+
+    const res = await request(app)
+      .post('/api/orcamentos/orcamento-1/aceite-manual')
+      .set('Cookie', 'session=sessao-id-1')
+      .send({ justificativa: '   ' })
+
+    expect(res.status).toBe(400)
+    expect(aceiteService.aceiteManual).not.toHaveBeenCalled()
+  })
+
+  it('propaga AppError 404 do service', async () => {
+    const orcamentoService = makeOrcamentoService()
+    const authService = makeAuthService()
+    const versionamentoService = makeVersionamentoService()
+    const aceiteService = makeAceiteService({
+      aceiteManual: vi.fn().mockRejectedValue(new AppError(404, 'Orçamento não encontrado')),
+    })
+    const app = makeApp(orcamentoService, authService, versionamentoService, aceiteService)
+
+    const res = await request(app)
+      .post('/api/orcamentos/inexistente/aceite-manual')
+      .set('Cookie', 'session=sessao-id-1')
+      .send({ justificativa: 'Cliente aprovou por telefone' })
+
+    expect(res.status).toBe(404)
+  })
+
+  it('propaga AppError 409 do service (orçamento sem versão enviada)', async () => {
+    const orcamentoService = makeOrcamentoService()
+    const authService = makeAuthService()
+    const versionamentoService = makeVersionamentoService()
+    const aceiteService = makeAceiteService({
+      aceiteManual: vi.fn().mockRejectedValue(new AppError(409, 'Orçamento sem versão enviada')),
+    })
+    const app = makeApp(orcamentoService, authService, versionamentoService, aceiteService)
+
+    const res = await request(app)
+      .post('/api/orcamentos/orcamento-1/aceite-manual')
+      .set('Cookie', 'session=sessao-id-1')
+      .send({ justificativa: 'Cliente aprovou por telefone' })
+
+    expect(res.status).toBe(409)
+  })
+
+  it('retorna 401 sem cookie session e não chama o service', async () => {
+    const orcamentoService = makeOrcamentoService()
+    const authService = makeAuthService()
+    const versionamentoService = makeVersionamentoService()
+    const aceiteService = makeAceiteService()
+    const app = makeApp(orcamentoService, authService, versionamentoService, aceiteService)
+
+    const res = await request(app)
+      .post('/api/orcamentos/orcamento-1/aceite-manual')
+      .send({ justificativa: 'Cliente aprovou por telefone' })
+
+    expect(res.status).toBe(401)
+    expect(aceiteService.aceiteManual).not.toHaveBeenCalled()
   })
 })

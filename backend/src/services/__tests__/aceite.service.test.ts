@@ -7,6 +7,7 @@ import type {
 import type {
   OrcamentoVersaoRepository,
   VersaoPorToken,
+  VersaoSnapshotPorToken,
 } from '../../repositories/orcamento-versao.repository.js'
 import type { OrcamentoRepository } from '../../repositories/orcamento.repository.js'
 import type { AuditoriaService } from '../auditoria.service.js'
@@ -33,6 +34,23 @@ function versaoPorToken(overrides: Partial<VersaoPorToken> = {}): VersaoPorToken
     tenantId: 'tenant-1',
     numero: 'ORC-2026-0001',
     versao: 1,
+    pdfHash: HASH,
+    tokenPublico: tokenValido,
+    expiraEm: null,
+    statusOrcamento: 'enviado',
+    ...overrides,
+  }
+}
+
+function versaoSnapshot(overrides: Partial<VersaoSnapshotPorToken> = {}): VersaoSnapshotPorToken {
+  return {
+    versaoId: VERSAO_ID,
+    orcamentoId: 'orc-1',
+    tenantId: 'tenant-1',
+    numero: 'ORC-2026-0001',
+    versao: 1,
+    snapshot: { cliente: { id: 'cliente-1' }, itens: [] },
+    pdfPath: '/pdfs/ORC-2026-0001-v1.pdf',
     pdfHash: HASH,
     tokenPublico: tokenValido,
     expiraEm: null,
@@ -68,12 +86,14 @@ function makeDeps(overrides?: {
   const orcamentoVersaoRepo = {
     criarVersaoEnviar: vi.fn(),
     buscarPorToken: vi.fn().mockResolvedValue(versaoPorToken()),
+    buscarSnapshotPorToken: vi.fn().mockResolvedValue(versaoSnapshot()),
     buscarVersaoAtualPorOrcamento: vi.fn().mockResolvedValue(versaoPorToken()),
     ...overrides?.orcamentoVersaoRepo,
   } as unknown as OrcamentoVersaoRepository
 
   const aceiteRepo = {
     aprovarAceite: vi.fn().mockResolvedValue(aceitePublico()),
+    reprovarAceite: vi.fn().mockResolvedValue(aceitePublico()),
     buscarPorVersao: vi.fn().mockResolvedValue(null),
     ...overrides?.aceiteRepo,
   } as unknown as OrcamentoAceiteRepository
@@ -209,20 +229,20 @@ describe('AceiteService', () => {
       expect(deps.pdfService.gerarPdf).toHaveBeenCalledTimes(1)
     })
 
-    it('lança AppError(410) quando o token não existe e não persiste nem gera PDF', async () => {
+    it('lança AppError(404) quando o token não existe e não persiste nem gera PDF', async () => {
       const deps = makeDeps({
         orcamentoVersaoRepo: { buscarPorToken: vi.fn().mockResolvedValue(null) },
       })
       const service = criarAceiteService(deps)
 
       await expect(service.aprovarViaCliente({ token: tokenValido })).rejects.toMatchObject({
-        statusCode: 410,
+        statusCode: 404,
       })
       expect(deps.aceiteRepo.aprovarAceite).not.toHaveBeenCalled()
       expect(deps.pdfService.gerarPdf).not.toHaveBeenCalled()
     })
 
-    it('lança AppError(410) quando o HMAC do token é inválido', async () => {
+    it('lança AppError(404) quando o HMAC do token é inválido', async () => {
       const deps = makeDeps({
         orcamentoVersaoRepo: {
           buscarPorToken: vi
@@ -235,7 +255,7 @@ describe('AceiteService', () => {
       // Token com HMAC que não valida contra o id da versão.
       await expect(
         service.aprovarViaCliente({ token: 'abc.deadbeef' }),
-      ).rejects.toMatchObject({ statusCode: 410 })
+      ).rejects.toMatchObject({ statusCode: 404 })
       expect(deps.aceiteRepo.aprovarAceite).not.toHaveBeenCalled()
     })
 
@@ -411,6 +431,192 @@ describe('AceiteService', () => {
       const service = criarAceiteService(deps)
 
       await expect(service.aceiteManual(inputManual)).rejects.toMatchObject({ statusCode: 409 })
+      expect(deps.auditoriaService.registrar).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('visualizarPorToken()', () => {
+    it('valida o token e retorna o snapshot, flag de integridade e URL do PDF', async () => {
+      const deps = makeDeps()
+      const service = criarAceiteService(deps)
+
+      const resultado = await service.visualizarPorToken(tokenValido)
+
+      expect(deps.orcamentoVersaoRepo.buscarSnapshotPorToken).toHaveBeenCalledWith(tokenValido)
+      expect(resultado.snapshot).toEqual({ cliente: { id: 'cliente-1' }, itens: [] })
+      expect(resultado.numero).toBe('ORC-2026-0001')
+      expect(resultado.versao).toBe(1)
+      expect(resultado.integro).toBe(true)
+      expect(resultado.pdfUrl).toContain(tokenValido)
+    })
+
+    it('marca integro=false quando a versão não tem pdf_hash', async () => {
+      const deps = makeDeps({
+        orcamentoVersaoRepo: {
+          buscarSnapshotPorToken: vi
+            .fn()
+            .mockResolvedValue(versaoSnapshot({ pdfHash: null, pdfPath: null })),
+        },
+      })
+      const service = criarAceiteService(deps)
+
+      const resultado = await service.visualizarPorToken(tokenValido)
+
+      expect(resultado.integro).toBe(false)
+      expect(resultado.pdfUrl).toBeNull()
+    })
+
+    it('lança AppError(404) quando o token não existe (não revela existência)', async () => {
+      const deps = makeDeps({
+        orcamentoVersaoRepo: { buscarSnapshotPorToken: vi.fn().mockResolvedValue(null) },
+      })
+      const service = criarAceiteService(deps)
+
+      await expect(service.visualizarPorToken(tokenValido)).rejects.toMatchObject({
+        statusCode: 404,
+      })
+    })
+
+    it('lança AppError(404) quando o HMAC do token é inválido', async () => {
+      const deps = makeDeps({
+        orcamentoVersaoRepo: {
+          buscarSnapshotPorToken: vi
+            .fn()
+            .mockResolvedValue(versaoSnapshot({ tokenPublico: 'uuid.hmacadulterado' })),
+        },
+      })
+      const service = criarAceiteService(deps)
+
+      await expect(service.visualizarPorToken('abc.deadbeef')).rejects.toMatchObject({
+        statusCode: 404,
+      })
+    })
+
+    it('lança AppError(410) quando a versão está expirada', async () => {
+      const deps = makeDeps({
+        orcamentoVersaoRepo: {
+          buscarSnapshotPorToken: vi
+            .fn()
+            .mockResolvedValue(versaoSnapshot({ expiraEm: new Date('2026-01-01') })),
+        },
+        relogio: () => new Date('2026-02-01'),
+      })
+      const service = criarAceiteService(deps)
+
+      await expect(service.visualizarPorToken(tokenValido)).rejects.toMatchObject({
+        statusCode: 410,
+      })
+    })
+  })
+
+  describe('reprovarViaCliente()', () => {
+    it('valida o token e registra a reprovação com metodo=cliente, IP, UA e hash', async () => {
+      const deps = makeDeps()
+      const service = criarAceiteService(deps)
+
+      const resultado = await service.reprovarViaCliente({
+        token: tokenValido,
+        ip: '1.2.3.4',
+        userAgent: 'agent',
+        justificativa: 'preço acima do orçado',
+      })
+
+      expect(deps.orcamentoVersaoRepo.buscarPorToken).toHaveBeenCalledWith(tokenValido)
+      expect(deps.aceiteRepo.reprovarAceite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          versaoId: VERSAO_ID,
+          metodo: 'cliente',
+          hashDocumento: HASH,
+          ip: '1.2.3.4',
+          userAgent: 'agent',
+          justificativa: 'preço acima do orçado',
+        }),
+      )
+      expect(resultado.metodo).toBe('cliente')
+      expect(resultado.orcamentoId).toBe('orc-1')
+    })
+
+    it('aceita reprovação sem justificativa (opcional)', async () => {
+      const deps = makeDeps()
+      const service = criarAceiteService(deps)
+
+      await service.reprovarViaCliente({ token: tokenValido })
+
+      expect(deps.aceiteRepo.reprovarAceite).toHaveBeenCalledWith(
+        expect.objectContaining({ justificativa: undefined }),
+      )
+    })
+
+    it('NÃO gera comprovante PDF na reprovação', async () => {
+      const deps = makeDeps()
+      const service = criarAceiteService(deps)
+
+      await service.reprovarViaCliente({ token: tokenValido })
+
+      expect(deps.pdfService.gerarPdf).not.toHaveBeenCalled()
+    })
+
+    it('registra auditoria acao=reprovar, entidade=orcamentos', async () => {
+      const deps = makeDeps()
+      const service = criarAceiteService(deps)
+
+      await service.reprovarViaCliente({ token: tokenValido, ip: '1.2.3.4', userAgent: 'agent' })
+
+      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          acao: 'reprovar',
+          entidade: 'orcamentos',
+          entidadeId: 'orc-1',
+          ip: '1.2.3.4',
+          userAgent: 'agent',
+        }),
+      )
+    })
+
+    it('lança AppError(404) quando o token não existe', async () => {
+      const deps = makeDeps({
+        orcamentoVersaoRepo: { buscarPorToken: vi.fn().mockResolvedValue(null) },
+      })
+      const service = criarAceiteService(deps)
+
+      await expect(service.reprovarViaCliente({ token: tokenValido })).rejects.toMatchObject({
+        statusCode: 404,
+      })
+      expect(deps.aceiteRepo.reprovarAceite).not.toHaveBeenCalled()
+    })
+
+    it('lança AppError(410) quando a versão está expirada', async () => {
+      const deps = makeDeps({
+        orcamentoVersaoRepo: {
+          buscarPorToken: vi
+            .fn()
+            .mockResolvedValue(versaoPorToken({ expiraEm: new Date('2026-01-01') })),
+        },
+        relogio: () => new Date('2026-02-01'),
+      })
+      const service = criarAceiteService(deps)
+
+      await expect(service.reprovarViaCliente({ token: tokenValido })).rejects.toMatchObject({
+        statusCode: 410,
+      })
+      expect(deps.aceiteRepo.reprovarAceite).not.toHaveBeenCalled()
+    })
+
+    it('propaga AppError(409) do repositório (já decidido) e não registra auditoria', async () => {
+      const { AppError } = await import('../../errors/app-error.js')
+      const deps = makeDeps({
+        aceiteRepo: {
+          reprovarAceite: vi.fn().mockRejectedValue(new AppError(409, 'Orçamento já decidido')),
+          buscarPorVersao: vi.fn(),
+        },
+      })
+      const service = criarAceiteService(deps)
+
+      await expect(service.reprovarViaCliente({ token: tokenValido })).rejects.toMatchObject({
+        statusCode: 409,
+      })
       expect(deps.auditoriaService.registrar).not.toHaveBeenCalled()
     })
   })

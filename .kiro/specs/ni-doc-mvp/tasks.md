@@ -274,70 +274,85 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: evidências registradas, comprovante gerado, auditoria
   - _Requirements: RF-019, RF-020, RF-021_
 
-- [~] 42. Rotas públicas
+- [x] 42. Rotas públicas
   - Criar `backend/src/routes/publico.routes.ts` e testes
   - Testes: GET snapshot; 404 token inválido; 410 expirado; POST aprovar registra aceite; 409 já aprovado; reprovar registra
   - DoD: rotas sem auth, com rate limiting
   - _Requirements: RF-019_
 
-- [~] 43. Rota de aceite manual
+- [x] 43. Rota de aceite manual
   - Adicionar `POST /:id/aceite-manual` em `orcamentos.routes.ts` e testes
   - Testes: exige justificativa; registra operador; muda status para `aprovado`
   - _Requirements: RF-020_
 
 ### Fase 10 — Frontend
 
-- [~] 44. Setup do React + Vite
+- [x] 44. Setup do React + Vite
   - Criar `frontend/vite.config.ts`, `index.html`, `src/main.tsx`, `src/App.tsx`
   - Configurar React Router, TanStack Query, Zustand, proxy para backend, estrutura de pastas
   - DoD: `npm run dev` sobe a SPA e chamadas ao backend funcionam
   - _Requirements: setup_
 
-- [~] 45. Tela de login
+- [x] 45. Tela de login
   - Criar `frontend/src/pages/Login.tsx`, `hooks/useAuth.ts`, `stores/auth.store.ts`
   - Form com React Hook Form + Zod; `POST /api/auth/login`; estado no Zustand; redirect; tratar erro
-  - DoD: login funciona, erros exibidos, rota privada redireciona
+  - Instalar e configurar `eslint-plugin-jsx-a11y` no `frontend/eslint.config.mjs` (regras recomendadas); resolver os avisos antes de concluir
+  - Acessibilidade (WCAG AA): cada campo com `<label htmlFor>`/`id` (placeholder não é rótulo); erro de validação vinculado ao campo via `aria-describedby` + `aria-invalid`; mensagem de erro de login anunciada com `aria-live="assertive"`; botão de submit descreve a ação ("Entrar"); operável só por teclado com foco visível
+  - DoD: login funciona, erros exibidos e anunciados, rota privada redireciona; `eslint-plugin-jsx-a11y` sem avisos; fluxo verificado por teclado (Tab/Enter)
   - _Requirements: RF-001_
 
-- [~] 46. Lista de orçamentos
+- [ ] 46. Lista de orçamentos
   - Criar `frontend/src/pages/OrcamentoLista.tsx`, `hooks/useOrcamentos.ts`
   - Listar com TanStack Query; filtros por status; botão novo; ações editar/visualizar/excluir
-  - DoD: lista carrega e navegação para o editor funciona
+  - Acessibilidade (WCAG AA): usar `<table>` semântica com `<th scope>` (ou lista semântica); status do orçamento com rótulo textual, nunca só por cor (contraste ≥ 4.5:1); ações ícone-only com `aria-label`; estado de carregamento/vazio anunciado via `aria-live="polite"`; navegação e ações operáveis por teclado com foco visível
+  - DoD: lista carrega e navegação para o editor funciona; status perceptível sem depender de cor; `eslint-plugin-jsx-a11y` sem avisos
   - _Requirements: RF-005_
 
-- [~] 47. Editor de orçamento
+- [ ] 47. Editor de orçamento
   - Criar `frontend/src/pages/OrcamentoEditor.tsx`, `components/ItemOrcamentoRow.tsx`, `components/Autocomplete.tsx`
   - Form com cliente (autocomplete), título, descrição; itens editáveis; cálculo em tempo real; autocomplete de responsável; salvar rascunho
-  - DoD: criar/editar/salvar funcionam, cálculos em tempo real, validação
+  - Acessibilidade (WCAG AA): todo campo com `<label>` associado; agrupar itens/seções em `<fieldset>` com `<legend>`; erros do Zod via `aria-describedby` + `aria-invalid`; `Autocomplete` com padrão combobox (`role`, `aria-expanded`, `aria-activedescendant`), navegável por teclado (setas/Enter/Esc) e seleção anunciada; total recalculado anunciado via `aria-live="polite"`
+  - DoD: criar/editar/salvar funcionam, cálculos em tempo real, validação; autocomplete operável por teclado; `eslint-plugin-jsx-a11y` sem avisos
   - _Requirements: RF-005, RF-006, RF-007_
 
-- [~] 48. Envio e versionamento (frontend)
+- [ ] 48. Envio e versionamento (frontend)
   - Adicionar botão "Enviar" em `OrcamentoEditor.tsx`
   - Modal de confirmação; `POST /api/orcamentos/:id/enviar`; exibir link público; listar versões
-  - DoD: envio funciona, versões listadas
+  - Acessibilidade (WCAG AA): modal com `role="dialog"` + `aria-modal`, foco movido para dentro ao abrir, foco preso no diálogo (focus trap), `Esc` fecha e foco retorna ao gatilho; link público com texto autoexplicativo (não "clique aqui") e botão de copiar com `aria-label`; confirmação de envio anunciada via `aria-live`
+  - DoD: envio funciona, versões listadas; modal acessível por teclado com gestão de foco; `eslint-plugin-jsx-a11y` sem avisos
   - _Requirements: RF-008_
 
-- [~] 49. Editor de template
+- [ ] 49. Editor de template
   - Criar `frontend/src/pages/TemplateEditor.tsx`, `components/CanvasA4.tsx`
   - Canvas A4 com drag & drop; upload de PDF de fundo, imagens e fontes; placeholders; área de itens; salvar
-  - DoD: editor funcional, template salvo como JSON, nova versão criada
+  - Acessibilidade (WCAG AA): oferecer alternativa por teclado ao drag & drop (mover/posicionar elementos via teclado), não só mouse; inputs de upload com `<label>` e nome acessível; cada elemento posicionável com nome acessível; não transmitir informação só por cor; foco visível em todos os controles
+  - DoD: editor funcional, template salvo como JSON, nova versão criada; posicionamento operável por teclado; `eslint-plugin-jsx-a11y` sem avisos
   - _Requirements: RF-014_
 
-- [~] 50. Página pública de aprovação
+- [ ] 50. Página pública de aprovação
   - Criar `frontend/src/pages/PublicoOrcamento.tsx`
   - Ler token da URL; `GET /api/publico/orcamento/:token`; PDF embutido; checkbox + Aprovar/Reprovar; confirmação
-  - DoD: cliente acessa/aprova/vê comprovante; token inválido mostra erro
+  - Acessibilidade (WCAG AA): página crítica para clientes finais em qualquer dispositivo — `<main>` com estrutura semântica e `lang="pt-BR"`; PDF embutido com título/alternativa textual e link para abrir/baixar o documento; checkbox com `<label>` associado; botões "Aprovar"/"Reprovar" com nome acessível e contraste ≥ 4.5:1 (não só cor); resultado (sucesso/erro/comprovante) anunciado via `aria-live`; fluxo completo operável por teclado com foco visível
+  - DoD: cliente acessa/aprova/vê comprovante; token inválido mostra erro; fluxo de aprovação verificado por teclado; `eslint-plugin-jsx-a11y` sem avisos
   - _Requirements: RF-019_
+
+- [ ] 57. Acessibilidade do HTML renderizado (PDF)
+  - Revisar `backend/src/services/html-renderer.service.ts` e o CSS do template (tarefa 36, já concluída) para a saída HTML que origina o PDF
+  - Garantir estrutura de títulos coerente (h1→h2→…), `lang="pt-BR"` no documento e contraste adequado; não distinguir seções/valores apenas por cor
+  - QR Code e link público com alternativa textual equivalente (ex.: a URL de aceite impressa como texto junto ao QR), conforme a diretriz de documentos renderizados
+  - Testes: o HTML gerado tem hierarquia de títulos válida, inclui a URL pública como texto além do QR e define o idioma; não há dependência exclusiva de cor para informação
+  - DoD: HTML do PDF segue WCAG AA no que é verificável em código (estrutura, idioma, alternativa textual do QR/link); contraste do template documentado para revisão
+  - _Requirements: RF-015, RF-016, RF-018_
 
 ### Fase 11 — Notificações (MVP Simplificado)
 
-- [~] 51. Lib de e-mail
+- [ ] 51. Lib de e-mail
   - Criar `backend/src/lib/email.ts` e testes
   - Testes: usa SMTP configurado; serializa destinatário; falhas são logadas sem quebrar o fluxo
   - DoD: envio funciona com SMTP real (ou mock)
   - _Requirements: RF-022_
 
-- [~] 52. Templates de e-mail
+- [ ] 52. Templates de e-mail
   - Criar `backend/src/lib/email-templates.ts`
   - Templates "orçamento enviado" (com link), "aprovado" (notifica operador), "reprovado"
   - DoD: e-mails enviados nos eventos corretos, log na auditoria
@@ -345,19 +360,19 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
 
 ### Fase 12 — Deploy e Produção
 
-- [~] 53. Configurar Nginx na VPS
+- [ ] 53. Configurar Nginx na VPS
   - Criar `nginx/ni-doc.conf`
   - Proxy reverso para backend; servir estáticos; TLS com Let's Encrypt; headers de segurança (HSTS, CSP)
   - DoD: HTTPS funciona, backend acessível via domínio
   - _Requirements: RNF-006_
 
-- [~] 54. Pipeline de deploy
+- [ ] 54. Pipeline de deploy
   - Criar `.github/workflows/deploy.yml`
   - Rodar CI; SSH na VPS; `git pull && docker compose -f docker-compose.prod.yml up -d --build`; migrations; health check; rollback automático se falhar
   - DoD: push na `main` faz deploy automático com health check
   - _Requirements: deploy_
 
-- [~] 55. Job de limpeza de PDFs
+- [ ] 55. Job de limpeza de PDFs
   - Criar `backend/src/jobs/limpar-pdfs.ts`
   - Cron diário; remover PDFs com mais de 1 ano (após retenção legal); registrar remoção na auditoria
   - DoD: job roda, PDFs antigos removidos, auditoria registrada
@@ -407,6 +422,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
 - Cobertura: `lib/` exige 100%; serviços e repositórios 80%+.
 - Multi-tenancy: a partir da Fase 3, todo acesso a dados respeita isolamento por `tenant_id`. O isolamento no banco via RLS (`SET LOCAL app.current_tenant`) só passa a ser efetivamente ativo após a Fase 13 (tarefa 56); até lá o isolamento é garantido apenas pelo filtro aplicacional `WHERE tenant_id` nos repositórios.
 - Imutabilidade: snapshots e PDFs emitidos são imutáveis; alterações posteriores em entidades de referência não afetam versões já emitidas.
+- Acessibilidade: as tarefas de UI (45–50) e do HTML renderizado (tarefa 57) seguem WCAG 2.1 AA no que é verificável em código — HTML semântico, operação por teclado, rótulos/`aria-*` e contraste. Rodar `eslint-plugin-jsx-a11y` e verificar o fluxo por teclado antes de concluir cada tarefa; a conformidade total ainda exige teste manual com tecnologia assistiva.
 - Dependências cruzadas: a tarefa 33 (rota de envio) retorna versão sem PDF; `pdf_path` só é preenchido pela tarefa 40 (integração envio → PDF), que depende das tarefas 36–39. A tarefa 41 (aceite) reutiliza a geração de PDF da Fase 8. As telas de frontend dependem das rotas de backend correspondentes.
 
 ## Task Dependency Graph
@@ -425,7 +441,7 @@ graph TD
     F7["Fase 7 — Templates (34–35)"]
     F8["Fase 8 — PDF (36–40)"]
     F9["Fase 9 — Aceite (41–43)"]
-    F10["Fase 10 — Frontend (44–50)"]
+    F10["Fase 10 — Frontend (44–50, 57)"]
     F11["Fase 11 — Notificações (51–52)"]
     F12["Fase 12 — Deploy (53–55)"]
     F13["Fase 13 — Ativação do RLS (56)"]
@@ -448,7 +464,7 @@ A Fase 13 (ativação do RLS) é uma correção de segurança transversal: depen
     { "wave": 7, "name": "Templates", "tasks": ["34", "35"], "dependsOn": [6] },
     { "wave": 8, "name": "Geração de PDF", "tasks": ["36", "37", "38", "39", "40"], "dependsOn": [7] },
     { "wave": 9, "name": "Aceite e Aprovação", "tasks": ["41", "42", "43"], "dependsOn": [8] },
-    { "wave": 10, "name": "Frontend", "tasks": ["44", "45", "46", "47", "48", "49", "50"], "dependsOn": [9] },
+    { "wave": 10, "name": "Frontend", "tasks": ["44", "45", "46", "47", "48", "49", "50", "57"], "dependsOn": [9] },
     { "wave": 11, "name": "Notificações", "tasks": ["51", "52"], "dependsOn": [10] },
     { "wave": 12, "name": "Deploy e Produção", "tasks": ["53", "54", "55"], "dependsOn": [11] },
     { "wave": 13, "name": "Ativação do RLS por Request", "tasks": ["56"], "dependsOn": [3] }
