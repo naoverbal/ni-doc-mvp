@@ -56,3 +56,92 @@ export interface ListarOrcamentosFiltro {
   pagina?: number
   tamanhoPagina?: number
 }
+
+// -----------------------------------------------------------------------------
+// Entidades de referência para o editor (RF-006, RF-010, RF-012). Espelham os
+// *Publico do backend; apenas os campos usados pela UI do editor são tipados.
+// -----------------------------------------------------------------------------
+
+export type TipoPessoa = 'PF' | 'PJ'
+
+// Resultado do autocomplete de clientes (GET /clientes?q=).
+export interface ClienteResumo {
+  id: string
+  nome: string
+  tipoPessoa: TipoPessoa
+  documento: string
+}
+
+// Resultado do autocomplete de responsáveis técnicos (GET /responsaveis?q=).
+export interface ResponsavelResumo {
+  id: string
+  nome: string
+  registroProfissional: string | null
+}
+
+// -----------------------------------------------------------------------------
+// Orçamento com itens (GET /orcamentos/:id). Espelha OrcamentoComItens do
+// backend; datas chegam como string ISO no JSON.
+// -----------------------------------------------------------------------------
+
+export type DescontoTipo = 'percentual' | 'fixo'
+
+export interface OrcamentoItem {
+  id: string
+  ordem: number
+  nome: string
+  descricao: string | null
+  quantidade: number
+  unidade: string
+  valorUnitario: number
+  descontoTipo: DescontoTipo | null
+  descontoValor: number | null
+  total: number
+  responsavelId: string | null
+}
+
+export interface OrcamentoComItens {
+  id: string
+  tenantId: string
+  numero: string
+  clienteId: string
+  empresaClienteId: string | null
+  usuarioId: string
+  titulo: string
+  descricao: string | null
+  status: OrcamentoStatus
+  dataEmissao: string
+  validadeDias: number
+  descontoGlobalTipo: DescontoTipo | null
+  descontoGlobalValor: number | null
+  subtotal: number
+  total: number
+  versaoAtual: number
+  observacoes: string | null
+  condicoesPagamento: string | null
+  criadoEm: string
+  atualizadoEm: string
+  itens: OrcamentoItem[]
+}
+
+// Payload de item para criar/atualizar (POST/PUT /orcamentos).
+export interface OrcamentoItemPayload {
+  nome: string
+  descricao?: string
+  quantidade: number
+  unidade?: string
+  valorUnitario: number
+  descontoTipo?: DescontoTipo
+  descontoValor?: number
+  responsavelId?: string
+}
+
+// Payload de criação/atualização de orçamento. O backend exige >= 1 item.
+export interface SalvarOrcamentoPayload {
+  clienteId: string
+  titulo: string
+  descricao?: string
+  descontoGlobalTipo?: DescontoTipo
+  descontoGlobalValor?: number
+  itens: OrcamentoItemPayload[]
+}

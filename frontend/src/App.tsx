@@ -5,6 +5,7 @@ import { PublicRoute } from '@/routes/PublicRoute'
 import { Login } from '@/pages/Login'
 import { Dashboard } from '@/pages/Dashboard'
 import { OrcamentoLista } from '@/pages/OrcamentoLista'
+import { OrcamentoEditor } from '@/pages/OrcamentoEditor'
 import { PublicoOrcamento } from '@/pages/PublicoOrcamento'
 import { NaoEncontrado } from '@/pages/NaoEncontrado'
 
@@ -35,6 +36,22 @@ export function App(): ReactElement {
           element={
             <PrivateRoute>
               <OrcamentoLista />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/orcamentos/novo"
+          element={
+            <PrivateRoute>
+              <OrcamentoEditor />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/orcamentos/:id"
+          element={
+            <PrivateRoute>
+              <OrcamentoEditor />
             </PrivateRoute>
           }
         />
