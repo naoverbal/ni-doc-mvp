@@ -257,7 +257,7 @@ export function TemplateEditor(): ReactElement {
 
   if (isLoading) {
     return (
-      <main>
+      <main id="conteudo">
         <h1>Editor de template</h1>
         <p role="status" aria-live="polite">
           Carregando template…
@@ -267,7 +267,7 @@ export function TemplateEditor(): ReactElement {
   }
 
   return (
-    <main>
+    <main id="conteudo">
       <h1>Editor de template</h1>
       <p>
         Monte o template arrastando os elementos no canvas ou, sem mouse, selecione um elemento e

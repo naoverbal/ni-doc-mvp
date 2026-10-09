@@ -52,7 +52,7 @@ export function OrcamentoLista(): ReactElement {
   }
 
   return (
-    <main>
+    <main id="conteudo">
       <h1>Orçamentos</h1>
 
       <div>
@@ -90,52 +90,56 @@ export function OrcamentoLista(): ReactElement {
       {isError && <p role="alert">Não foi possível carregar os orçamentos. Tente novamente.</p>}
 
       {!isLoading && !isError && itens.length > 0 && (
-        <table>
-          <caption>Lista de orçamentos</caption>
-          <thead>
-            <tr>
-              <th scope="col">Número</th>
-              <th scope="col">Título</th>
-              <th scope="col">Status</th>
-              <th scope="col">Total</th>
-              <th scope="col">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {itens.map((orcamento) => (
-              <tr key={orcamento.id}>
-                <th scope="row">{orcamento.numero}</th>
-                <td>{orcamento.titulo}</td>
-                <td>
-                  <span data-status={orcamento.status}>{ROTULO_STATUS[orcamento.status]}</span>
-                </td>
-                <td>{formatarMoeda(orcamento.total)}</td>
-                <td>
-                  <Link
-                    to={`/orcamentos/${orcamento.id}`}
-                    aria-label={`Editar ${orcamento.numero}`}
-                  >
-                    <span aria-hidden="true">✎</span>
-                  </Link>{' '}
-                  <Link
-                    to={`/orcamentos/${orcamento.id}?modo=visualizar`}
-                    aria-label={`Visualizar ${orcamento.numero}`}
-                  >
-                    <span aria-hidden="true">👁</span>
-                  </Link>{' '}
-                  <button
-                    type="button"
-                    aria-label={`Excluir ${orcamento.numero}`}
-                    onClick={() => aoExcluir(orcamento.id, orcamento.numero)}
-                    disabled={excluir.isPending}
-                  >
-                    <span aria-hidden="true">🗑</span>
-                  </button>
-                </td>
+        // Contêiner com rolagem própria (overflow-x: auto) para a tabela não
+        // forçar rolagem horizontal na página a 320 px (WCAG 1.4.10 Reflow).
+        <div className="tabela-rolavel">
+          <table>
+            <caption>Lista de orçamentos</caption>
+            <thead>
+              <tr>
+                <th scope="col">Número</th>
+                <th scope="col">Título</th>
+                <th scope="col">Status</th>
+                <th scope="col">Total</th>
+                <th scope="col">Ações</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {itens.map((orcamento) => (
+                <tr key={orcamento.id}>
+                  <th scope="row">{orcamento.numero}</th>
+                  <td>{orcamento.titulo}</td>
+                  <td>
+                    <span data-status={orcamento.status}>{ROTULO_STATUS[orcamento.status]}</span>
+                  </td>
+                  <td>{formatarMoeda(orcamento.total)}</td>
+                  <td>
+                    <Link
+                      to={`/orcamentos/${orcamento.id}`}
+                      aria-label={`Editar ${orcamento.numero}`}
+                    >
+                      <span aria-hidden="true">✎</span>
+                    </Link>{' '}
+                    <Link
+                      to={`/orcamentos/${orcamento.id}?modo=visualizar`}
+                      aria-label={`Visualizar ${orcamento.numero}`}
+                    >
+                      <span aria-hidden="true">👁</span>
+                    </Link>{' '}
+                    <button
+                      type="button"
+                      aria-label={`Excluir ${orcamento.numero}`}
+                      onClick={() => aoExcluir(orcamento.id, orcamento.numero)}
+                      disabled={excluir.isPending}
+                    >
+                      <span aria-hidden="true">🗑</span>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </main>
   )

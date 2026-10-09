@@ -10,7 +10,7 @@ conforme a convenção do workspace.
 
 ## Tasks
 
-- [ ] 1. Base de estilo global (mobile-first)
+- [x] 1. Base de estilo global (mobile-first)
   - Criar `frontend/src/styles/global.css` com reset leve, tipografia base,
     cores com contraste AA documentado no topo do arquivo, estilos de
     `.app-header`/`.app-nav`, estado de link atual (cor + reforço não-cromático)
@@ -27,34 +27,41 @@ conforme a convenção do workspace.
     e breakpoints anotados para revisão
   - _Requisitos: RF-L05, RF-L06_
 
-- [ ] 2. Componente de layout da área logada (`LayoutApp`)
-  - Criar `frontend/src/components/LayoutApp.tsx` com `<header>` (marca +
-    `<NavPrincipal>` + nome do usuário + botão "Sair") e `<Outlet />` (sem
-    `<main>` próprio — o `<main>` fica nas páginas)
+- [x] 2. Componente de layout da área logada (`LayoutApp`)
+  - Criar `frontend/src/components/LayoutApp.tsx` com, nesta ordem: skip link
+    "Pular para o conteúdo" (`href="#conteudo"`) como primeiro elemento focável,
+    `<header>` (marca + `<NavPrincipal>` + nome do usuário + botão "Sair") e
+    `<Outlet />` (sem `<main>` próprio — o `<main>` fica nas páginas)
+  - Tratar `usuario` nulo sem quebrar (identidade renderizada condicionalmente)
   - Criar `frontend/src/components/NavPrincipal.tsx` com `<nav aria-label="Principal">`,
     `NavLink`s para Dashboard e Orçamentos, e Template apenas quando
     `usuario?.papel === 'admin'`; aplicar `aria-current="page"` no link ativo
-  - Logout: botão `type="button"` que chama `useLogout().mutateAsync()`, navega
-    para `/login` (replace), com `disabled`/rótulo "Saindo…" enquanto pendente
+  - Logout resiliente: botão `type="button"` que chama
+    `useLogout().mutateAsync()` e, em `finally`, limpa o estado local e navega
+    para `/login` (replace) mesmo em erro de rede; `disabled`/rótulo "Saindo…"
+    enquanto pendente
   - Testes (`frontend/src/components/__tests__/LayoutApp.test.tsx`): renderiza
-    header/nav/links; mostra nome do usuário; exibe Template para admin e oculta
-    para operador; marca link ativo com `aria-current`; "Sair" chama logout e
-    navega para `/login` (mock de `useLogout`)
+    skip link como primeiro focável; header/nav/links; mostra nome do usuário e
+    não quebra com usuário nulo; exibe Template para admin e oculta para
+    operador; marca link ativo com `aria-current`; "Sair" em sucesso E em erro
+    limpa estado e navega para `/login` (mock de `useLogout`)
   - DoD: testes passam; `eslint-plugin-jsx-a11y` sem avisos; exatamente um
     `<header>`/`<nav aria-label="Principal">` no layout
   - _Requisitos: RF-L01, RF-L02, RF-L04_
 
-- [ ] 3. Dashboard navegável
-  - Reescrever `frontend/src/pages/Dashboard.tsx`: `<main>` com `<h1>` descritivo,
-    saudação com o nome do usuário e `<nav aria-label="Atalhos">` com `<Link>`
-    para Orçamentos e (admin) Template
+- [x] 3. Dashboard navegável
+  - Reescrever `frontend/src/pages/Dashboard.tsx`: `<main id="conteudo">` com
+    `<h1>` descritivo, saudação com o nome do usuário e
+    `<nav aria-label="Atalhos">` com `<Link>` para Orçamentos e (admin) Template
   - Remover o placeholder `<h1>Dashboard</h1>`
+  - Garantir `id="conteudo"` no `<main>` das demais páginas da área logada
+    (`OrcamentoLista`, `OrcamentoEditor`, `TemplateEditor`), alvo do skip link
   - Testes (`frontend/src/pages/__tests__/Dashboard.test.tsx`): renderiza `<h1>`
     e atalhos; Template condicionado ao papel; atalhos são links navegáveis
   - DoD: testes passam; `eslint-plugin-jsx-a11y` sem avisos
   - _Requisitos: RF-L03, RF-L04_
 
-- [ ] 4. Reorganizar rotas com layout aninhado
+- [x] 4. Reorganizar rotas com layout aninhado
   - Alterar `frontend/src/App.tsx`: criar um grupo de rota
     `<Route element={<PrivateRoute><LayoutApp /></PrivateRoute>}>` com as rotas
     privadas (`/dashboard`, `/orcamentos`, `/orcamentos/novo`, `/orcamentos/:id`,
@@ -63,7 +70,8 @@ conforme a convenção do workspace.
   - Garantir que `PrivateRoute` permanece inalterado internamente e continua
     protegendo o grupo
   - Testes de integração (opcional, `frontend/src/__tests__/`): em `/dashboard`
-    o header/nav do layout aparece; em `/login` não aparece
+    o header/nav do layout aparece; em `/login` e numa rota inexistente
+    (`NaoEncontrado`) não aparece
   - Adaptar a tabela de `frontend/src/pages/OrcamentoLista.tsx` para telas
     estreitas: envolver a `<table>` em um contêiner com `overflow-x: auto`
     (rolagem só na tabela), sem introduzir rolagem horizontal na página a 320 px
@@ -72,7 +80,7 @@ conforme a convenção do workspace.
     testes/lint/build passam
   - _Requisitos: RF-L01, RF-L05, RF-L06_
 
-- [ ] 5. Verificação de acessibilidade e navegação por teclado
+- [x] 5. Verificação de acessibilidade e navegação por teclado
   - Rodar `npm run lint` no frontend e resolver quaisquer avisos de
     `eslint-plugin-jsx-a11y`
   - Verificar o fluxo por teclado (Tab/Shift+Tab/Enter): foco visível, ordem

@@ -48,7 +48,15 @@ sempre visíveis, para me mover entre as telas sem recorrer à URL.
 4. O link correspondente à rota atual DEVE ser marcado como atual
    (`aria-current="page"`).
 5. O layout NÃO DEVE aparecer nas rotas públicas (`/login`,
-   `/publico/orcamento/:token`).
+   `/publico/orcamento/:token`) nem na rota curinga de página não encontrada
+   (`*` → `NaoEncontrado`), que são renderizadas sem a casca da área logada.
+6. O layout DEVE prover um link "Pular para o conteúdo" (skip link) como
+   primeiro elemento focável, apontando para o `<main>` da página (WCAG 2.4.1
+   Bypass Blocks, nível A). O link pode ficar visualmente oculto até receber
+   foco, mas DEVE ser alcançável por teclado e visível quando focado.
+7. Como o `<main>` é responsabilidade de cada página, o skip link DEVE apontar
+   para um alvo estável (ex.: `href="#conteudo"` e `<main id="conteudo">`); as
+   páginas da área logada DEVEM expor esse `id` no seu `<main>`.
 
 ### RF-L02 — Identidade da sessão e logout
 
@@ -58,11 +66,18 @@ sair, para encerrar a sessão com segurança.
 **Critérios de aceitação:**
 
 1. O cabeçalho DEVE exibir o nome do usuário autenticado (do store de auth).
-2. O cabeçalho DEVE conter um botão "Sair" com nome acessível.
-3. QUANDO o usuário aciona "Sair", ENTÃO o sistema DEVE chamar o logout
+2. SE o `usuario` do store estiver momentaneamente nulo, ENTÃO o cabeçalho NÃO
+   DEVE quebrar: a identidade é renderizada condicionalmente (sem nome em vez de
+   erro). O layout só é alcançado sob `PrivateRoute`, então esse estado é
+   transitório.
+3. O cabeçalho DEVE conter um botão "Sair" com nome acessível.
+4. QUANDO o usuário aciona "Sair", ENTÃO o sistema DEVE chamar o logout
    (`useLogout`, `POST /auth/logout`), limpar o estado de sessão e redirecionar
    para `/login`.
-4. O botão de logout DEVE indicar estado de carregamento enquanto a requisição
+5. SE o `POST /auth/logout` falhar, ENTÃO o sistema DEVE, ainda assim, limpar o
+   estado de sessão local e redirecionar para `/login` — uma falha de rede não
+   pode prender o usuário numa sessão aparentemente ativa.
+6. O botão de logout DEVE indicar estado de carregamento enquanto a requisição
    está pendente e não permitir cliques duplicados.
 
 ### RF-L03 — Dashboard navegável
@@ -125,10 +140,12 @@ no tablet e no desktop, para trabalhar a partir de qualquer dispositivo.
 
 **Critérios de aceitação:**
 
-1. O layout DEVE ser utilizável e legível em três faixas de largura:
-   - mobile: a partir de 320 px;
-   - tablet: faixa intermediária (aproximadamente 600–1024 px);
-   - desktop: 1024 px ou mais.
+1. O layout DEVE ser utilizável e legível em três faixas de largura, com os
+   breakpoints oficiais abaixo (usados tanto no CSS quanto nos testes, sem
+   divergência):
+   - mobile: 320 px a 599 px (estilos base);
+   - tablet: 600 px a 1023 px (media query `min-width: 600px`);
+   - desktop: 1024 px ou mais (media query `min-width: 1024px`).
 2. A abordagem DEVE ser mobile-first (estilos base para a menor largura;
    `min-width` media queries para faixas maiores) e usar unidades fluidas.
 3. Em qualquer faixa, o conteúdo NÃO DEVE exigir rolagem horizontal a 320 CSS px

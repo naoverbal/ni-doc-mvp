@@ -1,0 +1,65 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1. Base de estilo global (mobile-first)": [
+      {
+        "executionId": "9dc5d08a-b551-4ea4-b658-9105add35cb6",
+        "chatSessionId": "sess_c00df729-02cf-4495-a21a-6b53fe53e1db",
+        "timestamp": 1791576266110
+      },
+      {
+        "executionId": "9dc5d08a-b551-4ea4-b658-9105add35cb6",
+        "chatSessionId": "sess_c00df729-02cf-4495-a21a-6b53fe53e1db",
+        "timestamp": 1791576275727
+      }
+    ],
+    "2. Componente de layout da área logada (`LayoutApp`)": [
+      {
+        "executionId": "9dc5d08a-b551-4ea4-b658-9105add35cb6",
+        "chatSessionId": "sess_c00df729-02cf-4495-a21a-6b53fe53e1db",
+        "timestamp": 1791576266159
+      },
+      {
+        "executionId": "9dc5d08a-b551-4ea4-b658-9105add35cb6",
+        "chatSessionId": "sess_c00df729-02cf-4495-a21a-6b53fe53e1db",
+        "timestamp": 1791576461534
+      }
+    ],
+    "3. Dashboard navegável": [
+      {
+        "executionId": "9dc5d08a-b551-4ea4-b658-9105add35cb6",
+        "chatSessionId": "sess_c00df729-02cf-4495-a21a-6b53fe53e1db",
+        "timestamp": 1791576266191
+      },
+      {
+        "executionId": "9dc5d08a-b551-4ea4-b658-9105add35cb6",
+        "chatSessionId": "sess_c00df729-02cf-4495-a21a-6b53fe53e1db",
+        "timestamp": 1791576705953
+      }
+    ],
+    "4. Reorganizar rotas com layout aninhado": [
+      {
+        "executionId": "9dc5d08a-b551-4ea4-b658-9105add35cb6",
+        "chatSessionId": "sess_c00df729-02cf-4495-a21a-6b53fe53e1db",
+        "timestamp": 1791576266225
+      },
+      {
+        "executionId": "9dc5d08a-b551-4ea4-b658-9105add35cb6",
+        "chatSessionId": "sess_c00df729-02cf-4495-a21a-6b53fe53e1db",
+        "timestamp": 1791576867907
+      }
+    ],
+    "5. Verificação de acessibilidade e navegação por teclado": [
+      {
+        "executionId": "9dc5d08a-b551-4ea4-b658-9105add35cb6",
+        "chatSessionId": "sess_c00df729-02cf-4495-a21a-6b53fe53e1db",
+        "timestamp": 1791576266271
+      },
+      {
+        "executionId": "9dc5d08a-b551-4ea4-b658-9105add35cb6",
+        "chatSessionId": "sess_c00df729-02cf-4495-a21a-6b53fe53e1db",
+        "timestamp": 1791577066574
+      }
+    ]
+  }
+}
