@@ -336,7 +336,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: cliente acessa/aprova/vê comprovante; token inválido mostra erro; fluxo de aprovação verificado por teclado; `eslint-plugin-jsx-a11y` sem avisos
   - _Requirements: RF-019_
 
-- [ ] 57. Acessibilidade do HTML renderizado (PDF)
+- [x] 57. Acessibilidade do HTML renderizado (PDF)
   - Revisar `backend/src/services/html-renderer.service.ts` e o CSS do template (tarefa 36, já concluída) para a saída HTML que origina o PDF
   - Garantir estrutura de títulos coerente (h1→h2→…), `lang="pt-BR"` no documento e contraste adequado; não distinguir seções/valores apenas por cor
   - QR Code e link público com alternativa textual equivalente (ex.: a URL de aceite impressa como texto junto ao QR), conforme a diretriz de documentos renderizados

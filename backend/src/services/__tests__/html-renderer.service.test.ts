@@ -323,4 +323,139 @@ describe('html-renderer.service', () => {
       expect((erro as AppError).statusCode).toBe(422)
     }
   })
+
+  // ---------------------------------------------------------------------------
+  // Acessibilidade (WCAG 2.1 AA) do HTML que origina o PDF (Tarefa 57,
+  // RF-015/RF-016/RF-018). Verificável em código: estrutura de títulos,
+  // idioma, alternativa textual para QR/link e ausência de dependência
+  // exclusiva de cor para informação.
+  // ---------------------------------------------------------------------------
+  describe('acessibilidade (WCAG AA)', () => {
+    // Conta ocorrências de uma tag de abertura (ignorando atributos).
+    function contarTags(html: string, tag: string): number {
+      const regex = new RegExp(`<${tag}(?:\\s[^>]*)?>`, 'g')
+      return (html.match(regex) ?? []).length
+    }
+
+    // Extrai a sequência de níveis de título (h1..h6) na ordem em que aparecem.
+    function sequenciaDeTitulos(html: string): number[] {
+      const niveis: number[] = []
+      const regex = /<h([1-6])(?:\s[^>]*)?>/g
+      let m: RegExpExecArray | null
+      while ((m = regex.exec(html)) !== null) {
+        niveis.push(Number(m[1]))
+      }
+      return niveis
+    }
+
+    it('define o idioma do documento como pt-BR', () => {
+      const html = service.renderizar(input())
+
+      expect(html).toContain('<html lang="pt-BR">')
+    })
+
+    it('expõe exatamente um <h1> no documento', () => {
+      const html = service.renderizar(input())
+
+      expect(contarTags(html, 'h1')).toBe(1)
+    })
+
+    it('mantém hierarquia de títulos coerente (sem pular níveis a partir do h1)', () => {
+      const html = service.renderizar(input())
+      const niveis = sequenciaDeTitulos(html)
+
+      expect(niveis.length).toBeGreaterThan(0)
+      // Primeiro título é um h1.
+      expect(niveis[0]).toBe(1)
+      // Nenhum salto de nível (ex.: h1 -> h3) ao descer na hierarquia.
+      for (let i = 1; i < niveis.length; i++) {
+        const anterior = niveis[i - 1] as number
+        const atual = niveis[i] as number
+        if (atual > anterior) {
+          expect(atual - anterior).toBeLessThanOrEqual(1)
+        }
+      }
+    })
+
+    it('rebaixa um <h1> vindo do corpo do template para não haver dois h1', () => {
+      // O corpo do template (operador) traz um <h1>; o renderer garante um único
+      // h1 de documento rebaixando o do corpo para h2.
+      const html = service.renderizar(input())
+
+      expect(contarTags(html, 'h1')).toBe(1)
+      // O conteúdo do título do corpo continua presente (apenas rebaixado).
+      expect(html).toContain('Orçamento ORC-2026-0001 v1')
+    })
+
+    it('envolve o conteúdo em um <main> para estrutura semântica', () => {
+      const html = service.renderizar(input())
+
+      expect(contarTags(html, 'main')).toBe(1)
+    })
+
+    it('imprime a URL pública como texto além do QR Code', () => {
+      const html = service.renderizar(
+        input({ urlPublica: 'https://app.ni-doc.com/publico/orcamento/tok-123' }),
+      )
+
+      // A URL aparece como texto legível no documento (alternativa ao QR).
+      expect(html).toContain('https://app.ni-doc.com/publico/orcamento/tok-123')
+    })
+
+    it('substitui o placeholder {url_publica} no corpo pelo texto da URL', () => {
+      const layout = layoutMock({ corpo: '<p>Acesse: {url_publica}</p>' })
+      const html = service.renderizar(
+        input({ layout, urlPublica: 'https://app.ni-doc.com/publico/orcamento/tok-123' }),
+      )
+
+      expect(html).toContain('Acesse: https://app.ni-doc.com/publico/orcamento/tok-123')
+      expect(html).not.toContain('{url_publica}')
+    })
+
+    it('dá ao QR Code um alt descritivo (não vazio) quando embutido', () => {
+      const layout = layoutMock({
+        corpo: '<section>{img:qrcode}</section>',
+        imagens: { qrcode: 'data:image/png;base64,QQQQ' },
+      })
+      const html = service.renderizar(input({ layout }))
+
+      // A tag <img> do QR não pode ter alt vazio.
+      expect(html).toContain('data:image/png;base64,QQQQ')
+      expect(html).not.toMatch(/<img[^>]*alt=""[^>]*>/)
+    })
+
+    it('escapa a URL pública para não quebrar a estrutura do documento', () => {
+      const html = service.renderizar(
+        input({ urlPublica: 'https://app/pub?a=1&b=<x>' }),
+      )
+
+      expect(html).toContain('https://app/pub?a=1&amp;b=&lt;x&gt;')
+      expect(html).not.toContain('b=<x>')
+    })
+
+    it('não depende de cor isolada: o bloco de acesso tem rótulo textual, não só o QR', () => {
+      const html = service.renderizar(
+        input({ urlPublica: 'https://app.ni-doc.com/publico/orcamento/tok-123' }),
+      )
+
+      // O bloco de acesso online tem rótulo textual (não apenas o QR colorido).
+      expect(html.toLowerCase()).toContain('acesso online')
+    })
+
+    it('a tabela de itens expõe cabeçalhos de coluna com escopo (th scope=col)', () => {
+      const html = service.renderizar(input())
+
+      // Rótulos textuais nas colunas (informação não depende de cor/posição só).
+      expect(html).toContain('<th scope="col">Item</th>')
+      expect(html).toContain('<caption>Itens do orçamento</caption>')
+    })
+
+    it('continua acessível quando urlPublica não é informada (sem bloco de URL textual quebrado)', () => {
+      const html = service.renderizar(input())
+
+      // Sem URL pública, não aparece rótulo cru nem placeholder vazando.
+      expect(html).not.toContain('{url_publica}')
+      expect(contarTags(html, 'h1')).toBe(1)
+    })
+  })
 })

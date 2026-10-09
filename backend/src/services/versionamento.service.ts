@@ -167,7 +167,15 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
             imagens: { ...imagensExistentes, qrcode: qrCodeDataUrl },
           }
 
-          const html = htmlRenderer.renderizar({ layout: layoutComQr, snapshot, numero, versao })
+          const html = htmlRenderer.renderizar({
+            layout: layoutComQr,
+            snapshot,
+            numero,
+            versao,
+            // A URL pública também é impressa como TEXTO no documento, como
+            // alternativa equivalente ao QR Code (acessibilidade — RF-018).
+            urlPublica,
+          })
           const pdf = await pdfService.gerarPdf({ html, numero, versao })
           return { pdfPath: pdf.caminho, pdfHash: pdf.hash }
         },
