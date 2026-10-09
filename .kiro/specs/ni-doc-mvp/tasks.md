@@ -352,7 +352,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: envio funciona com SMTP real (ou mock)
   - _Requirements: RF-022_
 
-- [~] 52. Templates de e-mail
+- [x] 52. Templates de e-mail
   - Criar `backend/src/lib/email-templates.ts`
   - Templates "orçamento enviado" (com link), "aprovado" (notifica operador), "reprovado"
   - DoD: e-mails enviados nos eventos corretos, log na auditoria
