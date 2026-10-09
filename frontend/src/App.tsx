@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { PrivateRoute } from '@/routes/PrivateRoute'
 import { PublicRoute } from '@/routes/PublicRoute'
+import { LayoutApp } from '@/components/LayoutApp'
 import { Login } from '@/pages/Login'
 import { Dashboard } from '@/pages/Dashboard'
 import { OrcamentoLista } from '@/pages/OrcamentoLista'
@@ -24,46 +25,22 @@ export function App(): ReactElement {
             </PublicRoute>
           }
         />
+        {/* Grupo de rotas privadas sob a casca da área logada. PrivateRoute
+            recebe children e os renderiza, então envolve o LayoutApp, que por
+            sua vez renderiza o <Outlet /> das rotas filhas abaixo. */}
         <Route
-          path="/dashboard"
           element={
             <PrivateRoute>
-              <Dashboard />
+              <LayoutApp />
             </PrivateRoute>
           }
-        />
-        <Route
-          path="/orcamentos"
-          element={
-            <PrivateRoute>
-              <OrcamentoLista />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/orcamentos/novo"
-          element={
-            <PrivateRoute>
-              <OrcamentoEditor />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/orcamentos/:id"
-          element={
-            <PrivateRoute>
-              <OrcamentoEditor />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/template"
-          element={
-            <PrivateRoute>
-              <TemplateEditor />
-            </PrivateRoute>
-          }
-        />
+        >
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/orcamentos" element={<OrcamentoLista />} />
+          <Route path="/orcamentos/novo" element={<OrcamentoEditor />} />
+          <Route path="/orcamentos/:id" element={<OrcamentoEditor />} />
+          <Route path="/template" element={<TemplateEditor />} />
+        </Route>
         <Route path="*" element={<NaoEncontrado />} />
       </Routes>
     </BrowserRouter>

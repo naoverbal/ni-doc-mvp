@@ -61,7 +61,7 @@ conforme a convenção do workspace.
   - DoD: testes passam; `eslint-plugin-jsx-a11y` sem avisos
   - _Requisitos: RF-L03, RF-L04_
 
-- [~] 4. Reorganizar rotas com layout aninhado
+- [x] 4. Reorganizar rotas com layout aninhado
   - Alterar `frontend/src/App.tsx`: criar um grupo de rota
     `<Route element={<PrivateRoute><LayoutApp /></PrivateRoute>}>` com as rotas
     privadas (`/dashboard`, `/orcamentos`, `/orcamentos/novo`, `/orcamentos/:id`,
