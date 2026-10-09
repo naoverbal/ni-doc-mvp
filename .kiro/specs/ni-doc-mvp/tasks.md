@@ -301,7 +301,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: login funciona, erros exibidos e anunciados, rota privada redireciona; `eslint-plugin-jsx-a11y` sem avisos; fluxo verificado por teclado (Tab/Enter)
   - _Requirements: RF-001_
 
-- [ ] 46. Lista de orçamentos
+- [x] 46. Lista de orçamentos
   - Criar `frontend/src/pages/OrcamentoLista.tsx`, `hooks/useOrcamentos.ts`
   - Listar com TanStack Query; filtros por status; botão novo; ações editar/visualizar/excluir
   - Acessibilidade (WCAG AA): usar `<table>` semântica com `<th scope>` (ou lista semântica); status do orçamento com rótulo textual, nunca só por cor (contraste ≥ 4.5:1); ações ícone-only com `aria-label`; estado de carregamento/vazio anunciado via `aria-live="polite"`; navegação e ações operáveis por teclado com foco visível
