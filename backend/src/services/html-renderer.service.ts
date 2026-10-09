@@ -24,6 +24,11 @@ export interface RenderizarHtmlInput {
   numero: string
   // Número da versão (ex.: 1) — não vem no snapshot.
   versao: number
+  // URL pública de aceite (ex.: '/publico/orcamento/<token>'). Quando informada,
+  // é impressa como TEXTO no documento, como alternativa equivalente ao QR Code
+  // (acessibilidade — RF-018; diretriz de documentos renderizados). Também fica
+  // disponível como placeholder `{url_publica}` no corpo/CSS do template.
+  urlPublica?: string
 }
 
 export interface HtmlRendererService {
@@ -37,7 +42,17 @@ interface ImagemEmbutida {
 }
 
 // CSS mínimo de fallback quando o template não traz `css`.
-const CSS_MINIMO = 'body { font-family: sans-serif; color: #000 }'
+//
+// Contraste (WCAG 2.1 AA — documentado para revisão, Tarefa 57): o fallback usa
+// texto preto (#000000) sobre o fundo branco padrão do papel (#ffffff), razão de
+// contraste 21:1 — acima do mínimo 4.5:1 para texto normal e 3:1 para texto
+// grande. O template do tenant (`layout.css`) é conteúdo do operador: a
+// conformidade de contraste das cores que ele definir deve ser validada no
+// editor de template (Tarefa 49) e por revisão/teste manual, pois não é
+// verificável de forma estática aqui. Nenhuma informação deste renderer depende
+// exclusivamente de cor — seções e colunas têm rótulos textuais (h1/h2,
+// <caption>, <th scope>), e o QR tem alternativa textual (URL + alt).
+const CSS_MINIMO = 'body { font-family: sans-serif; color: #000000; background: #ffffff }'
 
 // Marcador usado internamente para posicionar a tabela de itens no corpo.
 const PLACEHOLDER_ITENS = '{itens}'
@@ -72,12 +87,13 @@ function formatarMoeda(valor: number): string {
 // Monta o mapa chave → valor (já escapado) para substituição de placeholders
 // `{chave}`. Deriva do snapshot + numero/versao.
 function montarMapaPlaceholders(input: RenderizarHtmlInput): Record<string, string> {
-  const { snapshot, numero, versao } = input
+  const { snapshot, numero, versao, urlPublica } = input
   const { cliente, empresa_cliente } = snapshot
 
   return {
     numero: escaparHtml(numero),
     versao: escaparHtml(String(versao)),
+    url_publica: escaparHtml(urlPublica ?? ''),
     cliente: escaparHtml(cliente.nome),
     cliente_documento: escaparHtml(cliente.documento),
     cliente_email: escaparHtml(cliente.email ?? ''),
@@ -134,13 +150,27 @@ function coletarImagens(layout: LayoutTemplate): ImagemEmbutida[] {
   return []
 }
 
+// Nome do placeholder de imagem reservado ao QR Code de acesso público.
+const NOME_IMAGEM_QRCODE = 'qrcode'
+
+// Texto alternativo descritivo para cada imagem embutida. O QR Code recebe um
+// `alt` que comunica sua função (acessibilidade — RF-018); demais imagens usam
+// o próprio nome como alternativa textual mínima.
+function altDaImagem(nome: string): string {
+  if (nome === NOME_IMAGEM_QRCODE) {
+    return 'QR Code para acessar e aprovar o orçamento online'
+  }
+  return nome
+}
+
 // Substitui os placeholders `{img:nome}` pela tag <img> com o data URL. Os data
-// URLs são markup/estrutura (não dados do usuário) e não são escapados.
+// URLs são markup/estrutura (não dados do usuário) e não são escapados. Todo
+// `<img>` recebe um `alt` descritivo e não-vazio (acessibilidade).
 function embutirImagens(texto: string, imagens: ImagemEmbutida[]): string {
   return texto.replace(/\{img:(\w+)\}/g, (_match, nome: string) => {
     const imagem = imagens.find((img) => img.nome === nome)
     if (imagem === undefined) return ''
-    return `<img src="${imagem.dataUrl}" alt="${escaparHtml(nome)}" />`
+    return `<img src="${imagem.dataUrl}" alt="${escaparHtml(altDaImagem(nome))}" />`
   })
 }
 
@@ -175,9 +205,12 @@ function renderizarItens(itens: SnapshotItem[]): string {
 
   return [
     '<table class="itens">',
+    '<caption>Itens do orçamento</caption>',
     '<thead><tr>',
-    '<th>Item</th><th>Descrição</th><th>Qtd</th><th>Unidade</th>',
-    '<th>Valor unitário</th><th>Total</th><th>Responsável</th>',
+    '<th scope="col">Item</th><th scope="col">Descrição</th>',
+    '<th scope="col">Qtd</th><th scope="col">Unidade</th>',
+    '<th scope="col">Valor unitário</th><th scope="col">Total</th>',
+    '<th scope="col">Responsável</th>',
     '</tr></thead>',
     `<tbody>${linhas}</tbody>`,
     '</table>',
@@ -197,8 +230,47 @@ function montarCss(layout: LayoutTemplate, mapa: Record<string, string>): string
   return `@page { size: ${formato}${paisagem} } ${css}`
 }
 
-// Monta o documento HTML completo a partir das partes já renderizadas.
-function montarDocumento(css: string, corpo: string): string {
+// Rebaixa títulos do corpo do template (conteúdo do operador) em um nível, de
+// h1→h2 até h5→h6, preservando atributos e conteúdo. Garante um único <h1> de
+// documento (emitido pelo renderer) e uma hierarquia coerente, sem saltos de
+// nível (WCAG — estrutura de títulos). h6 permanece h6 (teto do HTML).
+function rebaixarTitulosDoCorpo(corpo: string): string {
+  // Troca a tag de abertura e de fechamento de cada nível, do mais profundo
+  // para o mais raso, para não rebaixar o mesmo título duas vezes.
+  let resultado = corpo
+  for (let nivel = 5; nivel >= 1; nivel--) {
+    const abertura = new RegExp(`<h${nivel}(\\s[^>]*)?>`, 'g')
+    const fechamento = new RegExp(`</h${nivel}>`, 'g')
+    resultado = resultado
+      .replace(abertura, (_m, attrs: string | undefined) => `<h${nivel + 1}${attrs ?? ''}>`)
+      .replace(fechamento, `</h${nivel + 1}>`)
+  }
+  return resultado
+}
+
+// Monta o bloco "Acesso online": rótulo textual (<h2>), o QR Code (quando
+// embutido pelo template via `{img:qrcode}`) e, sobretudo, a URL pública como
+// TEXTO — alternativa equivalente ao QR para quem não pode escaneá-lo (WCAG;
+// RF-018). Só é anexado quando o template não referencia explicitamente a URL
+// (placeholder `{url_publica}`), evitando duplicar o endereço no documento.
+function montarBlocoAcessoOnline(urlPublica: string | undefined, urlJaNoCorpo: boolean): string {
+  if (urlPublica === undefined || urlPublica === '') return ''
+  if (urlJaNoCorpo) return ''
+  const url = escaparHtml(urlPublica)
+  return [
+    '<section class="acesso-online">',
+    '<h2>Acesso online</h2>',
+    '<p>Para visualizar e aprovar este orçamento online, escaneie o QR Code ou acesse o endereço abaixo:</p>',
+    `<p class="url-publica"><a href="${url}">${url}</a></p>`,
+    '</section>',
+  ].join('')
+}
+
+// Monta o documento HTML completo a partir das partes já renderizadas. O
+// conteúdo fica dentro de um <main> com um único <h1> de documento (o número do
+// orçamento), estabelecendo a raiz da hierarquia de títulos (WCAG — estrutura
+// semântica e títulos). `lang="pt-BR"` declara o idioma do documento.
+function montarDocumento(css: string, h1Titulo: string, corpo: string): string {
   return [
     '<!DOCTYPE html>',
     '<html lang="pt-BR">',
@@ -206,7 +278,12 @@ function montarDocumento(css: string, corpo: string): string {
     '<meta charset="utf-8" />',
     `<style>${css}</style>`,
     '</head>',
-    `<body>${corpo}</body>`,
+    '<body>',
+    '<main>',
+    `<h1 class="documento-titulo">${h1Titulo}</h1>`,
+    corpo,
+    '</main>',
+    '</body>',
     '</html>',
   ].join('')
 }
@@ -229,9 +306,18 @@ export function criarHtmlRendererService(): HtmlRendererService {
       // Corpo do template (opcional): quando ausente, usa um corpo padrão.
       const corpoBruto = ehString(layout['corpo']) ? layout['corpo'] : ''
 
+      // Detecta se o template já referencia a URL pública antes da substituição
+      // (o placeholder some depois de substituído). Evita duplicar a URL quando
+      // o operador já a posicionou no layout.
+      const urlPublicaNoCorpo = corpoBruto.includes('{url_publica}')
+
       // 1) placeholders de dados; 2) placeholders de imagem.
       let corpo = substituirPlaceholders(corpoBruto, mapa)
       corpo = embutirImagens(corpo, imagens)
+
+      // Rebaixa títulos do corpo do operador para manter um único <h1> de
+      // documento e uma hierarquia coerente (WCAG — estrutura de títulos).
+      corpo = rebaixarTitulosDoCorpo(corpo)
 
       // Insere a tabela de itens no lugar de {itens}; se o template não tiver
       // esse marcador, anexa a tabela ao final do corpo (os itens nunca somem).
@@ -241,8 +327,13 @@ export function criarHtmlRendererService(): HtmlRendererService {
         corpo = `${corpo}${tabelaItens}`
       }
 
+      // Bloco "Acesso online": alternativa textual à URL/QR (acessibilidade).
+      corpo = `${corpo}${montarBlocoAcessoOnline(input.urlPublica, urlPublicaNoCorpo)}`
+
       const css = montarCss(layout, mapa)
-      return montarDocumento(css, corpo)
+      // Título de documento (<h1>): o número do orçamento com a versão.
+      const h1Titulo = `Orçamento ${escaparHtml(input.numero)} — versão ${escaparHtml(String(input.versao))}`
+      return montarDocumento(css, h1Titulo, corpo)
     },
   }
 }
