@@ -7,6 +7,7 @@ import type {
 import type {
   OrcamentoVersaoRepository,
   VersaoPorToken,
+  VersaoSnapshotPorToken,
 } from '../repositories/orcamento-versao.repository.js'
 import type { OrcamentoRepository } from '../repositories/orcamento.repository.js'
 import type { AuditoriaService } from './auditoria.service.js'
@@ -48,19 +49,44 @@ export interface AceiteManualInput {
   userAgent?: string
 }
 
+// Reprovação via cliente (RF-019): mesmas evidências do fluxo de aprovação, com
+// uma justificativa OPCIONAL. Não gera comprovante PDF (contraste com aprovar).
+export interface ReprovarViaClienteInput {
+  token: string
+  justificativa?: string
+  ip?: string
+  userAgent?: string
+}
+
 export interface AceiteRegistrado {
   id: string
   versaoId: string
   orcamentoId: string
   metodo: 'cliente' | 'operador'
   hashDocumento: string
-  comprovantePdfPath: string
-  comprovantePdfHash: string
+  // Null na reprovação (não gera comprovante); preenchido na aprovação.
+  comprovantePdfPath: string | null
+  comprovantePdfHash: string | null
   criadoEm: Date
+}
+
+// Visualização pública do orçamento (rota GET /publico/orcamento/:token): o
+// snapshot imutável, a flag de integridade (há pdf_hash emitido?) e a URL do PDF.
+export interface VisualizacaoPublica {
+  numero: string
+  versao: number
+  snapshot: unknown
+  // true quando a versão tem pdf_hash — o documento oficial foi emitido e é
+  // verificável (RF-017). false quando ainda não há PDF/hash.
+  integro: boolean
+  // URL (relativa) do PDF público; null quando não há PDF emitido.
+  pdfUrl: string | null
 }
 
 export interface AceiteService {
   aprovarViaCliente(input: AprovarViaClienteInput): Promise<AceiteRegistrado>
+  reprovarViaCliente(input: ReprovarViaClienteInput): Promise<AceiteRegistrado>
+  visualizarPorToken(token: string): Promise<VisualizacaoPublica>
   aceiteManual(input: AceiteManualInput): Promise<AceiteRegistrado>
 }
 
@@ -135,38 +161,52 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
   // HTML próprio (determinístico) — por isso fica deliberadamente sem uso aqui.
   void _htmlRenderer
 
-  // Persiste o aceite, gera o comprovante PDF e registra auditoria. Compartilhado
-  // pelos dois fluxos: muda apenas o input de aceite, os dados do comprovante e a
-  // ação de auditoria.
-  async function registrarAceite(args: {
+  // Persiste a decisão, (opcionalmente) gera o comprovante PDF e registra
+  // auditoria. Compartilhado pelos fluxos: muda o repo chamado (aprovar/reprovar),
+  // o input, a ação de auditoria e se há comprovante. A reprovação NÃO gera PDF.
+  async function registrarDecisao(args: {
     versao: VersaoPorToken
     hashDocumento: string
     aceiteInput: RegistrarAceiteInput
-    acao: 'aprovar' | 'aceite_manual'
+    acao: 'aprovar' | 'reprovar' | 'aceite_manual'
+    persistir: (input: RegistrarAceiteInput) => Promise<{
+      id: string
+      versaoId: string
+      metodo: 'cliente' | 'operador'
+      hashDocumento: string
+      criadoEm: Date
+    }>
+    gerarComprovante: boolean
     usuarioId?: string
     ip?: string
     userAgent?: string
   }): Promise<AceiteRegistrado> {
     const { versao, hashDocumento } = args
 
-    const aceite = await aceiteRepo.aprovarAceite(args.aceiteInput)
+    const aceite = await args.persistir(args.aceiteInput)
 
-    // Comprovante PDF (RF-021): reusa a geração da Fase 8. O sufixo `-aceite` no
-    // número evita colidir com o PDF do orçamento (`{numero}-v{versao}.pdf`).
-    const html = montarHtmlComprovante({
-      numero: versao.numero,
-      versao: versao.versao,
-      metodo: args.aceiteInput.metodo,
-      hashDocumento,
-      dataHora: aceite.criadoEm,
-      ip: args.ip,
-      userAgent: args.userAgent,
-    })
-    const comprovante = await pdfService.gerarPdf({
-      html,
-      numero: `${versao.numero}-aceite`,
-      versao: versao.versao,
-    })
+    // Comprovante PDF (RF-021): só na aprovação. O sufixo `-aceite` no número
+    // evita colidir com o PDF do orçamento (`{numero}-v{versao}.pdf`).
+    let comprovantePdfPath: string | null = null
+    let comprovantePdfHash: string | null = null
+    if (args.gerarComprovante) {
+      const html = montarHtmlComprovante({
+        numero: versao.numero,
+        versao: versao.versao,
+        metodo: args.aceiteInput.metodo,
+        hashDocumento,
+        dataHora: aceite.criadoEm,
+        ip: args.ip,
+        userAgent: args.userAgent,
+      })
+      const comprovante = await pdfService.gerarPdf({
+        html,
+        numero: `${versao.numero}-aceite`,
+        versao: versao.versao,
+      })
+      comprovantePdfPath = comprovante.caminho
+      comprovantePdfHash = comprovante.hash
+    }
 
     await auditoriaService.registrar({
       tenantId: versao.tenantId,
@@ -184,24 +224,32 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
       orcamentoId: versao.orcamentoId,
       metodo: aceite.metodo,
       hashDocumento: aceite.hashDocumento,
-      comprovantePdfPath: comprovante.caminho,
-      comprovantePdfHash: comprovante.hash,
+      comprovantePdfPath,
+      comprovantePdfHash,
       criadoEm: aceite.criadoEm,
     }
   }
 
+  // Valida o token público (existência + HMAC + expiração) e devolve a versão.
+  // Distingue "não encontrado" (token inexistente ou HMAC inválido → 404) de
+  // "expirado" (expira_em no passado → 410), conforme decidido para as rotas
+  // públicas (tarefa 42). Genérica para os três fluxos públicos.
+  function validarToken<T extends { versaoId: string; expiraEm: Date | null }>(
+    token: string,
+    versao: T | null,
+  ): T {
+    if (!versao || !validarTokenPublico(token, versao.versaoId)) {
+      throw new AppError(404, 'Orçamento não encontrado')
+    }
+    if (versao.expiraEm !== null && versao.expiraEm.getTime() < relogio().getTime()) {
+      throw new AppError(410, 'Link de aprovação expirado')
+    }
+    return versao
+  }
+
   return {
     async aprovarViaCliente(input: AprovarViaClienteInput): Promise<AceiteRegistrado> {
-      const versao = await orcamentoVersaoRepo.buscarPorToken(input.token)
-      // Mensagem genérica em qualquer falha de token (RF-019.7): não revela se o
-      // token existe. Token inexistente ou HMAC inválido → 410.
-      if (!versao || !validarTokenPublico(input.token, versao.versaoId)) {
-        throw new AppError(410, 'Link de aprovação inválido ou expirado')
-      }
-      // Expiração: a versão expira quando expiraEm está no passado.
-      if (versao.expiraEm !== null && versao.expiraEm.getTime() < relogio().getTime()) {
-        throw new AppError(410, 'Link de aprovação inválido ou expirado')
-      }
+      const versao = validarToken(input.token, await orcamentoVersaoRepo.buscarPorToken(input.token))
       // Duplicado: orçamento já aprovado não aceita novo aceite (RF-019.6).
       if (versao.statusOrcamento === 'aprovado') {
         throw new AppError(409, 'Orçamento já aprovado')
@@ -211,7 +259,7 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
         throw new AppError(409, 'Documento sem hash de integridade')
       }
 
-      return registrarAceite({
+      return registrarDecisao({
         versao,
         hashDocumento: versao.pdfHash,
         aceiteInput: {
@@ -223,9 +271,63 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
           userAgent: input.userAgent,
         },
         acao: 'aprovar',
+        persistir: (i) => aceiteRepo.aprovarAceite(i),
+        gerarComprovante: true,
         ip: input.ip,
         userAgent: input.userAgent,
       })
+    },
+
+    async reprovarViaCliente(input: ReprovarViaClienteInput): Promise<AceiteRegistrado> {
+      const versao = validarToken(input.token, await orcamentoVersaoRepo.buscarPorToken(input.token))
+      // Já decidido: orçamento aprovado/reprovado não aceita nova decisão.
+      if (versao.statusOrcamento === 'aprovado' || versao.statusOrcamento === 'reprovado') {
+        throw new AppError(409, 'Orçamento já decidido')
+      }
+      if (versao.pdfHash === null) {
+        throw new AppError(409, 'Documento sem hash de integridade')
+      }
+
+      return registrarDecisao({
+        versao,
+        hashDocumento: versao.pdfHash,
+        aceiteInput: {
+          tenantId: versao.tenantId,
+          versaoId: versao.versaoId,
+          metodo: 'cliente',
+          hashDocumento: versao.pdfHash,
+          justificativa: input.justificativa,
+          ip: input.ip,
+          userAgent: input.userAgent,
+        },
+        acao: 'reprovar',
+        persistir: (i) => aceiteRepo.reprovarAceite(i),
+        // Reprovação NÃO gera comprovante PDF — apenas registra o evento.
+        gerarComprovante: false,
+        ip: input.ip,
+        userAgent: input.userAgent,
+      })
+    },
+
+    async visualizarPorToken(token: string): Promise<VisualizacaoPublica> {
+      const versao: VersaoSnapshotPorToken = validarToken(
+        token,
+        await orcamentoVersaoRepo.buscarSnapshotPorToken(token),
+      )
+
+      // Integridade: há documento oficial emitido (pdf_hash) e verificável?
+      const integro = versao.pdfHash !== null
+      // A URL do PDF aponta de volta para a própria rota pública, usando o token
+      // como credencial (sem expor caminho de disco). Null quando não há PDF.
+      const pdfUrl = versao.pdfPath !== null ? `/api/publico/orcamento/${token}/pdf` : null
+
+      return {
+        numero: versao.numero,
+        versao: versao.versao,
+        snapshot: versao.snapshot,
+        integro,
+        pdfUrl,
+      }
     },
 
     async aceiteManual(input: AceiteManualInput): Promise<AceiteRegistrado> {
@@ -251,7 +353,7 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
         throw new AppError(409, 'Documento sem hash de integridade')
       }
 
-      return registrarAceite({
+      return registrarDecisao({
         versao,
         hashDocumento: versao.pdfHash,
         aceiteInput: {
@@ -265,6 +367,8 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
           userAgent: input.userAgent,
         },
         acao: 'aceite_manual',
+        persistir: (i) => aceiteRepo.aprovarAceite(i),
+        gerarComprovante: true,
         usuarioId: input.usuarioId,
         ip: input.ip,
         userAgent: input.userAgent,

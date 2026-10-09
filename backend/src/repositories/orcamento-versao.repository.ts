@@ -70,12 +70,27 @@ export interface VersaoPorToken {
   statusOrcamento: OrcamentoStatus
 }
 
+// Leitura usada pela VISUALIZAÇÃO pública (rota GET /publico/orcamento/:token).
+// Além dos campos de `VersaoPorToken`, expõe o `snapshot` JSONB (cópia imutável
+// dos dados do orçamento no envio) e o `pdfPath` — o serviço público precisa
+// deles para devolver o documento ao cliente final. É um método dedicado para
+// NÃO alargar o `buscarPorToken` (usado no aceite), cuja projeção enxuta é
+// deliberada.
+export interface VersaoSnapshotPorToken extends VersaoPorToken {
+  snapshot: unknown
+  pdfPath: string | null
+}
+
 export interface OrcamentoVersaoRepository {
   criarVersaoEnviar(input: CriarVersaoEnviarInput): Promise<OrcamentoVersaoPublica>
   // Localiza a versão pelo token público (coluna UNIQUE). O token tem formato
   // `uuid.hmac` ligado ao id da versão; como o serviço não deriva o id do token,
   // a busca é pela coluna `token_publico`. Retorna null quando não existe.
   buscarPorToken(token: string): Promise<VersaoPorToken | null>
+  // Como `buscarPorToken`, mas projetando também o `snapshot` JSONB e o
+  // `pdf_path` — a visualização pública (tarefa 42) precisa devolver o conteúdo
+  // do orçamento e a localização do PDF. Retorna null quando não existe.
+  buscarSnapshotPorToken(token: string): Promise<VersaoSnapshotPorToken | null>
   // Versão de maior número (vigente) de um orçamento, usada pelo aceite manual
   // (que recebe orcamentoId, não token). Retorna null se não houver versão.
   buscarVersaoAtualPorOrcamento(
@@ -151,6 +166,26 @@ const COLUNAS_VERSAO_POR_TOKEN = [
   'v.token_publico as token_publico',
   'v.expira_em as expira_em',
   'o.status as status_orcamento',
+] as const
+
+// Linha do join versão↔orçamento incluindo o snapshot e o pdf_path (visualização).
+interface VersaoSnapshotPorTokenRow extends VersaoPorTokenRow {
+  snapshot: unknown
+  pdf_path: string | null
+}
+
+function mapRowVersaoSnapshotPorToken(row: VersaoSnapshotPorTokenRow): VersaoSnapshotPorToken {
+  return {
+    ...mapRowVersaoPorToken(row),
+    snapshot: row.snapshot,
+    pdfPath: row.pdf_path,
+  }
+}
+
+const COLUNAS_VERSAO_SNAPSHOT_POR_TOKEN = [
+  ...COLUNAS_VERSAO_POR_TOKEN,
+  'v.snapshot as snapshot',
+  'v.pdf_path as pdf_path',
 ] as const
 
 const COLUNAS_VERSAO = [
@@ -283,6 +318,18 @@ export function criarOrcamentoVersaoRepository(deps: {
 
       if (!row) return null
       return mapRowVersaoPorToken(row as unknown as VersaoPorTokenRow)
+    },
+
+    async buscarSnapshotPorToken(token: string): Promise<VersaoSnapshotPorToken | null> {
+      const row = await db
+        .selectFrom('orcamento_versoes as v')
+        .innerJoin('orcamentos as o', 'o.id', 'v.orcamento_id')
+        .select(COLUNAS_VERSAO_SNAPSHOT_POR_TOKEN)
+        .where('v.token_publico', '=', token)
+        .executeTakeFirst()
+
+      if (!row) return null
+      return mapRowVersaoSnapshotPorToken(row as unknown as VersaoSnapshotPorTokenRow)
     },
 
     async buscarVersaoAtualPorOrcamento(

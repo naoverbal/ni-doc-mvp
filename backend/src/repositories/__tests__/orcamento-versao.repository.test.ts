@@ -451,4 +451,66 @@ describe('OrcamentoVersaoRepository', () => {
       expect(versao).toBeNull()
     })
   })
+
+  describe('buscarSnapshotPorToken()', () => {
+    function snapshotRow(overrides: Record<string, unknown> = {}) {
+      return {
+        versao_id: 'versao-1',
+        orcamento_id: 'orc-1',
+        tenant_id: 'tenant-1',
+        numero: 'ORC-2026-0001',
+        versao: 1,
+        snapshot: { cliente: { id: 'cliente-1' }, itens: [] },
+        pdf_path: '/pdfs/ORC-2026-0001-v1.pdf',
+        pdf_hash: 'a'.repeat(64),
+        token_publico: 'uuid.hmac',
+        expira_em: null,
+        status_orcamento: 'enviado',
+        ...overrides,
+      }
+    }
+
+    it('retorna a versão COM snapshot (join com orcamentos) filtrando pelo token', async () => {
+      const selectBuilder = makeSelectJoinBuilder(snapshotRow())
+      const db = {
+        selectFrom: vi.fn().mockReturnValue(selectBuilder),
+      } as unknown as Kysely<Database>
+
+      const repo = criarOrcamentoVersaoRepository({ db })
+      const versao = await repo.buscarSnapshotPorToken('uuid.hmac')
+
+      expect(db.selectFrom).toHaveBeenCalledWith('orcamento_versoes as v')
+      expect(selectBuilder.innerJoin).toHaveBeenCalledWith(
+        'orcamentos as o',
+        'o.id',
+        'v.orcamento_id',
+      )
+      expect(selectBuilder.where).toHaveBeenCalledWith('v.token_publico', '=', 'uuid.hmac')
+      expect(versao).toEqual({
+        versaoId: 'versao-1',
+        orcamentoId: 'orc-1',
+        tenantId: 'tenant-1',
+        numero: 'ORC-2026-0001',
+        versao: 1,
+        snapshot: { cliente: { id: 'cliente-1' }, itens: [] },
+        pdfPath: '/pdfs/ORC-2026-0001-v1.pdf',
+        pdfHash: 'a'.repeat(64),
+        tokenPublico: 'uuid.hmac',
+        expiraEm: null,
+        statusOrcamento: 'enviado',
+      })
+    })
+
+    it('retorna null quando o token não existe', async () => {
+      const selectBuilder = makeSelectJoinBuilder(undefined)
+      const db = {
+        selectFrom: vi.fn().mockReturnValue(selectBuilder),
+      } as unknown as Kysely<Database>
+
+      const repo = criarOrcamentoVersaoRepository({ db })
+      const versao = await repo.buscarSnapshotPorToken('inexistente')
+
+      expect(versao).toBeNull()
+    })
+  })
 })

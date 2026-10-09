@@ -274,56 +274,56 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: evidências registradas, comprovante gerado, auditoria
   - _Requirements: RF-019, RF-020, RF-021_
 
-- [~] 42. Rotas públicas
+- [x] 42. Rotas públicas
   - Criar `backend/src/routes/publico.routes.ts` e testes
   - Testes: GET snapshot; 404 token inválido; 410 expirado; POST aprovar registra aceite; 409 já aprovado; reprovar registra
   - DoD: rotas sem auth, com rate limiting
   - _Requirements: RF-019_
 
-- [~] 43. Rota de aceite manual
+- [ ] 43. Rota de aceite manual
   - Adicionar `POST /:id/aceite-manual` em `orcamentos.routes.ts` e testes
   - Testes: exige justificativa; registra operador; muda status para `aprovado`
   - _Requirements: RF-020_
 
 ### Fase 10 — Frontend
 
-- [~] 44. Setup do React + Vite
+- [ ] 44. Setup do React + Vite
   - Criar `frontend/vite.config.ts`, `index.html`, `src/main.tsx`, `src/App.tsx`
   - Configurar React Router, TanStack Query, Zustand, proxy para backend, estrutura de pastas
   - DoD: `npm run dev` sobe a SPA e chamadas ao backend funcionam
   - _Requirements: setup_
 
-- [~] 45. Tela de login
+- [ ] 45. Tela de login
   - Criar `frontend/src/pages/Login.tsx`, `hooks/useAuth.ts`, `stores/auth.store.ts`
   - Form com React Hook Form + Zod; `POST /api/auth/login`; estado no Zustand; redirect; tratar erro
   - DoD: login funciona, erros exibidos, rota privada redireciona
   - _Requirements: RF-001_
 
-- [~] 46. Lista de orçamentos
+- [ ] 46. Lista de orçamentos
   - Criar `frontend/src/pages/OrcamentoLista.tsx`, `hooks/useOrcamentos.ts`
   - Listar com TanStack Query; filtros por status; botão novo; ações editar/visualizar/excluir
   - DoD: lista carrega e navegação para o editor funciona
   - _Requirements: RF-005_
 
-- [~] 47. Editor de orçamento
+- [ ] 47. Editor de orçamento
   - Criar `frontend/src/pages/OrcamentoEditor.tsx`, `components/ItemOrcamentoRow.tsx`, `components/Autocomplete.tsx`
   - Form com cliente (autocomplete), título, descrição; itens editáveis; cálculo em tempo real; autocomplete de responsável; salvar rascunho
   - DoD: criar/editar/salvar funcionam, cálculos em tempo real, validação
   - _Requirements: RF-005, RF-006, RF-007_
 
-- [~] 48. Envio e versionamento (frontend)
+- [ ] 48. Envio e versionamento (frontend)
   - Adicionar botão "Enviar" em `OrcamentoEditor.tsx`
   - Modal de confirmação; `POST /api/orcamentos/:id/enviar`; exibir link público; listar versões
   - DoD: envio funciona, versões listadas
   - _Requirements: RF-008_
 
-- [~] 49. Editor de template
+- [ ] 49. Editor de template
   - Criar `frontend/src/pages/TemplateEditor.tsx`, `components/CanvasA4.tsx`
   - Canvas A4 com drag & drop; upload de PDF de fundo, imagens e fontes; placeholders; área de itens; salvar
   - DoD: editor funcional, template salvo como JSON, nova versão criada
   - _Requirements: RF-014_
 
-- [~] 50. Página pública de aprovação
+- [ ] 50. Página pública de aprovação
   - Criar `frontend/src/pages/PublicoOrcamento.tsx`
   - Ler token da URL; `GET /api/publico/orcamento/:token`; PDF embutido; checkbox + Aprovar/Reprovar; confirmação
   - DoD: cliente acessa/aprova/vê comprovante; token inválido mostra erro
@@ -331,13 +331,13 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
 
 ### Fase 11 — Notificações (MVP Simplificado)
 
-- [~] 51. Lib de e-mail
+- [ ] 51. Lib de e-mail
   - Criar `backend/src/lib/email.ts` e testes
   - Testes: usa SMTP configurado; serializa destinatário; falhas são logadas sem quebrar o fluxo
   - DoD: envio funciona com SMTP real (ou mock)
   - _Requirements: RF-022_
 
-- [~] 52. Templates de e-mail
+- [ ] 52. Templates de e-mail
   - Criar `backend/src/lib/email-templates.ts`
   - Templates "orçamento enviado" (com link), "aprovado" (notifica operador), "reprovado"
   - DoD: e-mails enviados nos eventos corretos, log na auditoria
@@ -345,19 +345,19 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
 
 ### Fase 12 — Deploy e Produção
 
-- [~] 53. Configurar Nginx na VPS
+- [ ] 53. Configurar Nginx na VPS
   - Criar `nginx/ni-doc.conf`
   - Proxy reverso para backend; servir estáticos; TLS com Let's Encrypt; headers de segurança (HSTS, CSP)
   - DoD: HTTPS funciona, backend acessível via domínio
   - _Requirements: RNF-006_
 
-- [~] 54. Pipeline de deploy
+- [ ] 54. Pipeline de deploy
   - Criar `.github/workflows/deploy.yml`
   - Rodar CI; SSH na VPS; `git pull && docker compose -f docker-compose.prod.yml up -d --build`; migrations; health check; rollback automático se falhar
   - DoD: push na `main` faz deploy automático com health check
   - _Requirements: deploy_
 
-- [~] 55. Job de limpeza de PDFs
+- [ ] 55. Job de limpeza de PDFs
   - Criar `backend/src/jobs/limpar-pdfs.ts`
   - Cron diário; remover PDFs com mais de 1 ano (após retenção legal); registrar remoção na auditoria
   - DoD: job roda, PDFs antigos removidos, auditoria registrada

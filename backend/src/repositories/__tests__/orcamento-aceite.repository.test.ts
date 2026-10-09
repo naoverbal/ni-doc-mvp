@@ -238,6 +238,101 @@ describe('OrcamentoAceiteRepository', () => {
     })
   })
 
+  describe('reprovarAceite()', () => {
+    it('insere o aceite (metodo cliente, evidências, justificativa) e marca o orçamento como reprovado', async () => {
+      const insertAceite = makeInsertBuilder(
+        aceiteRowBase({ justificativa: 'preço acima do orçado' }),
+      )
+      const updateOrcamento = makeUpdateBuilder()
+      const trx = makeTrx({ insertAceite, updateOrcamento, statusOrcamento: 'enviado' })
+      const db = makeDbComTransacao(trx)
+
+      const repo = criarOrcamentoAceiteRepository({ db })
+      const aceite = await repo.reprovarAceite({
+        ...inputBase,
+        justificativa: 'preço acima do orçado',
+      })
+
+      expect(trx.insertInto).toHaveBeenCalledWith('orcamento_aceites')
+      expect(insertAceite.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          versao_id: 'versao-1',
+          metodo: 'cliente',
+          hash_documento: 'a'.repeat(64),
+          ip: '1.2.3.4',
+          user_agent: 'agent',
+          justificativa: 'preço acima do orçado',
+        }),
+      )
+      expect(trx.updateTable).toHaveBeenCalledWith('orcamentos')
+      expect(updateOrcamento.set).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'reprovado' }),
+      )
+      expect(updateOrcamento.where).toHaveBeenCalledWith('tenant_id', '=', 'tenant-1')
+      expect(aceite.versaoId).toBe('versao-1')
+      expect(aceite.metodo).toBe('cliente')
+    })
+
+    it('aceita reprovação sem justificativa (justificativa null)', async () => {
+      const insertAceite = makeInsertBuilder(aceiteRowBase())
+      const updateOrcamento = makeUpdateBuilder()
+      const trx = makeTrx({ insertAceite, updateOrcamento, statusOrcamento: 'enviado' })
+      const db = makeDbComTransacao(trx)
+
+      const repo = criarOrcamentoAceiteRepository({ db })
+      await repo.reprovarAceite(inputBase)
+
+      expect(insertAceite.values).toHaveBeenCalledWith(
+        expect.objectContaining({ justificativa: null }),
+      )
+    })
+
+    it('emite o advisory lock ANTES do SELECT de estado', async () => {
+      const insertAceite = makeInsertBuilder(aceiteRowBase())
+      const updateOrcamento = makeUpdateBuilder()
+      const trx = makeTrx({ insertAceite, updateOrcamento, statusOrcamento: 'enviado' })
+      const db = makeDbComTransacao(trx)
+
+      const repo = criarOrcamentoAceiteRepository({ db })
+      await repo.reprovarAceite(inputBase)
+
+      expect(trx.sqlExecutado[0]).toContain('pg_advisory_xact_lock')
+    })
+
+    it('lança AppError(409) quando o orçamento já foi decidido (aprovado)', async () => {
+      const insertAceite = makeInsertBuilder(aceiteRowBase())
+      const updateOrcamento = makeUpdateBuilder()
+      const trx = makeTrx({ insertAceite, updateOrcamento, statusOrcamento: 'aprovado' })
+      const db = makeDbComTransacao(trx)
+
+      const repo = criarOrcamentoAceiteRepository({ db })
+      await expect(repo.reprovarAceite(inputBase)).rejects.toMatchObject({ statusCode: 409 })
+      expect(insertAceite.values).not.toHaveBeenCalled()
+    })
+
+    it('lança AppError(409) quando o orçamento já foi reprovado', async () => {
+      const insertAceite = makeInsertBuilder(aceiteRowBase())
+      const updateOrcamento = makeUpdateBuilder()
+      const trx = makeTrx({ insertAceite, updateOrcamento, statusOrcamento: 'reprovado' })
+      const db = makeDbComTransacao(trx)
+
+      const repo = criarOrcamentoAceiteRepository({ db })
+      await expect(repo.reprovarAceite(inputBase)).rejects.toMatchObject({ statusCode: 409 })
+      expect(insertAceite.values).not.toHaveBeenCalled()
+    })
+
+    it('lança AppError(409) quando a versão/orçamento não existe', async () => {
+      const insertAceite = makeInsertBuilder(aceiteRowBase())
+      const updateOrcamento = makeUpdateBuilder()
+      const trx = makeTrx({ insertAceite, updateOrcamento })
+      const db = makeDbComTransacao(trx)
+
+      const repo = criarOrcamentoAceiteRepository({ db })
+      await expect(repo.reprovarAceite(inputBase)).rejects.toMatchObject({ statusCode: 409 })
+      expect(insertAceite.values).not.toHaveBeenCalled()
+    })
+  })
+
   describe('buscarPorVersao()', () => {
     it('retorna o aceite mapeado quando existe', async () => {
       const selectBuilder = makeSelectBuilder(aceiteRowBase({ metodo: 'operador', usuario_id: 'op-1' }))

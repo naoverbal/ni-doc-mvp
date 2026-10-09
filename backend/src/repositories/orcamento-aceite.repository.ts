@@ -42,6 +42,12 @@ export interface OrcamentoAceiteRepository {
   // (duplicado → 409) ou se a versão/orçamento não existir (409), insere o
   // aceite e marca `orcamentos.status = 'aprovado'` filtrando por tenant_id.
   aprovarAceite(input: RegistrarAceiteInput): Promise<AceitePublico>
+  // Espelha `aprovarAceite` para a REPROVAÇÃO (tarefa 42): mesma transação
+  // atômica, mesma evidência (IP/UA/hash/justificativa) e a mesma rede de
+  // segurança `UNIQUE (versao_id)`, mas marca `orcamentos.status = 'reprovado'`.
+  // Rejeita (409) se o orçamento já tiver sido decidido (`aprovado`/`reprovado`)
+  // ou se a versão/orçamento não existir.
+  reprovarAceite(input: RegistrarAceiteInput): Promise<AceitePublico>
   buscarPorVersao(versaoId: string): Promise<AceitePublico | null>
 }
 
@@ -107,52 +113,77 @@ async function lerStatusOrcamento(
   return resultado.rows[0]?.status ?? null
 }
 
+// Status terminais: um orçamento já decidido (aprovado ou reprovado) não aceita
+// nova decisão. A rede de segurança final é o UNIQUE (versao_id).
+const STATUS_DECIDIDO = ['aprovado', 'reprovado'] as const
+
 export function criarOrcamentoAceiteRepository(deps: {
   db: Kysely<Database>
 }): OrcamentoAceiteRepository {
   const { db } = deps
 
+  // Registra a decisão do cliente (aprovar/reprovar) em uma transação atômica:
+  // serializa por advisory lock, relê o status (filtrando por tenant), rejeita
+  // decisão sobre orçamento inexistente ou já decidido, insere a evidência e
+  // marca o novo status. Compartilhado por aprovar/reprovar — muda só o
+  // `novoStatus` e a mensagem de conflito.
+  async function registrarDecisao(
+    input: RegistrarAceiteInput,
+    novoStatus: 'aprovado' | 'reprovado',
+    mensagemConflito: string,
+  ): Promise<AceitePublico> {
+    return db.transaction().execute(async (trx) => {
+      const status = await lerStatusOrcamento(trx, input.tenantId, input.versaoId)
+
+      if (status === null) {
+        throw new AppError(409, 'Versão do orçamento não encontrada para aceite')
+      }
+      // Já decidido: orçamento aprovado ou reprovado não aceita nova decisão
+      // (RF-019.6). O aceite da aprovação só conflita com `aprovado`; a
+      // reprovação conflita com qualquer status terminal.
+      const conflita =
+        novoStatus === 'aprovado' ? status === 'aprovado' : STATUS_DECIDIDO.includes(status as never)
+      if (conflita) {
+        throw new AppError(409, mensagemConflito)
+      }
+
+      const row = await trx
+        .insertInto('orcamento_aceites')
+        .values({
+          versao_id: input.versaoId,
+          metodo: input.metodo,
+          usuario_id: input.usuarioId ?? null,
+          ip: input.ip ?? null,
+          user_agent: input.userAgent ?? null,
+          hash_documento: input.hashDocumento,
+          justificativa: input.justificativa ?? null,
+        })
+        .returning(COLUNAS_ACEITE)
+        .executeTakeFirstOrThrow()
+
+      await trx
+        .updateTable('orcamentos')
+        .set({ status: novoStatus, atualizado_em: new Date() })
+        .where('tenant_id', '=', input.tenantId)
+        .where('id', '=', (eb) =>
+          eb
+            .selectFrom('orcamento_versoes')
+            .select('orcamento_id')
+            .where('id', '=', input.versaoId),
+        )
+        .execute()
+
+      return mapRowAceite(row as OrcamentoAceiteRow)
+    })
+  }
+
   return {
     async aprovarAceite(input: RegistrarAceiteInput): Promise<AceitePublico> {
-      return db.transaction().execute(async (trx) => {
-        const status = await lerStatusOrcamento(trx, input.tenantId, input.versaoId)
+      return registrarDecisao(input, 'aprovado', 'Orçamento já aprovado')
+    },
 
-        if (status === null) {
-          throw new AppError(409, 'Versão do orçamento não encontrada para aceite')
-        }
-        // Duplicado: um orçamento já aprovado não aceita novo aceite (RF-019.6).
-        if (status === 'aprovado') {
-          throw new AppError(409, 'Orçamento já aprovado')
-        }
-
-        const row = await trx
-          .insertInto('orcamento_aceites')
-          .values({
-            versao_id: input.versaoId,
-            metodo: input.metodo,
-            usuario_id: input.usuarioId ?? null,
-            ip: input.ip ?? null,
-            user_agent: input.userAgent ?? null,
-            hash_documento: input.hashDocumento,
-            justificativa: input.justificativa ?? null,
-          })
-          .returning(COLUNAS_ACEITE)
-          .executeTakeFirstOrThrow()
-
-        await trx
-          .updateTable('orcamentos')
-          .set({ status: 'aprovado', atualizado_em: new Date() })
-          .where('tenant_id', '=', input.tenantId)
-          .where('id', '=', (eb) =>
-            eb
-              .selectFrom('orcamento_versoes')
-              .select('orcamento_id')
-              .where('id', '=', input.versaoId),
-          )
-          .execute()
-
-        return mapRowAceite(row as OrcamentoAceiteRow)
-      })
+    async reprovarAceite(input: RegistrarAceiteInput): Promise<AceitePublico> {
+      return registrarDecisao(input, 'reprovado', 'Orçamento já decidido')
     },
 
     async buscarPorVersao(versaoId: string): Promise<AceitePublico | null> {
