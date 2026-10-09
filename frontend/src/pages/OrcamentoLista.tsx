@@ -52,7 +52,7 @@ export function OrcamentoLista(): ReactElement {
   }
 
   return (
-    <main>
+    <main id="conteudo">
       <h1>Orçamentos</h1>
 
       <div>

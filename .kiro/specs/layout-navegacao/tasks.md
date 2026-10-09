@@ -49,7 +49,7 @@ conforme a convenção do workspace.
     `<header>`/`<nav aria-label="Principal">` no layout
   - _Requisitos: RF-L01, RF-L02, RF-L04_
 
-- [~] 3. Dashboard navegável
+- [x] 3. Dashboard navegável
   - Reescrever `frontend/src/pages/Dashboard.tsx`: `<main id="conteudo">` com
     `<h1>` descritivo, saudação com o nome do usuário e
     `<nav aria-label="Atalhos">` com `<Link>` para Orçamentos e (admin) Template

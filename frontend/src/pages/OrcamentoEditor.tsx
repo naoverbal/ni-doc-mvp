@@ -259,7 +259,7 @@ export function OrcamentoEditor(): ReactElement {
   const ultimaVersao = versoes.at(-1)
 
   return (
-    <main>
+    <main id="conteudo">
       <h1>{edicao ? 'Editar orçamento' : 'Novo orçamento'}</h1>
 
       <form onSubmit={aoSubmeter} noValidate>
