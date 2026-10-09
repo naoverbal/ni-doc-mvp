@@ -4,6 +4,7 @@ import { sql } from 'kysely'
 import type { Database } from '../types/database.js'
 import { AppError } from '../errors/app-error.js'
 import { gerarTokenPublico } from '../lib/token.js'
+import type { OrcamentoStatus } from './orcamento.repository.js'
 
 // -----------------------------------------------------------------------------
 // Repositório das versões imutáveis do orçamento (tabela orcamento_versoes).
@@ -53,8 +54,34 @@ export interface OrcamentoVersaoPublica {
   expiraEm: Date | null
 }
 
+// Leitura usada pelo serviço de aceite: liga a versão ao orçamento (join com
+// `orcamentos`) e projeta exatamente o que o aceite precisa para validar o token
+// e aprovar — tenant (isolamento), número (nome do PDF), hash do documento
+// (integridade), token (validação do HMAC), expiração e status do orçamento.
+export interface VersaoPorToken {
+  versaoId: string
+  orcamentoId: string
+  tenantId: string
+  numero: string
+  versao: number
+  pdfHash: string | null
+  tokenPublico: string
+  expiraEm: Date | null
+  statusOrcamento: OrcamentoStatus
+}
+
 export interface OrcamentoVersaoRepository {
   criarVersaoEnviar(input: CriarVersaoEnviarInput): Promise<OrcamentoVersaoPublica>
+  // Localiza a versão pelo token público (coluna UNIQUE). O token tem formato
+  // `uuid.hmac` ligado ao id da versão; como o serviço não deriva o id do token,
+  // a busca é pela coluna `token_publico`. Retorna null quando não existe.
+  buscarPorToken(token: string): Promise<VersaoPorToken | null>
+  // Versão de maior número (vigente) de um orçamento, usada pelo aceite manual
+  // (que recebe orcamentoId, não token). Retorna null se não houver versão.
+  buscarVersaoAtualPorOrcamento(
+    tenantId: string,
+    orcamentoId: string,
+  ): Promise<VersaoPorToken | null>
 }
 
 // -----------------------------------------------------------------------------
@@ -85,6 +112,46 @@ function mapRowVersao(row: OrcamentoVersaoRow): OrcamentoVersaoPublica {
     expiraEm: row.expira_em,
   }
 }
+
+// Linha do join versão↔orçamento (snake_case). As colunas vêm aliasadas no
+// SELECT para evitar colisão de nomes homônimos entre as duas tabelas.
+interface VersaoPorTokenRow {
+  versao_id: string
+  orcamento_id: string
+  tenant_id: string
+  numero: string
+  versao: number
+  pdf_hash: string | null
+  token_publico: string
+  expira_em: Date | null
+  status_orcamento: OrcamentoStatus
+}
+
+function mapRowVersaoPorToken(row: VersaoPorTokenRow): VersaoPorToken {
+  return {
+    versaoId: row.versao_id,
+    orcamentoId: row.orcamento_id,
+    tenantId: row.tenant_id,
+    numero: row.numero,
+    versao: row.versao,
+    pdfHash: row.pdf_hash,
+    tokenPublico: row.token_publico,
+    expiraEm: row.expira_em,
+    statusOrcamento: row.status_orcamento,
+  }
+}
+
+const COLUNAS_VERSAO_POR_TOKEN = [
+  'v.id as versao_id',
+  'v.orcamento_id as orcamento_id',
+  'o.tenant_id as tenant_id',
+  'o.numero as numero',
+  'v.versao as versao',
+  'v.pdf_hash as pdf_hash',
+  'v.token_publico as token_publico',
+  'v.expira_em as expira_em',
+  'o.status as status_orcamento',
+] as const
 
 const COLUNAS_VERSAO = [
   'id',
@@ -204,6 +271,36 @@ export function criarOrcamentoVersaoRepository(deps: {
 
         return mapRowVersao(row as OrcamentoVersaoRow)
       })
+    },
+
+    async buscarPorToken(token: string): Promise<VersaoPorToken | null> {
+      const row = await db
+        .selectFrom('orcamento_versoes as v')
+        .innerJoin('orcamentos as o', 'o.id', 'v.orcamento_id')
+        .select(COLUNAS_VERSAO_POR_TOKEN)
+        .where('v.token_publico', '=', token)
+        .executeTakeFirst()
+
+      if (!row) return null
+      return mapRowVersaoPorToken(row as unknown as VersaoPorTokenRow)
+    },
+
+    async buscarVersaoAtualPorOrcamento(
+      tenantId: string,
+      orcamentoId: string,
+    ): Promise<VersaoPorToken | null> {
+      const row = await db
+        .selectFrom('orcamento_versoes as v')
+        .innerJoin('orcamentos as o', 'o.id', 'v.orcamento_id')
+        .select(COLUNAS_VERSAO_POR_TOKEN)
+        .where('v.orcamento_id', '=', orcamentoId)
+        .where('o.tenant_id', '=', tenantId)
+        .orderBy('v.versao', 'desc')
+        .limit(1)
+        .executeTakeFirst()
+
+      if (!row) return null
+      return mapRowVersaoPorToken(row as unknown as VersaoPorTokenRow)
     },
   }
 }

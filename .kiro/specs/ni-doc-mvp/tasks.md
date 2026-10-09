@@ -268,7 +268,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
 
 ### Fase 9 — Aceite e Aprovação
 
-- [~] 41. Serviço de aceite
+- [x] 41. Serviço de aceite
   - Criar `backend/src/services/aceite.service.ts` e testes
   - Testes: `aprovarViaCliente` valida token, registra IP/UA/hash/método, muda status, rejeita expirado/duplicado; `aceiteManual` exige justificativa e registra operador; gera comprovante PDF
   - DoD: evidências registradas, comprovante gerado, auditoria

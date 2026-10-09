@@ -6,6 +6,39 @@ import { validarTokenPublico } from '../../lib/token.js'
 import type { Kysely } from 'kysely'
 import type { Database } from '../../types/database.js'
 
+// Builder fluente de SELECT com join (buscarPorToken / buscarVersaoAtualPorOrcamento).
+function makeSelectJoinBuilder(result: unknown) {
+  const builder = {
+    innerJoin: vi.fn(),
+    select: vi.fn(),
+    where: vi.fn(),
+    orderBy: vi.fn(),
+    limit: vi.fn(),
+    executeTakeFirst: vi.fn().mockResolvedValue(result),
+  }
+  builder.innerJoin.mockReturnValue(builder)
+  builder.select.mockReturnValue(builder)
+  builder.where.mockReturnValue(builder)
+  builder.orderBy.mockReturnValue(builder)
+  builder.limit.mockReturnValue(builder)
+  return builder
+}
+
+function versaoPorTokenRow(overrides: Record<string, unknown> = {}) {
+  return {
+    versao_id: 'versao-1',
+    orcamento_id: 'orc-1',
+    tenant_id: 'tenant-1',
+    numero: 'ORC-2026-0001',
+    versao: 1,
+    pdf_hash: 'a'.repeat(64),
+    token_publico: 'uuid.hmac',
+    expira_em: null,
+    status_orcamento: 'enviado',
+    ...overrides,
+  }
+}
+
 // -----------------------------------------------------------------------------
 // Testes 100% mock-based (mesma convenção de orcamento.repository.test.ts): não
 // sobe Postgres. "Isolamento de tenant" e versionamento sequencial são
@@ -343,5 +376,79 @@ describe('OrcamentoVersaoRepository', () => {
     expect(versao.templateId).toBe('template-7')
     expect(versao.pdfPath).toBeNull()
     expect(versao.pdfHash).toBeNull()
+  })
+
+  describe('buscarPorToken()', () => {
+    it('retorna VersaoPorToken (join com orcamentos) filtrando pelo token', async () => {
+      const selectBuilder = makeSelectJoinBuilder(versaoPorTokenRow())
+      const db = {
+        selectFrom: vi.fn().mockReturnValue(selectBuilder),
+      } as unknown as Kysely<Database>
+
+      const repo = criarOrcamentoVersaoRepository({ db })
+      const versao = await repo.buscarPorToken('uuid.hmac')
+
+      expect(db.selectFrom).toHaveBeenCalledWith('orcamento_versoes as v')
+      expect(selectBuilder.innerJoin).toHaveBeenCalledWith(
+        'orcamentos as o',
+        'o.id',
+        'v.orcamento_id',
+      )
+      expect(selectBuilder.where).toHaveBeenCalledWith('v.token_publico', '=', 'uuid.hmac')
+      expect(versao).toEqual({
+        versaoId: 'versao-1',
+        orcamentoId: 'orc-1',
+        tenantId: 'tenant-1',
+        numero: 'ORC-2026-0001',
+        versao: 1,
+        pdfHash: 'a'.repeat(64),
+        tokenPublico: 'uuid.hmac',
+        expiraEm: null,
+        statusOrcamento: 'enviado',
+      })
+    })
+
+    it('retorna null quando o token não existe', async () => {
+      const selectBuilder = makeSelectJoinBuilder(undefined)
+      const db = {
+        selectFrom: vi.fn().mockReturnValue(selectBuilder),
+      } as unknown as Kysely<Database>
+
+      const repo = criarOrcamentoVersaoRepository({ db })
+      const versao = await repo.buscarPorToken('inexistente')
+
+      expect(versao).toBeNull()
+    })
+  })
+
+  describe('buscarVersaoAtualPorOrcamento()', () => {
+    it('retorna a versão de maior número do orçamento (filtrando por tenant)', async () => {
+      const selectBuilder = makeSelectJoinBuilder(versaoPorTokenRow({ versao: 3 }))
+      const db = {
+        selectFrom: vi.fn().mockReturnValue(selectBuilder),
+      } as unknown as Kysely<Database>
+
+      const repo = criarOrcamentoVersaoRepository({ db })
+      const versao = await repo.buscarVersaoAtualPorOrcamento('tenant-1', 'orc-1')
+
+      expect(selectBuilder.where).toHaveBeenCalledWith('v.orcamento_id', '=', 'orc-1')
+      expect(selectBuilder.where).toHaveBeenCalledWith('o.tenant_id', '=', 'tenant-1')
+      expect(selectBuilder.orderBy).toHaveBeenCalledWith('v.versao', 'desc')
+      expect(selectBuilder.limit).toHaveBeenCalledWith(1)
+      expect(versao?.versao).toBe(3)
+      expect(versao?.orcamentoId).toBe('orc-1')
+    })
+
+    it('retorna null quando o orçamento não tem versão enviada', async () => {
+      const selectBuilder = makeSelectJoinBuilder(undefined)
+      const db = {
+        selectFrom: vi.fn().mockReturnValue(selectBuilder),
+      } as unknown as Kysely<Database>
+
+      const repo = criarOrcamentoVersaoRepository({ db })
+      const versao = await repo.buscarVersaoAtualPorOrcamento('tenant-1', 'orc-1')
+
+      expect(versao).toBeNull()
+    })
   })
 })
