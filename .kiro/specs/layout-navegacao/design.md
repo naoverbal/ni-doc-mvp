@@ -84,6 +84,43 @@ As páginas (`OrcamentoLista`, `Login`, etc.) **já renderizam seu próprio
 - `<header>` e `<nav>` vivem no layout; `<main>` vive na página. Há exatamente
   um de cada por tela renderizada.
 
+### Skip link e o alvo `#conteudo` (RF-L01.6/7, WCAG 2.4.1)
+
+O `LayoutApp` renderiza, como primeiro elemento focável (antes do `<header>`),
+um link "Pular para o conteúdo":
+
+```tsx
+<a className="skip-link" href="#conteudo">Pular para o conteúdo</a>
+```
+
+Como o `<main>` vive nas páginas, o alvo precisa ser estável: as páginas da área
+logada expõem `<main id="conteudo">`. No MVP a área logada envolve `Dashboard`,
+`OrcamentoLista`, `OrcamentoEditor` e `TemplateEditor` — todas devem receber
+`id="conteudo"` no seu `<main>`. O `.skip-link` fica fora da tela por padrão e
+visível ao receber foco (`:focus`/`:focus-visible`), nunca com `display:none`
+(que o removeria da ordem de foco).
+
+### Logout resiliente a erro (RF-L02.5)
+
+O `useLogout` atual limpa o estado apenas no `onSuccess`. Para que uma falha de
+rede não prenda o usuário na sessão, o `BotaoLogout` trata o erro no componente:
+
+```tsx
+async function sair() {
+  try {
+    await logout.mutateAsync()
+  } finally {
+    // limpa o estado local e sai, independentemente do resultado da rede
+    limpar()                 // useAuthStore().limpar
+    navigate('/login', { replace: true })
+  }
+}
+```
+
+Alternativa equivalente: mover a limpeza para `onSettled` no `useLogout`. A
+decisão de design é garantir, no caminho de UI, que o redirecionamento e a
+limpeza aconteçam mesmo em erro. Testar os dois caminhos (sucesso e erro).
+
 ### Componente `NavPrincipal`
 
 Arquivo: `src/components/NavPrincipal.tsx` (ou interno ao `LayoutApp`).
@@ -156,13 +193,14 @@ Introduzir o primeiro CSS do projeto:
   - A meta viewport (`width=device-width, initial-scale=1`) já existe no
     `index.html`; confirmar e preservar.
 
-Breakpoints sugeridos (documentar no topo do CSS):
+Breakpoints oficiais (RF-L06.1 — documentar no topo do CSS; usados no CSS e nos
+testes sem divergência):
 
-| Faixa   | Largura        | Estratégia                                  |
-| ------- | -------------- | ------------------------------------------- |
-| mobile  | ≥ 320 px       | base (mobile-first); header/nav empilhados  |
-| tablet  | ≥ 600 px       | header em linha; mais espaçamento           |
-| desktop | ≥ 1024 px      | largura de conteúdo máxima + margens        |
+| Faixa   | Largura         | Media query          | Estratégia                                  |
+| ------- | --------------- | -------------------- | ------------------------------------------- |
+| mobile  | 320–599 px      | base (sem query)     | mobile-first; header/nav empilhados         |
+| tablet  | 600–1023 px     | `min-width: 600px`   | header em linha; mais espaçamento           |
+| desktop | ≥ 1024 px       | `min-width: 1024px`  | largura de conteúdo máxima + margens        |
 - Classes utilitárias mínimas conforme necessário; sem framework de CSS.
 - Paleta e contrastes documentados no topo do arquivo para revisão
   (a verificação final de contraste é manual/ferramenta, mas as escolhas ficam
