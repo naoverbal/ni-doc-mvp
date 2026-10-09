@@ -308,14 +308,14 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: lista carrega e navegação para o editor funciona; status perceptível sem depender de cor; `eslint-plugin-jsx-a11y` sem avisos
   - _Requirements: RF-005_
 
-- [ ] 47. Editor de orçamento
+- [x] 47. Editor de orçamento
   - Criar `frontend/src/pages/OrcamentoEditor.tsx`, `components/ItemOrcamentoRow.tsx`, `components/Autocomplete.tsx`
   - Form com cliente (autocomplete), título, descrição; itens editáveis; cálculo em tempo real; autocomplete de responsável; salvar rascunho
   - Acessibilidade (WCAG AA): todo campo com `<label>` associado; agrupar itens/seções em `<fieldset>` com `<legend>`; erros do Zod via `aria-describedby` + `aria-invalid`; `Autocomplete` com padrão combobox (`role`, `aria-expanded`, `aria-activedescendant`), navegável por teclado (setas/Enter/Esc) e seleção anunciada; total recalculado anunciado via `aria-live="polite"`
   - DoD: criar/editar/salvar funcionam, cálculos em tempo real, validação; autocomplete operável por teclado; `eslint-plugin-jsx-a11y` sem avisos
   - _Requirements: RF-005, RF-006, RF-007_
 
-- [ ] 48. Envio e versionamento (frontend)
+- [x] 48. Envio e versionamento (frontend)
   - Adicionar botão "Enviar" em `OrcamentoEditor.tsx`
   - Modal de confirmação; `POST /api/orcamentos/:id/enviar`; exibir link público; listar versões
   - Acessibilidade (WCAG AA): modal com `role="dialog"` + `aria-modal`, foco movido para dentro ao abrir, foco preso no diálogo (focus trap), `Esc` fecha e foco retorna ao gatilho; link público com texto autoexplicativo (não "clique aqui") e botão de copiar com `aria-label`; confirmação de envio anunciada via `aria-live`

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node --watch --loader ts-node/esm src/server.ts",
+    "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "lint": "eslint src",
     "format": "prettier --write src",

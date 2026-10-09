@@ -2,10 +2,13 @@ import express from 'express'
 import helmet from 'helmet'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
-// pino-http has CJS/ESM interop issues with Node16 module resolution — use require-style cast
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pinoHttp = require('pino-http') as typeof import('pino-http').default
+// pino-http é CJS: sob moduleResolution Node16 o default não é tipado como
+// callable. Importa o namespace e usa o export nomeado `pinoHttp` (presente
+// tanto nos tipos quanto no objeto exportado em runtime).
+import * as pinoHttpModule from 'pino-http'
 import { env } from './config/env.js'
+
+const pinoHttp = pinoHttpModule.pinoHttp
 import { errorHandler } from './middlewares/error-handler.js'
 import { criarAuthRouter } from './routes/auth.routes.js'
 import { criarClientesRouter } from './routes/clientes.routes.js'

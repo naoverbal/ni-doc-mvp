@@ -36,3 +36,61 @@ export function useExcluirOrcamento() {
     },
   })
 }
+
+// Busca um orçamento por id (GET /orcamentos/:id), com itens. Habilitado apenas
+// quando há um id (modo edição). Usado para pré-preencher o editor.
+export function useOrcamento(id: string | undefined) {
+  return useQuery<import('@/types/api').OrcamentoComItens, ApiError>({
+    queryKey: [...CHAVE_ORCAMENTOS, 'detalhe', id],
+    queryFn: () => api.get(`/orcamentos/${id}`),
+    enabled: Boolean(id),
+  })
+}
+
+// Cria um orçamento (POST /orcamentos). Em sucesso, invalida a lista.
+export function useCriarOrcamento() {
+  const queryClient = useQueryClient()
+
+  return useMutation<
+    import('@/types/api').OrcamentoComItens,
+    ApiError,
+    import('@/types/api').SalvarOrcamentoPayload
+  >({
+    mutationFn: (payload) => api.post('/orcamentos', payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CHAVE_ORCAMENTOS })
+    },
+  })
+}
+
+// Atualiza um orçamento rascunho (PUT /orcamentos/:id). Em sucesso, invalida a
+// lista e o detalhe.
+export function useAtualizarOrcamento(id: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation<
+    import('@/types/api').OrcamentoComItens,
+    ApiError,
+    import('@/types/api').SalvarOrcamentoPayload
+  >({
+    mutationFn: (payload) => api.put(`/orcamentos/${id}`, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CHAVE_ORCAMENTOS })
+    },
+  })
+}
+
+// Envia e versiona um orçamento rascunho (POST /orcamentos/:id/enviar). O
+// backend cria uma versão imutável, gera o token público e muda o status para
+// `enviado` (409 se não for rascunho, 400 se estiver vazio). Em sucesso,
+// invalida a lista e o detalhe para refletir o novo status e a versão atual.
+export function useEnviarOrcamento(id: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation<import('@/types/api').VersaoEnviada, ApiError, void>({
+    mutationFn: () => api.post(`/orcamentos/${id}/enviar`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CHAVE_ORCAMENTOS })
+    },
+  })
+}
