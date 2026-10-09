@@ -7,6 +7,7 @@ import type {
   CriarOrcamentoDados,
 } from '../services/orcamento.service.js'
 import type { VersionamentoService } from '../services/versionamento.service.js'
+import type { AceiteService } from '../services/aceite.service.js'
 import {
   STATUS_ORCAMENTO,
   type AtualizarOrcamentoInput,
@@ -16,8 +17,10 @@ import {
 import {
   criarOrcamentoSchema,
   atualizarOrcamentoSchema,
+  aceiteManualSchema,
   type CriarOrcamentoPayload,
   type AtualizarOrcamentoPayload,
+  type AceiteManualPayload,
 } from '../schemas/orcamento.schema.js'
 import { validate } from '../middlewares/validate.js'
 import { criarMiddlewareAuth } from '../middlewares/auth.js'
@@ -26,6 +29,7 @@ import { AppError } from '../errors/app-error.js'
 export function criarOrcamentosRouter(
   orcamentoService: OrcamentoService,
   versionamentoService: VersionamentoService,
+  aceiteService: AceiteService,
   authService: AuthService,
 ): Router {
   const router = Router()
@@ -133,6 +137,31 @@ export function criarOrcamentosRouter(
       next(err)
     }
   })
+
+  // POST /api/orcamentos/:id/aceite-manual — registra aceite manual pelo operador
+  // (RF-020). Exige justificativa (Zod), registra o operador (req.usuario) como
+  // responsável e muda o status para `aprovado`. 400/404/409 vêm do service.
+  router.post(
+    '/:id/aceite-manual',
+    validate(aceiteManualSchema),
+    async (req, res, next) => {
+      try {
+        const { justificativa } = req.body as AceiteManualPayload
+        const id = req.params['id'] as string
+        const aceite = await aceiteService.aceiteManual({
+          tenantId: req.usuario.tenantId,
+          orcamentoId: id,
+          usuarioId: req.usuario.id,
+          justificativa,
+          ip: req.ip ?? undefined,
+          userAgent: req.headers['user-agent'] ?? undefined,
+        })
+        res.status(201).json(aceite)
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
 
   // GET /api/orcamentos/:id — busca por id (com itens).
   router.get('/:id', async (req, res, next) => {

@@ -48,3 +48,15 @@ export const atualizarOrcamentoSchema = z.object({
 })
 
 export type AtualizarOrcamentoPayload = z.infer<typeof atualizarOrcamentoSchema>
+
+// Aceite manual (RF-020): o operador registra que o cliente aprovou por outro
+// canal. A justificativa é OBRIGATÓRIA (RF-020.1); `.trim()` evita só espaços.
+// `.strict()` recusa campos extras. A semântica (registrar operador, mudar
+// status para `aprovado`) vive no service de aceite.
+export const aceiteManualSchema = z
+  .object({
+    justificativa: z.string().trim().min(1).max(2000),
+  })
+  .strict()
+
+export type AceiteManualPayload = z.infer<typeof aceiteManualSchema>

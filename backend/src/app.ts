@@ -106,16 +106,12 @@ export function criarApp(): express.Express {
     htmlRenderer,
     templateRepo,
   })
-  app.use(
-    '/api/orcamentos',
-    criarOrcamentosRouter(orcamentoService, versionamentoService, authService),
-  )
-
   // Template routes
   const templateService = criarTemplateService({ templateRepo, auditoriaService })
   app.use('/api/templates', criarTemplatesRouter(templateService, authService))
 
-  // Rotas públicas (sem auth): visualização e aceite via token público.
+  // Serviço de aceite (compartilhado entre a rota autenticada de aceite manual e
+  // as rotas públicas de aprovação/reprovação via token).
   const aceiteRepo = criarOrcamentoAceiteRepository({ db })
   const aceiteService = criarAceiteService({
     orcamentoVersaoRepo,
@@ -125,6 +121,14 @@ export function criarApp(): express.Express {
     pdfService,
     htmlRenderer,
   })
+
+  // Orçamento routes (dependem do aceiteService para o aceite manual).
+  app.use(
+    '/api/orcamentos',
+    criarOrcamentosRouter(orcamentoService, versionamentoService, aceiteService, authService),
+  )
+
+  // Rotas públicas (sem auth): visualização e aceite via token público.
   app.use('/api/publico', criarPublicoRouter(aceiteService))
 
   // Error handler deve ser o último middleware

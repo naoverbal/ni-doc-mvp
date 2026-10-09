@@ -280,7 +280,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: rotas sem auth, com rate limiting
   - _Requirements: RF-019_
 
-- [ ] 43. Rota de aceite manual
+- [x] 43. Rota de aceite manual
   - Adicionar `POST /:id/aceite-manual` em `orcamentos.routes.ts` e testes
   - Testes: exige justificativa; registra operador; muda status para `aprovado`
   - _Requirements: RF-020_
