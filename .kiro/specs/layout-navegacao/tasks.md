@@ -27,7 +27,7 @@ conforme a convenção do workspace.
     e breakpoints anotados para revisão
   - _Requisitos: RF-L05, RF-L06_
 
-- [~] 2. Componente de layout da área logada (`LayoutApp`)
+- [x] 2. Componente de layout da área logada (`LayoutApp`)
   - Criar `frontend/src/components/LayoutApp.tsx` com, nesta ordem: skip link
     "Pular para o conteúdo" (`href="#conteudo"`) como primeiro elemento focável,
     `<header>` (marca + `<NavPrincipal>` + nome do usuário + botão "Sair") e
