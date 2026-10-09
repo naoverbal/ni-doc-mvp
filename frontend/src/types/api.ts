@@ -253,3 +253,95 @@ export interface TemplatePublico {
 export interface SalvarTemplatePayload {
   layoutJson: LayoutTemplate
 }
+
+// -----------------------------------------------------------------------------
+// Página pública de aprovação (RF-019). Espelha os tipos públicos do backend
+// (aceite.service: VisualizacaoPublica e AceiteRegistrado). O cliente final
+// acessa via link com token (uuid.hmac); o token é a credencial, sem sessão.
+// -----------------------------------------------------------------------------
+
+// Resposta de GET /publico/orcamento/:token. O `snapshot` é o JSONB imutável do
+// orçamento no momento da emissão (snake_case, ver OrcamentoSnapshot no backend);
+// tipamos aqui apenas os campos que a UI exibe em modo leitura. `integro` indica
+// que há um documento oficial (pdf_hash) emitido e verificável (RF-019.2).
+// `pdfUrl` é a URL relativa do PDF público (null quando não há PDF).
+export interface SnapshotPublicoResponsavel {
+  id: string
+  nome: string
+  registro_profissional: string | null
+}
+
+export interface SnapshotPublicoItem {
+  ordem: number
+  nome: string
+  descricao: string | null
+  quantidade: number
+  unidade: string
+  valor_unitario: number
+  desconto_tipo: DescontoTipo | null
+  desconto_valor: number | null
+  total: number
+  responsavel: SnapshotPublicoResponsavel | null
+}
+
+export interface SnapshotPublicoCliente {
+  id: string
+  nome: string
+  tipo_pessoa: TipoPessoa
+  documento: string
+  email: string | null
+  telefone: string | null
+  endereco: string | null
+}
+
+export interface SnapshotPublicoEmpresa {
+  id: string
+  razao_social: string
+  nome_fantasia: string | null
+  cnpj: string | null
+  endereco: string | null
+}
+
+export interface SnapshotPublicoDescontoGlobal {
+  tipo: DescontoTipo
+  valor: number
+}
+
+export interface OrcamentoSnapshotPublico {
+  cliente: SnapshotPublicoCliente
+  empresa_cliente: SnapshotPublicoEmpresa | null
+  itens: SnapshotPublicoItem[]
+  desconto_global: SnapshotPublicoDescontoGlobal | null
+  subtotal: number
+  total: number
+  condicoes_pagamento: string | null
+  observacoes: string | null
+  data_emissao: string
+  validade_dias: number
+}
+
+export interface VisualizacaoPublica {
+  numero: string
+  versao: number
+  snapshot: OrcamentoSnapshotPublico
+  integro: boolean
+  pdfUrl: string | null
+}
+
+// Resposta de POST /publico/orcamento/:token/aprovar e .../reprovar. Espelha
+// AceiteRegistrado do backend; `criadoEm` chega como string ISO no JSON.
+export interface AceiteRegistradoPublico {
+  id: string
+  versaoId: string
+  orcamentoId: string
+  metodo: 'cliente' | 'operador'
+  hashDocumento: string
+  comprovantePdfPath: string | null
+  comprovantePdfHash: string | null
+  criadoEm: string
+}
+
+// Payload de POST /publico/orcamento/:token/reprovar (justificativa opcional).
+export interface ReprovarPublicoPayload {
+  justificativa?: string
+}
