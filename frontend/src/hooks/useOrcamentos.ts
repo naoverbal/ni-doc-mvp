@@ -79,3 +79,18 @@ export function useAtualizarOrcamento(id: string) {
     },
   })
 }
+
+// Envia e versiona um orçamento rascunho (POST /orcamentos/:id/enviar). O
+// backend cria uma versão imutável, gera o token público e muda o status para
+// `enviado` (409 se não for rascunho, 400 se estiver vazio). Em sucesso,
+// invalida a lista e o detalhe para refletir o novo status e a versão atual.
+export function useEnviarOrcamento(id: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation<import('@/types/api').VersaoEnviada, ApiError, void>({
+    mutationFn: () => api.post(`/orcamentos/${id}/enviar`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CHAVE_ORCAMENTOS })
+    },
+  })
+}

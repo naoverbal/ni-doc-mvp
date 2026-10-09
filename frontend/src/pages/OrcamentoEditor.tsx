@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type ReactElement } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { z } from 'zod'
 import type {
@@ -6,12 +6,26 @@ import type {
   DescontoTipo,
   OrcamentoItemPayload,
   SalvarOrcamentoPayload,
+  VersaoEnviada,
 } from '@/types/api'
 import { calcularSubtotal, calcularTotal } from '@/lib/orcamento-calculo'
-import { useAtualizarOrcamento, useCriarOrcamento, useOrcamento } from '@/hooks/useOrcamentos'
+import {
+  useAtualizarOrcamento,
+  useCriarOrcamento,
+  useEnviarOrcamento,
+  useOrcamento,
+} from '@/hooks/useOrcamentos'
 import { useBuscarClientes } from '@/hooks/useReferencias'
 import { Autocomplete, type OpcaoAutocomplete } from '@/components/Autocomplete'
 import { ItemOrcamentoRow, type ItemFormulario } from '@/components/ItemOrcamentoRow'
+import { ModalConfirmacao } from '@/components/ModalConfirmacao'
+
+// Monta a URL pública absoluta de aceite a partir do token da versão. A rota
+// pública da SPA é /publico/orcamento/:token (ver App.tsx).
+function urlPublica(token: string): string {
+  const base = typeof window !== 'undefined' ? window.location.origin : ''
+  return `${base}/publico/orcamento/${token}`
+}
 
 function formatarMoeda(valor: number): string {
   return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -75,10 +89,20 @@ export function OrcamentoEditor(): ReactElement {
   const [itens, setItens] = useState<ItemFormulario[]>([itemVazio()])
   const [erros, setErros] = useState<ErrosFormulario>({})
 
+  // Estado de envio/versionamento (RF-008). As versões enviadas na sessão são
+  // acumuladas para listagem; a confirmação é anunciada via aria-live.
+  const [modalEnvioAberto, setModalEnvioAberto] = useState(false)
+  const [versoes, setVersoes] = useState<VersaoEnviada[]>([])
+  const [mensagemEnvio, setMensagemEnvio] = useState('')
+  const [erroEnvio, setErroEnvio] = useState('')
+  const [linkCopiado, setLinkCopiado] = useState(false)
+  const botaoEnviarRef = useRef<HTMLButtonElement>(null)
+
   const { data: clientes = [], isLoading: carregandoClientes } = useBuscarClientes(termoCliente)
   const { data: orcamento } = useOrcamento(id)
   const criar = useCriarOrcamento()
   const atualizar = useAtualizarOrcamento(id ?? '')
+  const enviar = useEnviarOrcamento(id ?? '')
 
   // Pré-preenche o formulário em modo edição quando o orçamento carrega.
   useEffect(() => {
@@ -203,6 +227,36 @@ export function OrcamentoEditor(): ReactElement {
   }
 
   const salvando = criar.isPending || atualizar.isPending
+
+  // Envia o orçamento (POST /orcamentos/:id/enviar). Em sucesso, fecha o modal,
+  // acumula a versão criada, anuncia a confirmação e devolve o foco ao gatilho.
+  async function confirmarEnvio(): Promise<void> {
+    setErroEnvio('')
+    try {
+      const versao = await enviar.mutateAsync()
+      setVersoes((atual) => [...atual, versao])
+      setMensagemEnvio(`Orçamento enviado. Versão ${versao.versao} criada.`)
+      setLinkCopiado(false)
+      setModalEnvioAberto(false)
+    } catch {
+      setErroEnvio('Não foi possível enviar o orçamento. Tente novamente.')
+      setModalEnvioAberto(false)
+    }
+  }
+
+  // Copia o link público para a área de transferência, quando disponível.
+  async function copiarLink(token: string): Promise<void> {
+    try {
+      await navigator.clipboard?.writeText(urlPublica(token))
+      setLinkCopiado(true)
+    } catch {
+      setLinkCopiado(false)
+    }
+  }
+
+  // O botão Enviar só faz sentido para um rascunho já persistido (modo edição).
+  const podeEnviar = edicao && orcamento?.status === 'rascunho'
+  const ultimaVersao = versoes.at(-1)
 
   return (
     <main>
@@ -334,7 +388,78 @@ export function OrcamentoEditor(): ReactElement {
         <button type="submit" disabled={salvando}>
           {salvando ? 'Salvando…' : 'Salvar rascunho'}
         </button>
+
+        {podeEnviar && (
+          <button
+            type="button"
+            ref={botaoEnviarRef}
+            onClick={() => {
+              setErroEnvio('')
+              setModalEnvioAberto(true)
+            }}
+          >
+            Enviar
+          </button>
+        )}
       </form>
+
+      {/* Erro de envio: anunciado imediatamente por leitores de tela. */}
+      {erroEnvio && (
+        <p role="alert" aria-live="assertive">
+          {erroEnvio}
+        </p>
+      )}
+
+      {/* Confirmação de envio anunciada sem roubar o foco. */}
+      <p role="status" aria-live="polite" aria-label="Status do envio">
+        {mensagemEnvio}
+      </p>
+
+      {modalEnvioAberto && (
+        <ModalConfirmacao
+          titulo="Enviar orçamento"
+          descricao="Ao enviar, uma versão imutável é criada e o orçamento não poderá mais ser editado. Deseja continuar?"
+          rotuloConfirmar="Enviar"
+          rotuloCancelar="Cancelar"
+          confirmando={enviar.isPending}
+          elementoGatilho={botaoEnviarRef}
+          aoConfirmar={() => void confirmarEnvio()}
+          aoCancelar={() => setModalEnvioAberto(false)}
+        />
+      )}
+
+      {/* Link público da última versão enviada e lista de versões da sessão. */}
+      {ultimaVersao && (
+        <section aria-label="Orçamento enviado">
+          <h2>Link público de aceite</h2>
+          <p>
+            <a href={urlPublica(ultimaVersao.tokenPublico)}>
+              Abrir orçamento {ultimaVersao.versao > 0 ? `(versão ${ultimaVersao.versao})` : ''}{' '}
+              para aceite
+            </a>
+          </p>
+          <button
+            type="button"
+            aria-label="Copiar link público do orçamento"
+            onClick={() => void copiarLink(ultimaVersao.tokenPublico)}
+          >
+            Copiar link
+          </button>
+          <span role="status" aria-live="polite">
+            {linkCopiado ? 'Link copiado para a área de transferência.' : ''}
+          </span>
+
+          <h2 id="titulo-versoes">Versões</h2>
+          <ul aria-labelledby="titulo-versoes">
+            {versoes.map((versao) => (
+              <li key={versao.id}>
+                Versão {versao.versao} — enviada em{' '}
+                {new Date(versao.enviadoEm).toLocaleString('pt-BR')}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </main>
   )
 }

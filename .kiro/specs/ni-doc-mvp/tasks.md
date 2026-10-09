@@ -315,7 +315,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: criar/editar/salvar funcionam, cálculos em tempo real, validação; autocomplete operável por teclado; `eslint-plugin-jsx-a11y` sem avisos
   - _Requirements: RF-005, RF-006, RF-007_
 
-- [ ] 48. Envio e versionamento (frontend)
+- [x] 48. Envio e versionamento (frontend)
   - Adicionar botão "Enviar" em `OrcamentoEditor.tsx`
   - Modal de confirmação; `POST /api/orcamentos/:id/enviar`; exibir link público; listar versões
   - Acessibilidade (WCAG AA): modal com `role="dialog"` + `aria-modal`, foco movido para dentro ao abrir, foco preso no diálogo (focus trap), `Esc` fecha e foco retorna ao gatilho; link público com texto autoexplicativo (não "clique aqui") e botão de copiar com `aria-label`; confirmação de envio anunciada via `aria-live`

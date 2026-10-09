@@ -145,3 +145,22 @@ export interface SalvarOrcamentoPayload {
   descontoGlobalValor?: number
   itens: OrcamentoItemPayload[]
 }
+
+// -----------------------------------------------------------------------------
+// Versão enviada (POST /orcamentos/:id/enviar). Espelha VersaoEnviada do backend
+// (versionamento.service). O envio transforma um rascunho em versão imutável e
+// retorna a versão criada, com o token público usado para montar o link de
+// aceite. Datas chegam como string ISO no JSON.
+// -----------------------------------------------------------------------------
+
+export interface VersaoEnviada {
+  id: string
+  orcamentoId: string
+  versao: number
+  tokenPublico: string
+  templateId: string
+  pdfPath: string | null
+  pdfHash: string | null
+  enviadoEm: string
+  expiraEm: string | null
+}

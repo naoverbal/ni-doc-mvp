@@ -5,7 +5,7 @@ import type { ReactElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { OrcamentoEditor } from '@/pages/OrcamentoEditor'
-import type { ClienteResumo, OrcamentoComItens } from '@/types/api'
+import type { ClienteResumo, OrcamentoComItens, VersaoEnviada } from '@/types/api'
 
 vi.mock('@/services/api', async () => {
   const real = await vi.importActual<typeof import('@/services/api')>('@/services/api')
@@ -199,5 +199,134 @@ describe('OrcamentoEditor', () => {
         expect.objectContaining({ titulo: 'Reforma', clienteId: 'cli-1' }),
       ),
     )
+  })
+
+  // ---------------------------------------------------------------------------
+  // Envio e versionamento (RF-008) — tarefa 48.
+  // ---------------------------------------------------------------------------
+
+  const rascunho: OrcamentoComItens = {
+    id: 'orc-1',
+    tenantId: 't1',
+    numero: 'ORC-2025-0001',
+    clienteId: 'cli-1',
+    empresaClienteId: null,
+    usuarioId: 'u1',
+    titulo: 'Reforma',
+    descricao: null,
+    status: 'rascunho',
+    dataEmissao: '2025-01-10',
+    validadeDias: 30,
+    descontoGlobalTipo: null,
+    descontoGlobalValor: null,
+    subtotal: 200,
+    total: 200,
+    versaoAtual: 0,
+    observacoes: null,
+    condicoesPagamento: null,
+    criadoEm: '2025-01-10T12:00:00.000Z',
+    atualizadoEm: '2025-01-10T12:00:00.000Z',
+    itens: [
+      {
+        id: 'it-1',
+        ordem: 1,
+        nome: 'Serviço A',
+        descricao: null,
+        quantidade: 2,
+        unidade: 'un',
+        valorUnitario: 100,
+        descontoTipo: null,
+        descontoValor: null,
+        total: 200,
+        responsavelId: null,
+      },
+    ],
+  }
+
+  const versaoEnviada: VersaoEnviada = {
+    id: 'versao-1',
+    orcamentoId: 'orc-1',
+    versao: 1,
+    tokenPublico: 'uuid.hmac-token',
+    templateId: 'tpl-1',
+    pdfPath: null,
+    pdfHash: null,
+    enviadoEm: '2025-01-10T13:00:00.000Z',
+    expiraEm: null,
+  }
+
+  function mockRascunho(): void {
+    vi.mocked(api.get).mockImplementation((caminho: string) => {
+      if (caminho === '/orcamentos/orc-1') return Promise.resolve(rascunho)
+      return Promise.resolve([])
+    })
+  }
+
+  it('não mostra o botão Enviar ao criar (sem id)', () => {
+    render(renderEditor())
+    expect(screen.queryByRole('button', { name: /^enviar$/i })).not.toBeInTheDocument()
+  })
+
+  it('mostra o botão Enviar para um rascunho em edição', async () => {
+    mockRascunho()
+    render(renderEditor('/orcamentos/orc-1'))
+    expect(await screen.findByRole('button', { name: /^enviar$/i })).toBeInTheDocument()
+  })
+
+  it('abre um modal de confirmação ao clicar em Enviar e cancela sem enviar', async () => {
+    mockRascunho()
+    const usuario = userEvent.setup()
+    render(renderEditor('/orcamentos/orc-1'))
+
+    await usuario.click(await screen.findByRole('button', { name: /^enviar$/i }))
+    const dialogo = screen.getByRole('dialog')
+    expect(dialogo).toHaveAttribute('aria-modal', 'true')
+
+    await usuario.click(within(dialogo).getByRole('button', { name: /cancelar/i }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it('confirma o envio via POST, exibe o link público e lista a versão', async () => {
+    mockRascunho()
+    vi.mocked(api.post).mockResolvedValue(versaoEnviada)
+    const usuario = userEvent.setup()
+    render(renderEditor('/orcamentos/orc-1'))
+
+    await usuario.click(await screen.findByRole('button', { name: /^enviar$/i }))
+    const dialogo = screen.getByRole('dialog')
+    await usuario.click(within(dialogo).getByRole('button', { name: /^enviar$/i }))
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/orcamentos/orc-1/enviar'))
+
+    // Confirmação anunciada via aria-live.
+    const status = await screen.findByRole('status', { name: /envio/i })
+    expect(status).toHaveAttribute('aria-live', 'polite')
+
+    // Link público com texto autoexplicativo (não "clique aqui").
+    const link = await screen.findByRole('link', { name: /orçamento/i })
+    expect(link).toHaveAttribute('href', expect.stringContaining('uuid.hmac-token'))
+    expect(link).not.toHaveAccessibleName(/clique aqui/i)
+
+    // Botão de copiar com aria-label.
+    expect(screen.getByRole('button', { name: /copiar link/i })).toBeInTheDocument()
+
+    // Versão listada.
+    const versoes = screen.getByRole('list', { name: /versões/i })
+    expect(within(versoes).getByText(/versão 1/i)).toBeInTheDocument()
+  })
+
+  it('mostra erro quando o envio falha', async () => {
+    mockRascunho()
+    const { ApiError } = await import('@/services/api')
+    vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Só é possível enviar rascunhos'))
+    const usuario = userEvent.setup()
+    render(renderEditor('/orcamentos/orc-1'))
+
+    await usuario.click(await screen.findByRole('button', { name: /^enviar$/i }))
+    const dialogo = screen.getByRole('dialog')
+    await usuario.click(within(dialogo).getByRole('button', { name: /^enviar$/i }))
+
+    expect(await screen.findByText(/não foi possível enviar/i)).toBeInTheDocument()
   })
 })
