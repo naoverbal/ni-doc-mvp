@@ -329,7 +329,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: editor funcional, template salvo como JSON, nova versão criada; posicionamento operável por teclado; `eslint-plugin-jsx-a11y` sem avisos
   - _Requirements: RF-014_
 
-- [ ] 50. Página pública de aprovação
+- [x] 50. Página pública de aprovação
   - Criar `frontend/src/pages/PublicoOrcamento.tsx`
   - Ler token da URL; `GET /api/publico/orcamento/:token`; PDF embutido; checkbox + Aprovar/Reprovar; confirmação
   - Acessibilidade (WCAG AA): página crítica para clientes finais em qualquer dispositivo — `<main>` com estrutura semântica e `lang="pt-BR"`; PDF embutido com título/alternativa textual e link para abrir/baixar o documento; checkbox com `<label>` associado; botões "Aprovar"/"Reprovar" com nome acessível e contraste ≥ 4.5:1 (não só cor); resultado (sucesso/erro/comprovante) anunciado via `aria-live`; fluxo completo operável por teclado com foco visível
