@@ -322,7 +322,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: envio funciona, versões listadas; modal acessível por teclado com gestão de foco; `eslint-plugin-jsx-a11y` sem avisos
   - _Requirements: RF-008_
 
-- [ ] 49. Editor de template
+- [x] 49. Editor de template
   - Criar `frontend/src/pages/TemplateEditor.tsx`, `components/CanvasA4.tsx`
   - Canvas A4 com drag & drop; upload de PDF de fundo, imagens e fontes; placeholders; área de itens; salvar
   - Acessibilidade (WCAG AA): oferecer alternativa por teclado ao drag & drop (mover/posicionar elementos via teclado), não só mouse; inputs de upload com `<label>` e nome acessível; cada elemento posicionável com nome acessível; não transmitir informação só por cor; foco visível em todos os controles
