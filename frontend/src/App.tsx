@@ -4,6 +4,7 @@ import { PrivateRoute } from '@/routes/PrivateRoute'
 import { PublicRoute } from '@/routes/PublicRoute'
 import { Login } from '@/pages/Login'
 import { Dashboard } from '@/pages/Dashboard'
+import { OrcamentoLista } from '@/pages/OrcamentoLista'
 import { PublicoOrcamento } from '@/pages/PublicoOrcamento'
 import { NaoEncontrado } from '@/pages/NaoEncontrado'
 
@@ -26,6 +27,14 @@ export function App(): ReactElement {
           element={
             <PrivateRoute>
               <Dashboard />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/orcamentos"
+          element={
+            <PrivateRoute>
+              <OrcamentoLista />
             </PrivateRoute>
           }
         />
