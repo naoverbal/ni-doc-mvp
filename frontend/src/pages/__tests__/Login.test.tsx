@@ -4,7 +4,9 @@ import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { FluentProvider } from '@fluentui/react-components'
 import { Login } from '@/pages/Login'
+import { lightTheme } from '@/theme/ni-doc-theme'
 import { useAuthStore } from '@/stores/auth.store'
 import { ApiError } from '@/services/api'
 
@@ -29,14 +31,16 @@ function renderLogin(): ReactElement {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return (
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/login']}>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/dashboard" element={<h1>Painel</h1>} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>
+    <FluentProvider theme={lightTheme}>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/login']}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/dashboard" element={<h1>Painel</h1>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    </FluentProvider>
   )
 }
 

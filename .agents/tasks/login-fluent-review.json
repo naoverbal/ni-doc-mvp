@@ -1,0 +1,8 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    "Tipografia do título vs. steering (não bloqueante): AuthLayout usa Title2 (~20px/base500) para o título 'Entrar'; o steering (seção 2) atribui Hero700 (28px) a 'título de página'. Defensável por ser card compacto, mas vale alinhar com design se telas de auth devem usar Hero700.",
+    "Troca de tema em runtime sem gatilho de UI (informativo, por design): theme.store expõe alternar/definirModo, mas nenhuma affordance de UI a aciona ainda. Correto para o escopo do Login; follow-up quando houver toggle no header/layout."
+  ],
+  "reviewDoc": "/Users/nilson/Dev/ni-doc/.agents/tasks/login-fluent-review.md"
+}

@@ -1,8 +1,19 @@
-import { useId, type ReactElement } from 'react'
+import type { ReactElement } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useLocation, useNavigate, type Location } from 'react-router-dom'
+import {
+  Button,
+  Field,
+  Input,
+  MessageBar,
+  MessageBarBody,
+  Spinner,
+  makeStyles,
+  tokens,
+} from '@fluentui/react-components'
+import { AuthLayout } from '@/components/common/AuthLayout'
 import { useLogin } from '@/hooks/useAuth'
 
 // Validação do formulário no cliente (espelha o schema do backend: e-mail
@@ -21,17 +32,19 @@ interface EstadoRota {
   from?: Location
 }
 
+const useStyles = makeStyles({
+  formulario: {
+    display: 'flex',
+    flexDirection: 'column',
+    rowGap: tokens.spacingVerticalL,
+  },
+})
+
 export function Login(): ReactElement {
   const navigate = useNavigate()
   const location = useLocation()
   const login = useLogin()
-
-  // IDs estáveis para associar label/campo/erro (acessibilidade).
-  const emailId = useId()
-  const emailErroId = useId()
-  const senhaId = useId()
-  const senhaErroId = useId()
-  const erroLoginId = useId()
+  const estilos = useStyles()
 
   const {
     register,
@@ -53,56 +66,47 @@ export function Login(): ReactElement {
     }
   })
 
-  return (
-    <main>
-      <h1>Entrar</h1>
+  const enviando = isSubmitting || login.isPending
 
-      <form onSubmit={aoEnviar} noValidate>
-        {/* Erro de autenticação: anunciado imediatamente por leitores de tela. */}
+  return (
+    <AuthLayout titulo="Entrar">
+      <form onSubmit={aoEnviar} noValidate className={estilos.formulario}>
+        {/* Erro de autenticação: anunciado imediatamente por leitores de tela.
+            O MessageBar do Fluent fixa role="status" (polite); o wrapper com
+            role="alert"/aria-live="assertive" garante o anúncio assertivo. */}
         {login.isError && (
-          <p id={erroLoginId} role="alert" aria-live="assertive">
-            {MENSAGEM_CREDENCIAIS_INVALIDAS}
-          </p>
+          <div role="alert" aria-live="assertive">
+            <MessageBar intent="error">
+              <MessageBarBody>{MENSAGEM_CREDENCIAIS_INVALIDAS}</MessageBarBody>
+            </MessageBar>
+          </div>
         )}
 
-        <div>
-          <label htmlFor={emailId}>E-mail</label>
-          <input
-            id={emailId}
-            type="email"
-            autoComplete="email"
-            aria-invalid={errors.email ? true : undefined}
-            aria-describedby={errors.email ? emailErroId : undefined}
-            {...register('email')}
-          />
-          {errors.email && (
-            <span id={emailErroId} role="alert">
-              {errors.email.message}
-            </span>
-          )}
-        </div>
+        <Field
+          label="E-mail"
+          validationState={errors.email ? 'error' : 'none'}
+          validationMessage={errors.email?.message}
+        >
+          <Input type="email" autoComplete="email" {...register('email')} />
+        </Field>
 
-        <div>
-          <label htmlFor={senhaId}>Senha</label>
-          <input
-            id={senhaId}
-            type="password"
-            autoComplete="current-password"
-            aria-invalid={errors.senha ? true : undefined}
-            aria-describedby={errors.senha ? senhaErroId : undefined}
-            {...register('senha')}
-          />
-          {errors.senha && (
-            <span id={senhaErroId} role="alert">
-              {errors.senha.message}
-            </span>
-          )}
-        </div>
+        <Field
+          label="Senha"
+          validationState={errors.senha ? 'error' : 'none'}
+          validationMessage={errors.senha?.message}
+        >
+          <Input type="password" autoComplete="current-password" {...register('senha')} />
+        </Field>
 
-        <button type="submit" disabled={isSubmitting || login.isPending}>
-          {isSubmitting || login.isPending ? 'Entrando…' : 'Entrar'}
-        </button>
+        <Button
+          appearance="primary"
+          type="submit"
+          disabled={enviando}
+          icon={enviando ? <Spinner size="tiny" /> : undefined}
+        >
+          {enviando ? 'Entrando…' : 'Entrar'}
+        </Button>
       </form>
-    </main>
+    </AuthLayout>
   )
 }

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { FluentProvider } from '@fluentui/react-components'
+import { lightTheme } from '@/theme/ni-doc-theme'
 import { PrivateRoute } from '@/routes/PrivateRoute'
 import { LayoutApp } from '@/components/LayoutApp'
 import { Login } from '@/pages/Login'
@@ -26,22 +28,24 @@ const ADMIN: Usuario = { id: 'u-1', nome: 'Ana Admin', papel: 'admin' }
 // a rota inicial no teste (App usa BrowserRouter em produção).
 function renderRotas(rotaInicial: string): void {
   render(
-    <MemoryRouter initialEntries={[rotaInicial]}>
-      <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/login" element={<Login />} />
-        <Route
-          element={
-            <PrivateRoute>
-              <LayoutApp />
-            </PrivateRoute>
-          }
-        >
-          <Route path="/dashboard" element={<Dashboard />} />
-        </Route>
-        <Route path="*" element={<NaoEncontrado />} />
-      </Routes>
-    </MemoryRouter>,
+    <FluentProvider theme={lightTheme}>
+      <MemoryRouter initialEntries={[rotaInicial]}>
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/login" element={<Login />} />
+          <Route
+            element={
+              <PrivateRoute>
+                <LayoutApp />
+              </PrivateRoute>
+            }
+          >
+            <Route path="/dashboard" element={<Dashboard />} />
+          </Route>
+          <Route path="*" element={<NaoEncontrado />} />
+        </Routes>
+      </MemoryRouter>
+    </FluentProvider>,
   )
 }
 
