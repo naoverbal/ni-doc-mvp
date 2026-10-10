@@ -1,18 +1,28 @@
-import type { ReactElement } from 'react'
+import { useState, type ReactElement } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useLocation, useNavigate, type Location } from 'react-router-dom'
 import {
   Button,
+  Checkbox,
   Field,
   Input,
+  Link,
   MessageBar,
   MessageBarBody,
   Spinner,
+  Text,
   makeStyles,
   tokens,
 } from '@fluentui/react-components'
+import {
+  Document24Regular,
+  Eye24Regular,
+  EyeOff24Regular,
+  LockClosed24Regular,
+  Mail24Regular,
+} from '@fluentui/react-icons'
 import { AuthLayout } from '@/components/common/AuthLayout'
 import { useLogin } from '@/hooks/useAuth'
 
@@ -38,6 +48,43 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     rowGap: tokens.spacingVerticalL,
   },
+  // Topo do card: logo (quadrado com a cor de marca) + nome do produto.
+  topo: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    rowGap: tokens.spacingVerticalS,
+  },
+  logo: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '48px',
+    height: '48px',
+    borderRadius: tokens.borderRadiusLarge,
+    backgroundColor: tokens.colorBrandBackground,
+    color: tokens.colorNeutralForegroundOnBrand,
+  },
+  // Campo da senha envolto para posicionar o link "Esqueceu a senha?" na mesma
+  // linha do label do Field, sem aninhar o link dentro do <label> (o que
+  // quebraria a associação de rótulo e a acessibilidade).
+  campoSenha: {
+    position: 'relative',
+  },
+  linkEsqueceu: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+  },
+  botaoEntrar: {
+    width: '100%',
+  },
+  // Rodapé: pergunta + link de criar conta, centralizado.
+  rodape: {
+    display: 'flex',
+    justifyContent: 'center',
+    columnGap: tokens.spacingHorizontalXS,
+  },
 })
 
 export function Login(): ReactElement {
@@ -45,6 +92,9 @@ export function Login(): ReactElement {
   const location = useLocation()
   const login = useLogin()
   const estilos = useStyles()
+
+  // Estado local do toggle de visibilidade da senha (apenas visual).
+  const [mostrarSenha, setMostrarSenha] = useState(false)
 
   const {
     register,
@@ -68,8 +118,25 @@ export function Login(): ReactElement {
 
   const enviando = isSubmitting || login.isPending
 
+  // Topo do card: usa <div> (não <header>/<nav>) para não introduzir landmark —
+  // o layout da área logada é que detém banner/navigation.
+  const topo = (
+    <div className={estilos.topo}>
+      <span className={estilos.logo} aria-hidden>
+        <Document24Regular />
+      </span>
+      <Text weight="semibold" size={400}>
+        Ni.doc
+      </Text>
+    </div>
+  )
+
   return (
-    <AuthLayout titulo="Entrar">
+    <AuthLayout
+      topo={topo}
+      titulo="Entre na sua conta"
+      subtitulo="Insira seus dados para continuar."
+    >
       <form onSubmit={aoEnviar} noValidate className={estilos.formulario}>
         {/* Erro de autenticação: anunciado imediatamente por leitores de tela.
             O MessageBar do Fluent fixa role="status" (polite); o wrapper com
@@ -87,25 +154,66 @@ export function Login(): ReactElement {
           validationState={errors.email ? 'error' : 'none'}
           validationMessage={errors.email?.message}
         >
-          <Input type="email" autoComplete="email" {...register('email')} />
+          <Input
+            type="email"
+            autoComplete="email"
+            placeholder="voce@exemplo.com"
+            contentBefore={<Mail24Regular aria-hidden />}
+            {...register('email')}
+          />
         </Field>
 
-        <Field
-          label="Senha"
-          validationState={errors.senha ? 'error' : 'none'}
-          validationMessage={errors.senha?.message}
-        >
-          <Input type="password" autoComplete="current-password" {...register('senha')} />
-        </Field>
+        <div className={estilos.campoSenha}>
+          {/* Placeholder: não há fluxo de recuperação de senha no MVP. O link
+              fica fora do <label> para preservar a associação de rótulo. */}
+          <Link as="button" type="button" inline className={estilos.linkEsqueceu}>
+            Esqueceu a senha?
+          </Link>
+          <Field
+            label="Senha"
+            validationState={errors.senha ? 'error' : 'none'}
+            validationMessage={errors.senha?.message}
+          >
+            <Input
+              type={mostrarSenha ? 'text' : 'password'}
+              autoComplete="current-password"
+              placeholder="Digite sua senha"
+              contentBefore={<LockClosed24Regular aria-hidden />}
+              contentAfter={
+                <Button
+                  appearance="transparent"
+                  type="button"
+                  size="small"
+                  icon={mostrarSenha ? <EyeOff24Regular /> : <Eye24Regular />}
+                  aria-label={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                  onClick={() => setMostrarSenha((atual) => !atual)}
+                />
+              }
+              {...register('senha')}
+            />
+          </Field>
+        </div>
+
+        {/* "Lembrar de mim" é apenas visual: não entra no schema nem no submit. */}
+        <Checkbox label="Lembrar de mim" />
 
         <Button
           appearance="primary"
           type="submit"
+          className={estilos.botaoEntrar}
           disabled={enviando}
           icon={enviando ? <Spinner size="tiny" /> : undefined}
         >
           {enviando ? 'Entrando…' : 'Entrar'}
         </Button>
+
+        {/* "Criar conta" é placeholder: não há fluxo de cadastro no MVP. */}
+        <div className={estilos.rodape}>
+          <Text size={200}>Ainda não tem uma conta?</Text>
+          <Link as="button" type="button" inline>
+            Criar conta
+          </Link>
+        </div>
       </form>
     </AuthLayout>
   )
