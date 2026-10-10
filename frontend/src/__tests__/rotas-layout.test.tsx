@@ -21,6 +21,13 @@ vi.mock('@/hooks/useAuth', () => ({
   useLogout: () => ({ mutateAsync: vi.fn().mockResolvedValue(undefined), isPending: false }),
 }))
 
+// O Dashboard real busca todos os orçamentos ao montar; aqui o foco é a
+// estrutura de rotas/layout, então mockamos o hook com uma lista vazia (estado
+// resolvido) para não disparar rede nem exigir um QueryClientProvider.
+vi.mock('@/hooks/useDashboardOrcamentos', () => ({
+  useDashboardOrcamentos: () => ({ data: [], isLoading: false, isError: false }),
+}))
+
 const ADMIN: Usuario = { id: 'u-1', nome: 'Ana Admin', papel: 'admin' }
 
 // Espelha a árvore de rotas de App.tsx: grupo privado sob PrivateRoute+LayoutApp,
@@ -59,7 +66,9 @@ describe('Rotas com layout aninhado', () => {
     expect(screen.getByRole('banner')).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: /principal/i })).toBeInTheDocument()
     // Conteúdo da página também é renderizado (via <Outlet />).
-    expect(screen.getByRole('heading', { level: 1, name: /início/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 1, name: /painel de orçamentos/i }),
+    ).toBeInTheDocument()
   })
 
   it('em /login o layout da área logada NÃO aparece', () => {

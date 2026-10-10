@@ -13,6 +13,33 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   }
 }
 
+// jsdom não implementa a API de medição de texto SVG (getComputedTextLength /
+// getBBox), que os gráficos do @fluentui/react-charts usam para quebrar rótulos.
+// Stubs mínimos para os testes de UI; não afetam o comportamento de produção.
+if (typeof SVGElement !== 'undefined') {
+  const svgProto = SVGElement.prototype as unknown as {
+    getComputedTextLength?: () => number
+    getBBox?: () => { x: number; y: number; width: number; height: number }
+    getBoundingClientRect?: () => DOMRect
+  }
+  if (typeof svgProto.getComputedTextLength !== 'function') {
+    svgProto.getComputedTextLength = () => 0
+  }
+  if (typeof svgProto.getBBox !== 'function') {
+    svgProto.getBBox = () => ({ x: 0, y: 0, width: 0, height: 0 })
+  }
+}
+
+// jsdom não implementa canvas getContext (os gráficos medem largura de texto
+// via canvas). Stub mínimo que devolve apenas measureText, suficiente para os
+// testes; não afeta produção.
+if (typeof HTMLCanvasElement !== 'undefined') {
+  const canvasProto = HTMLCanvasElement.prototype as unknown as {
+    getContext?: (tipo: string) => unknown
+  }
+  canvasProto.getContext = () => ({ measureText: () => ({ width: 0 }) })
+}
+
 if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches: false,
