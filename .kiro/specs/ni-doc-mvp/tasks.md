@@ -416,6 +416,44 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
     aplicacional mantido como redundância; lint/build/testes passam.
   - _Requirements: RF-002_
 
+### Fase 14 — Refinamento de UI (Fluent 2)
+
+> **Motivação:** protótipo de alta fidelidade (Figma Make) definiu uma nova composição
+> para o Editor de Template — canvas A4 central com visualização em tempo real e um painel
+> de controles à direita, cabendo na viewport de desktop sem scroll. O refino traz essa
+> composição para o stack real (Fluent 2 + tokens + marca verde-sálvia, light/dark),
+> substituindo o HTML cru/estilos inline da implementação atual, sem perder as garantias
+> de acessibilidade (posicionamento por teclado como alternativa ao drag & drop).
+
+- [x] 58. Refino de UI do Editor de template (Fluent 2 + layout do protótipo)
+  - Reescrever `frontend/src/pages/TemplateEditor.tsx` com `@fluentui/react-components`
+    (`makeStyles`/`tokens`, `@fluentui/react-icons`), seguindo o padrão da tela de Login
+  - Layout do protótipo: header com ação "Salvar template" e indicador "Alterações salvas";
+    faixa de título "Editor de template"; grid de duas colunas (canvas flexível + painel
+    de ~360px); canvas A4 central com fundo pontilhado e badge "Visualização em tempo real";
+    painel com seções "Elementos" (adicionar texto, desenhar área de itens, adicionar imagem)
+    e "Fundos e fontes" (carregar PDF base, select de fonte, enviar fonte customizada)
+  - Remover a coluna fixa "Elemento selecionado"; preservar edição de conteúdo e
+    posicionamento por teclado numa apresentação contextual (só quando há elemento selecionado)
+  - Corrigir o preview em tempo real: hoje `CanvasA4` não exibe imagens enviadas
+    (desenha só uma caixa cinza, nunca a `<img src>`) nem o PDF de fundo da página
+    (`pagina.fundo` não é passado ao canvas). A tela refeita deve renderizar a imagem
+    (data URL) e o fundo da página; para o PDF de fundo, usar um preview real (ex.:
+    `<iframe>`/`<embed>` ou lib de PDF já disponível) com fallback acessível
+  - Desktop sem scroll (altura travada na viewport, scroll interno no canvas se necessário);
+    abaixo do breakpoint de desktop, exibir aviso de que o editor requer tela maior
+  - Acessibilidade (WCAG AA): manter alternativa por teclado ao drag & drop; uploads com
+    `<label>`/nome acessível; não transmitir informação só por cor; foco visível; `aria-live`
+    para "Alterações salvas"/erros; `eslint-plugin-jsx-a11y` sem avisos
+  - DoD: tela reconstruída em Fluent respeitando o layout do protótipo; funcionalidade
+    preservada (adicionar elementos, uploads, salvar versão, posicionar por teclado);
+    testes de `TemplateEditor` verdes; lint/build limpos
+  - _Requirements: RF-014_
+
+- [x] 59. Refino de UI do Dashboard (mesmo padrão)
+  - Aplicar o mesmo padrão de refinamento visual à tela de Dashboard (sessão futura)
+  - _Requirements: RF-023_
+
 ## Notes
 
 - Ciclo TDD obrigatório: testes antes da implementação; tarefa concluída só com testes passando e lint sem erros.
