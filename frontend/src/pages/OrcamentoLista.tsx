@@ -1,28 +1,8 @@
 import { useId, useState, type ReactElement } from 'react'
 import { Link } from 'react-router-dom'
 import { useExcluirOrcamento, useOrcamentos } from '@/hooks/useOrcamentos'
+import { OPCOES_STATUS, ROTULO_STATUS } from '@/lib/orcamento-status'
 import type { OrcamentoStatus } from '@/types/api'
-
-// Rótulos textuais dos status: o status NUNCA é transmitido só por cor
-// (WCAG AA — informação perceptível). A cor é um reforço opcional via classe,
-// mas o texto é a fonte de verdade acessível.
-const ROTULO_STATUS: Record<OrcamentoStatus, string> = {
-  rascunho: 'Rascunho',
-  enviado: 'Enviado',
-  aprovado: 'Aprovado',
-  reprovado: 'Reprovado',
-  expirado: 'Expirado',
-  cancelado: 'Cancelado',
-}
-
-const OPCOES_STATUS: OrcamentoStatus[] = [
-  'rascunho',
-  'enviado',
-  'aprovado',
-  'reprovado',
-  'expirado',
-  'cancelado',
-]
 
 // Formata um valor em Real (pt-BR).
 function formatarMoeda(valor: number): string {

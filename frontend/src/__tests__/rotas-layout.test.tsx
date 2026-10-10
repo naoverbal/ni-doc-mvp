@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { FluentProvider } from '@fluentui/react-components'
+import { lightTheme } from '@/theme/ni-doc-theme'
 import { PrivateRoute } from '@/routes/PrivateRoute'
 import { LayoutApp } from '@/components/LayoutApp'
 import { Login } from '@/pages/Login'
@@ -19,6 +21,13 @@ vi.mock('@/hooks/useAuth', () => ({
   useLogout: () => ({ mutateAsync: vi.fn().mockResolvedValue(undefined), isPending: false }),
 }))
 
+// O Dashboard real busca todos os orçamentos ao montar; aqui o foco é a
+// estrutura de rotas/layout, então mockamos o hook com uma lista vazia (estado
+// resolvido) para não disparar rede nem exigir um QueryClientProvider.
+vi.mock('@/hooks/useDashboardOrcamentos', () => ({
+  useDashboardOrcamentos: () => ({ data: [], isLoading: false, isError: false }),
+}))
+
 const ADMIN: Usuario = { id: 'u-1', nome: 'Ana Admin', papel: 'admin' }
 
 // Espelha a árvore de rotas de App.tsx: grupo privado sob PrivateRoute+LayoutApp,
@@ -26,22 +35,24 @@ const ADMIN: Usuario = { id: 'u-1', nome: 'Ana Admin', papel: 'admin' }
 // a rota inicial no teste (App usa BrowserRouter em produção).
 function renderRotas(rotaInicial: string): void {
   render(
-    <MemoryRouter initialEntries={[rotaInicial]}>
-      <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/login" element={<Login />} />
-        <Route
-          element={
-            <PrivateRoute>
-              <LayoutApp />
-            </PrivateRoute>
-          }
-        >
-          <Route path="/dashboard" element={<Dashboard />} />
-        </Route>
-        <Route path="*" element={<NaoEncontrado />} />
-      </Routes>
-    </MemoryRouter>,
+    <FluentProvider theme={lightTheme}>
+      <MemoryRouter initialEntries={[rotaInicial]}>
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/login" element={<Login />} />
+          <Route
+            element={
+              <PrivateRoute>
+                <LayoutApp />
+              </PrivateRoute>
+            }
+          >
+            <Route path="/dashboard" element={<Dashboard />} />
+          </Route>
+          <Route path="*" element={<NaoEncontrado />} />
+        </Routes>
+      </MemoryRouter>
+    </FluentProvider>,
   )
 }
 
@@ -55,7 +66,9 @@ describe('Rotas com layout aninhado', () => {
     expect(screen.getByRole('banner')).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: /principal/i })).toBeInTheDocument()
     // Conteúdo da página também é renderizado (via <Outlet />).
-    expect(screen.getByRole('heading', { level: 1, name: /início/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 1, name: /painel de orçamentos/i }),
+    ).toBeInTheDocument()
   })
 
   it('em /login o layout da área logada NÃO aparece', () => {

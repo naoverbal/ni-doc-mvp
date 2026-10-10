@@ -1,0 +1,30 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    {
+      "label": "Anchor no empty state",
+      "severity": "non-blocking",
+      "confidence": "confirmed",
+      "description": "O CTA do estado vazio usa Button as=\"a\" href=\"/orcamentos/novo\", que força reload de página inteira em vez da navegação client-side (RouterLink) usada nas listas. Trocar por as={RouterLink} to=\"/orcamentos/novo\" por consistência."
+    },
+    {
+      "label": "Assimetria de a11y entre graficos",
+      "severity": "non-blocking",
+      "confidence": "confirmed",
+      "description": "O VerticalBarChart recebe apenas chartTitle, enquanto o DonutChart recebe chartTitleAccessibilityData. Ambos ficam com nome acessivel, mas valeria dar ao bar chart o mesmo chartTitleAccessibilityData para paridade."
+    },
+    {
+      "label": "Rota /orcamentos/novo nao verificada",
+      "severity": "non-blocking",
+      "confidence": "possible",
+      "description": "O alvo do botao do empty state nao foi confirmado na arvore de rotas (fora do diff). Se a rota /orcamentos/novo nao existir, o CTA leva a 404. Verificar."
+    },
+    {
+      "label": "Limite de paginacao sem teto rigido",
+      "severity": "informational",
+      "confidence": "confirmed",
+      "description": "O loop de buscarTodosOrcamentos baixa todas as paginas; o limite esta documentado em comentario (aceitavel no MVP) e ha guarda contra pagina vazia, mas nao ha teto maximo de paginas. Alinhado a decisao de design do plano."
+    }
+  ],
+  "reviewDoc": "/Users/nilson/Dev/ni-doc/.agents/tasks/dashboard-fase-a-review.md"
+}
