@@ -90,4 +90,102 @@ describe('CanvasA4', () => {
     await usuario.keyboard('{ArrowLeft}{ArrowUp}')
     expect(screen.getByRole('button', { name: /posição 0 por 0/i })).toBeInTheDocument()
   })
+
+  // Preview em tempo real (correção do bug): o elemento de imagem deve
+  // renderizar um <img> real a partir do data URL, não só uma caixa cinza.
+  it('renderiza o <img> da imagem a partir do data URL (preview em tempo real)', () => {
+    const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB'
+    const imagem = {
+      id: 'img-1',
+      tipo: 'imagem',
+      x: 10,
+      y: 10,
+      largura: 40,
+      altura: 40,
+      src: dataUrl,
+      ajuste: 'contain',
+      rotacao: 0,
+      descricao: 'Logotipo da empresa',
+    } as ElementoTemplate
+    render(
+      <CanvasA4
+        elementos={[imagem]}
+        selecionadoId={null}
+        aoSelecionar={vi.fn()}
+        aoMover={vi.fn()}
+      />,
+    )
+    const img = screen.getByRole('img', { name: 'Logotipo da empresa' })
+    expect(img).toHaveAttribute('src', dataUrl)
+  })
+
+  it('usa alt vazio (decorativa) quando a imagem não tem descrição', () => {
+    const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB'
+    const imagem = {
+      id: 'img-2',
+      tipo: 'imagem',
+      x: 10,
+      y: 10,
+      largura: 40,
+      altura: 40,
+      src: dataUrl,
+      ajuste: 'contain',
+      rotacao: 0,
+      descricao: '',
+    } as ElementoTemplate
+    const { container } = render(
+      <CanvasA4
+        elementos={[imagem]}
+        selecionadoId={null}
+        aoSelecionar={vi.fn()}
+        aoMover={vi.fn()}
+      />,
+    )
+    const img = container.querySelector('button img')
+    expect(img).not.toBeNull()
+    expect(img).toHaveAttribute('alt', '')
+    expect(img).toHaveAttribute('src', dataUrl)
+  })
+
+  it('renderiza o fundo de imagem (data URL) atrás dos elementos como <img> decorativo', () => {
+    const fundo = 'data:image/png;base64,QUJD'
+    const { container } = render(
+      <CanvasA4
+        elementos={[elementoTexto()]}
+        selecionadoId={null}
+        aoSelecionar={vi.fn()}
+        aoMover={vi.fn()}
+        fundo={fundo}
+      />,
+    )
+    const canvas = screen.getByRole('group', { name: /canvas a4/i })
+    // O fundo é o primeiro filho (atrás), decorativo (aria-hidden, alt vazio).
+    const img = canvas.querySelector(':scope > img')
+    expect(img).not.toBeNull()
+    expect(img).toHaveAttribute('src', fundo)
+    expect(img).toHaveAttribute('alt', '')
+    expect(img).toHaveAttribute('aria-hidden', 'true')
+    // Confirma que não vira name acessível: nenhuma img exposta por papel.
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(container).toBeTruthy()
+  })
+
+  it('renderiza o fundo de PDF (data URL) via <embed> decorativo', () => {
+    const fundo = 'data:application/pdf;base64,JVBERi0xLjQK'
+    render(
+      <CanvasA4
+        elementos={[elementoTexto()]}
+        selecionadoId={null}
+        aoSelecionar={vi.fn()}
+        aoMover={vi.fn()}
+        fundo={fundo}
+      />,
+    )
+    const canvas = screen.getByRole('group', { name: /canvas a4/i })
+    const embed = canvas.querySelector('embed')
+    expect(embed).not.toBeNull()
+    expect(embed).toHaveAttribute('src', fundo)
+    expect(embed).toHaveAttribute('type', 'application/pdf')
+    expect(embed).toHaveAttribute('aria-hidden', 'true')
+  })
 })

@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router-dom'
 import { TemplateEditor } from '@/pages/TemplateEditor'
 import type { LayoutTemplate, TemplatePublico } from '@/types/api'
 
@@ -36,7 +37,9 @@ function renderEditor(): ReactElement {
   })
   return (
     <QueryClientProvider client={queryClient}>
-      <TemplateEditor />
+      <MemoryRouter>
+        <TemplateEditor />
+      </MemoryRouter>
     </QueryClientProvider>
   )
 }
@@ -49,17 +52,19 @@ describe('TemplateEditor', () => {
 
   it('renderiza o editor com canvas A4 e controles principais', async () => {
     render(renderEditor())
-    expect(await screen.findByRole('heading', { name: /editor de template/i })).toBeInTheDocument()
-    expect(screen.getByRole('group', { name: /canvas a4/i })).toBeInTheDocument()
+    // Aguarda o canvas (só existe no estado carregado) para evitar latch no
+    // heading transitório do estado de carregamento.
+    expect(await screen.findByRole('group', { name: /canvas a4/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /editor de template/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /adicionar texto/i })).toBeInTheDocument()
   })
 
   it('tem inputs de upload com label associado (fundo, imagem, fonte)', async () => {
     render(renderEditor())
     await screen.findByRole('group', { name: /canvas a4/i })
-    expect(screen.getByLabelText(/pdf de fundo/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/enviar imagem/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/enviar fonte/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/carregar arquivo base/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/adicionar imagem/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/enviar fonte customizada/i)).toBeInTheDocument()
   })
 
   it('adiciona um elemento de texto ao canvas', async () => {
@@ -139,9 +144,9 @@ describe('TemplateEditor', () => {
     render(renderEditor())
     await screen.findByRole('group', { name: /canvas a4/i })
 
-    await usuario.type(screen.getByLabelText(/família da fonte/i), 'Inter')
+    await usuario.type(screen.getByLabelText(/fonte do documento/i), 'Inter')
     const arquivo = new File(['fake'], 'inter.woff2', { type: 'font/woff2' })
-    await usuario.upload(screen.getByLabelText(/enviar fonte/i), arquivo)
+    await usuario.upload(screen.getByLabelText(/enviar fonte customizada/i), arquivo)
 
     const lista = await screen.findByRole('list', { name: /fontes carregadas/i })
     expect(within(lista).getByText(/inter \(woff2\)/i)).toBeInTheDocument()
