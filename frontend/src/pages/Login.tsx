@@ -86,14 +86,6 @@ const useStyles = makeStyles({
   botaoEntrar: {
     width: '100%',
   },
-  // Rodapé: pergunta + link de criar conta, centralizado numa única linha.
-  rodape: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'center',
-    columnGap: tokens.spacingHorizontalXS,
-  },
 })
 
 export function Login(): ReactElement {
@@ -223,13 +215,6 @@ export function Login(): ReactElement {
           {enviando ? 'Entrando…' : 'Entrar'}
         </Button>
 
-        {/* "Criar conta" é placeholder: não há fluxo de cadastro no MVP. */}
-        <div className={estilos.rodape}>
-          <Text size={200}>Ainda não tem uma conta?</Text>
-          <Link as="button" type="button" inline>
-            Criar conta
-          </Link>
-        </div>
       </form>
     </AuthLayout>
   )
