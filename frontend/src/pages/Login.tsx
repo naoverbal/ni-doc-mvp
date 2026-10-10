@@ -18,10 +18,10 @@ import {
 } from '@fluentui/react-components'
 import {
   Document24Regular,
-  Eye24Regular,
-  EyeOff24Regular,
-  LockClosed24Regular,
-  Mail24Regular,
+  Eye20Regular,
+  EyeOff20Regular,
+  LockClosed20Regular,
+  Mail20Regular,
 } from '@fluentui/react-icons'
 import { AuthLayout } from '@/components/common/AuthLayout'
 import { useLogin } from '@/hooks/useAuth'
@@ -65,23 +65,32 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorBrandBackground,
     color: tokens.colorNeutralForegroundOnBrand,
   },
-  // Campo da senha envolto para posicionar o link "Esqueceu a senha?" na mesma
-  // linha do label do Field, sem aninhar o link dentro do <label> (o que
-  // quebraria a associação de rótulo e a acessibilidade).
+  // Linha de cabeçalho da senha: o label "Senha" (renderizado pelo próprio
+  // Field) fica à esquerda e o link "Esqueceu a senha?" é alinhado à direita na
+  // mesma altura. O link fica FORA do <label> do Field para não poluir o nome
+  // acessível do input (um leitor de tela não deve ler "Senha Esqueceu a
+  // senha?" como rótulo). Usamos flex, não posicionamento absoluto.
   campoSenha: {
-    position: 'relative',
+    display: 'flex',
+    flexDirection: 'column',
   },
-  linkEsqueceu: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
+  linkEsqueceuLinha: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    // Puxa o link para a mesma linha visual do label "Senha" do Field abaixo,
+    // compensando a altura do próprio label para que fiquem alinhados.
+    marginBottom: `calc(-1 * ${tokens.lineHeightBase200})`,
+    position: 'relative',
+    zIndex: 1,
   },
   botaoEntrar: {
     width: '100%',
   },
-  // Rodapé: pergunta + link de criar conta, centralizado.
+  // Rodapé: pergunta + link de criar conta, centralizado numa única linha.
   rodape: {
     display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
     justifyContent: 'center',
     columnGap: tokens.spacingHorizontalXS,
   },
@@ -156,19 +165,24 @@ export function Login(): ReactElement {
         >
           <Input
             type="email"
+            size="large"
             autoComplete="email"
             placeholder="voce@exemplo.com"
-            contentBefore={<Mail24Regular aria-hidden />}
+            contentBefore={<Mail20Regular aria-hidden />}
             {...register('email')}
           />
         </Field>
 
         <div className={estilos.campoSenha}>
-          {/* Placeholder: não há fluxo de recuperação de senha no MVP. O link
-              fica fora do <label> para preservar a associação de rótulo. */}
-          <Link as="button" type="button" inline className={estilos.linkEsqueceu}>
-            Esqueceu a senha?
-          </Link>
+          {/* Link "Esqueceu a senha?" alinhado à direita, na mesma linha do
+              label "Senha". É placeholder (não há fluxo de recuperação de senha
+              no MVP) e fica fora do <label> do Field para preservar o nome
+              acessível do campo. */}
+          <div className={estilos.linkEsqueceuLinha}>
+            <Link as="button" type="button" inline>
+              Esqueceu a senha?
+            </Link>
+          </div>
           <Field
             label="Senha"
             validationState={errors.senha ? 'error' : 'none'}
@@ -176,15 +190,16 @@ export function Login(): ReactElement {
           >
             <Input
               type={mostrarSenha ? 'text' : 'password'}
+              size="large"
               autoComplete="current-password"
               placeholder="Digite sua senha"
-              contentBefore={<LockClosed24Regular aria-hidden />}
+              contentBefore={<LockClosed20Regular aria-hidden />}
               contentAfter={
                 <Button
                   appearance="transparent"
                   type="button"
                   size="small"
-                  icon={mostrarSenha ? <EyeOff24Regular /> : <Eye24Regular />}
+                  icon={mostrarSenha ? <EyeOff20Regular /> : <Eye20Regular />}
                   aria-label={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
                   onClick={() => setMostrarSenha((atual) => !atual)}
                 />
@@ -200,6 +215,7 @@ export function Login(): ReactElement {
         <Button
           appearance="primary"
           type="submit"
+          size="large"
           className={estilos.botaoEntrar}
           disabled={enviando}
           icon={enviando ? <Spinner size="tiny" /> : undefined}
