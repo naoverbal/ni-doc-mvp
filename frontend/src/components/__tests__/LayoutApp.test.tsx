@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { LayoutApp } from '@/components/LayoutApp'
 import { useAuthStore } from '@/stores/auth.store'
+import { useLayoutStore } from '@/stores/layout.store'
+import { useThemeStore } from '@/stores/theme.store'
 import type { Usuario } from '@/types/api'
 
 // Mocka o hook de logout para controlar sucesso/erro e inspecionar mutateAsync.
@@ -35,12 +37,30 @@ function renderLayout(rotaInicial = '/dashboard'): void {
   )
 }
 
+// Mocka matchMedia para casar com uma lista de queries (ex.: breakpoint mobile).
+function mockarMatchMedia(casar: (query: string) => boolean): void {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches: casar(query),
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }))
+}
+
 describe('LayoutApp', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     pendente = false
     mutateAsync.mockResolvedValue(undefined)
     useAuthStore.setState({ usuario: ADMIN, autenticado: true })
+    useLayoutStore.setState({ sidebarExpandida: true })
+    useThemeStore.setState({ modo: 'claro' })
+    // Padrão: desktop (nenhuma media query casa) — sidebar fixa, sem Drawer.
+    mockarMatchMedia(() => false)
   })
 
   it('renderiza o skip link para #conteudo como primeiro elemento focável', async () => {
@@ -61,13 +81,14 @@ describe('LayoutApp', () => {
     expect(screen.getAllByRole('banner')).toHaveLength(1)
     expect(screen.getAllByRole('navigation', { name: /principal/i })).toHaveLength(1)
 
-    expect(screen.getByRole('link', { name: /dashboard/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /orçamentos/i })).toBeInTheDocument()
+    expect(within(nav).getByRole('link', { name: /dashboard/i })).toBeInTheDocument()
+    expect(within(nav).getByRole('link', { name: /orçamentos/i })).toBeInTheDocument()
   })
 
-  it('exibe o nome do usuário autenticado', () => {
+  it('exibe o nome do usuário autenticado no header', () => {
     renderLayout()
-    expect(screen.getByText('Ana Admin')).toBeInTheDocument()
+    const header = screen.getByRole('banner')
+    expect(within(header).getByText('Ana Admin')).toBeInTheDocument()
   })
 
   it('não quebra quando o usuário está momentaneamente nulo', () => {
@@ -102,6 +123,70 @@ describe('LayoutApp', () => {
     const orcamentos = screen.getByRole('link', { name: /orçamentos/i })
     expect(orcamentos).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('link', { name: /dashboard/i })).not.toHaveAttribute('aria-current')
+  })
+
+  it('renderiza os itens sem rota desabilitados (aria-disabled + "em breve"), não como link', () => {
+    renderLayout()
+    const nav = screen.getByRole('navigation', { name: /principal/i })
+    // "Clientes" não tem rota ainda: aparece desabilitado, não como link.
+    expect(within(nav).queryByRole('link', { name: /clientes/i })).not.toBeInTheDocument()
+    const clientes = within(nav).getByLabelText(/clientes, em breve/i)
+    expect(clientes).toHaveAttribute('aria-disabled', 'true')
+    // Outros itens sem rota também aparecem (Empresas, Responsáveis, etc.).
+    expect(within(nav).getByLabelText(/empresas, em breve/i)).toBeInTheDocument()
+    expect(within(nav).getByLabelText(/responsáveis técnicos, em breve/i)).toBeInTheDocument()
+    expect(within(nav).getByLabelText(/auditoria, em breve/i)).toBeInTheDocument()
+    expect(within(nav).getByLabelText(/configurações, em breve/i)).toBeInTheDocument()
+  })
+
+  it('alterna o colapso da sidebar e persiste no store', async () => {
+    const usuario = userEvent.setup()
+    renderLayout()
+    expect(useLayoutStore.getState().sidebarExpandida).toBe(true)
+
+    const toggle = screen.getByRole('button', { name: /recolher menu/i })
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+
+    await usuario.click(toggle)
+    expect(useLayoutStore.getState().sidebarExpandida).toBe(false)
+
+    // Após recolher, o controle passa a oferecer "Expandir menu".
+    const expandir = screen.getByRole('button', { name: /expandir menu/i })
+    expect(expandir).toHaveAttribute('aria-expanded', 'false')
+    await usuario.click(expandir)
+    expect(useLayoutStore.getState().sidebarExpandida).toBe(true)
+  })
+
+  it('o toggle de tema chama o theme.store (alterna claro/escuro)', async () => {
+    const usuario = userEvent.setup()
+    renderLayout()
+    expect(useThemeStore.getState().modo).toBe('claro')
+
+    const toggle = screen.getByRole('switch', { name: /alternar tema/i })
+    await usuario.click(toggle)
+    expect(useThemeStore.getState().modo).toBe('escuro')
+  })
+
+  it('no breakpoint mobile, abre e fecha o Drawer de navegação', async () => {
+    // Mobile: a query (max-width: 639px) casa; a sidebar fixa some e o header
+    // mostra o hambúrguer que abre o Drawer.
+    mockarMatchMedia((q) => q.includes('639') || q.includes('1023'))
+    const usuario = userEvent.setup()
+    renderLayout()
+
+    // Sem Drawer aberto, não há diálogo.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    const hamburger = screen.getByRole('button', { name: /abrir menu de navegação/i })
+    await usuario.click(hamburger)
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toBeInTheDocument()
+    expect(within(dialog).getByRole('navigation', { name: /principal/i })).toBeInTheDocument()
+
+    // Fecha com Esc.
+    await usuario.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
 
   it('ao sair com sucesso: limpa o estado e navega para /login', async () => {

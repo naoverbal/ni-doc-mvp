@@ -162,68 +162,10 @@ h2 {
   top: var(--espaco-sm);
 }
 
-/* ----- Casca da aplicação -------------------------------------------------- */
-
-.app-shell {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Cabeçalho: empilhado no mobile (base), em linha a partir do tablet. */
-.app-header {
-  display: flex;
-  flex-direction: column;
-  gap: var(--espaco-sm);
-  padding: var(--espaco-md);
-  background-color: var(--cor-superficie);
-  border-bottom: 1px solid var(--cor-borda);
-}
-
-.app-marca {
-  font-weight: 700;
-  font-size: 1.25rem;
-  color: var(--cor-texto);
-}
-
-.app-usuario {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--espaco-sm);
-  color: var(--cor-texto-fraco);
-}
-
-/* ----- Navegação principal ------------------------------------------------- */
-
-.app-nav ul {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--espaco-xs) var(--espaco-md);
-}
-
-.app-nav a {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--alvo-toque);
-  padding: var(--espaco-sm) var(--espaco-sm);
-  color: var(--cor-primaria);
-  text-decoration: none;
-  border-bottom: 3px solid transparent;
-}
-
-.app-nav a:hover {
-  text-decoration: underline;
-}
-
-/* Link da rota atual: reforço NÃO-cromático (peso + sublinhado + borda) além da
- * cor, para não depender apenas de cor (WCAG 1.4.1). */
-.app-nav a[aria-current='page'] {
-  color: var(--cor-primaria-escura);
-  font-weight: 700;
-  text-decoration: underline;
-  border-bottom-color: var(--cor-primaria-escura);
-}
+/* Nota: a casca da área logada (sidebar + header) é construída em Fluent 2
+ * (components/layout/AppShell, Sidebar, Header) com makeStyles/tokens. As antigas
+ * classes cruas .app-shell/.app-header/.app-nav foram removidas na Fase 16; o
+ * .skip-link (acima) permanece como contrato de acessibilidade das páginas. */
 
 /* ----- Conteúdo da página -------------------------------------------------- */
 
@@ -247,19 +189,6 @@ button {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.65;
-}
-
-/* Botão de logout: ação destrutiva, texto visível "Sair". */
-.botao-sair {
-  background-color: transparent;
-  color: var(--cor-perigo);
-  border: 1px solid var(--cor-perigo);
-  border-radius: var(--raio);
-}
-
-.botao-sair:hover:not(:disabled) {
-  background-color: var(--cor-perigo);
-  color: #ffffff;
 }
 
 /* ----- Tabela em telas estreitas ------------------------------------------- */
@@ -287,14 +216,6 @@ td {
  * TABLET — min-width: 600px
  * ========================================================================== */
 @media (min-width: 600px) {
-  .app-header {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--espaco-lg);
-    padding: var(--espaco-md) var(--espaco-lg);
-  }
-
   main {
     padding: var(--espaco-lg);
   }
@@ -304,16 +225,14 @@ td {
  * DESKTOP — min-width: 1024px
  * ========================================================================== */
 @media (min-width: 1024px) {
-  .app-header {
-    padding-inline: var(--espaco-lg);
-  }
-
   main {
     padding-block: var(--espaco-lg);
   }
 }
 
-/* Respeita a preferência de redução de movimento. */
+/* Respeita a preferência de redução de movimento. A animação de largura da
+ * sidebar do app shell (Fluent) também é desligada no próprio componente via
+ * makeStyles (@media prefers-reduced-motion). */
 @media (prefers-reduced-motion: reduce) {
   .skip-link {
     transition: none;

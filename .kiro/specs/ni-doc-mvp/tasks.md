@@ -560,13 +560,65 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
     exibem; testes de snapshot/renderer verdes; lint/build limpos
   - _Requirements: RF-008, RF-015, RF-016, RF-019_
 
+### Fase 16 — Sidebar Colapsável (App Shell em Fluent 2)
+
+> **Motivação:** protótipo de alta fidelidade (ver imagem fornecida pelo usuário) define o
+> app shell da área logada com **sidebar de navegação à esquerda** — marca "ni-doc / Gestão
+> comercial" no topo, lista de itens com ícone + rótulo, rodapé com o tenant — e um header
+> superior. Hoje `LayoutApp`/`NavPrincipal` ainda são HTML cru com navegação horizontal no
+> header (classes `app-shell`/`app-header`/`app-nav` em `styles/global.css`), divergindo da
+> seção 4 do `.kiro/steering/ui.md` ("App shell: sidebar + header sticky + conteúdo"). Esta
+> fase traz o shell para Fluent 2, com a sidebar colapsável especificada no steering, sem
+> perder o skip link nem as garantias de acessibilidade já existentes. É um refino de UI
+> transversal sobre o frontend já entregue (Fase 10), independente das Fases 14/15.
+
+- [x] 63. Frontend — sidebar colapsável e app shell em Fluent 2 (layout do protótipo)
+  - Reescrever `frontend/src/components/LayoutApp.tsx` e `components/NavPrincipal.tsx` com
+    `@fluentui/react-components` (`makeStyles`/`tokens`, `@fluentui/react-icons`) como app shell
+    Fluent, seguindo a seção 4 de `.kiro/steering/ui.md` e o layout do protótipo; mover os novos
+    componentes para `components/layout/` (`AppShell`/`Sidebar`/`Header`) conforme a estrutura de
+    pastas do steering. Remover as classes cruas correspondentes (`app-shell`/`app-header`/
+    `app-nav`) de `styles/global.css`, preservando o `.skip-link`
+  - **Sidebar:** 240px expandida / 64px colapsada (só ícones + `Tooltip` com o rótulo); topo com
+    a marca "ni-doc" + legenda "Gestão comercial"; itens de navegação com ícone (`@fluentui/
+    react-icons`) + rótulo via `NavLink` (mantendo `aria-current="page"` e reforço não-cromático);
+    rodapé com o tenant/conta. **Itens do protótipo:** Dashboard, Orçamentos, Clientes, Empresas,
+    Responsáveis Técnicos, Template, Auditoria, Configurações — os itens **sem rota ainda** (Clientes,
+    Empresas, Responsáveis Técnicos, Auditoria, Configurações) aparecem **desabilitados**
+    (`aria-disabled`, não focáveis como link ativo, com indicação textual "em breve"), e Template
+    permanece restrito a admin como hoje
+  - **Colapso:** botão de alternância (hambúrguer/chevron) com `aria-expanded` e `aria-label`;
+    persistir o estado num store Zustand novo (`stores/layout.store.ts`, padrão de `theme.store.ts`);
+    **responsivo** conforme o steering — colapsa automaticamente em tablet (< 1024px) e vira
+    `Drawer` (overlay) acionado por hambúrguer no header em mobile (< 640px), fechando com `Esc`,
+    com foco preso e devolvido ao gatilho; respeitar `prefers-reduced-motion` na animação
+  - **Header (56px, sticky):** nome do usuário + tenant, **toggle de tema claro/escuro** ligado ao
+    `theme.store.ts` existente (`Switch` com `aria-label` e rótulo textual, não só ícone/cor) e o
+    botão **Sair** (preservando o logout resiliente atual de `LayoutApp`). Em mobile, exibir o
+    hambúrguer que abre o `Drawer` da sidebar
+  - **Acessibilidade (WCAG AA):** manter o skip link "Pular para o conteúdo" e o `<main id="conteudo">`
+    das páginas (o shell continua **não** renderizando `<main>`); `<nav aria-label="Principal">`;
+    item ativo não só por cor; ícones-only com `aria-label`/`Tooltip`; foco visível (focus ring de
+    marca); ordem de foco lógica; `Drawer` com `aria-modal` e gestão de foco; `eslint-plugin-jsx-a11y`
+    sem avisos
+  - **TDD:** atualizar `components/__tests__/LayoutApp.test.tsx` (e cobrir `NavPrincipal`/sidebar)
+    para a nova árvore: renderiza itens de navegação e marca o ativo; itens sem rota desabilitados;
+    alterna colapso e persiste no store; abre/fecha o `Drawer` no breakpoint mobile; toggle de tema
+    chama o `theme.store`; logout resiliente preservado; skip link presente
+  - DoD: shell reconstruído em Fluent fiel ao protótipo reusando o tema do projeto; sidebar
+    colapsável (240↔64) com tooltip no modo ícone, responsiva (auto-colapso em tablet, drawer em
+    mobile) e estado persistido; toggle de tema e logout funcionam; skip link e landmarks preservados;
+    testes de `LayoutApp`/sidebar verdes; `eslint-plugin-jsx-a11y` sem avisos; fluxo verificado por
+    teclado; lint/build limpos
+  - _Requirements: RF-023, RNF-003_
+
 ## Notes
 
 - Ciclo TDD obrigatório: testes antes da implementação; tarefa concluída só com testes passando e lint sem erros.
 - Cobertura: `lib/` exige 100%; serviços e repositórios 80%+.
 - Multi-tenancy: a partir da Fase 3, todo acesso a dados respeita isolamento por `tenant_id`. O isolamento no banco via RLS (`SET LOCAL app.current_tenant`) só passa a ser efetivamente ativo após a Fase 13 (tarefa 56); até lá o isolamento é garantido apenas pelo filtro aplicacional `WHERE tenant_id` nos repositórios.
 - Imutabilidade: snapshots e PDFs emitidos são imutáveis; alterações posteriores em entidades de referência não afetam versões já emitidas.
-- Acessibilidade: as tarefas de UI (45–50, 58–59, 61) e do HTML renderizado (tarefas 57, 62) seguem WCAG 2.1 AA no que é verificável em código — HTML semântico, operação por teclado, rótulos/`aria-*` e contraste. Rodar `eslint-plugin-jsx-a11y` e verificar o fluxo por teclado antes de concluir cada tarefa; a conformidade total ainda exige teste manual com tecnologia assistiva.
+- Acessibilidade: as tarefas de UI (45–50, 58–59, 61, 63) e do HTML renderizado (tarefas 57, 62) seguem WCAG 2.1 AA no que é verificável em código — HTML semântico, operação por teclado, rótulos/`aria-*` e contraste. Rodar `eslint-plugin-jsx-a11y` e verificar o fluxo por teclado antes de concluir cada tarefa; a conformidade total ainda exige teste manual com tecnologia assistiva.
 - Dependências cruzadas: a tarefa 33 (rota de envio) retorna versão sem PDF; `pdf_path` só é preenchido pela tarefa 40 (integração envio → PDF), que depende das tarefas 36–39. A tarefa 41 (aceite) reutiliza a geração de PDF da Fase 8. As telas de frontend dependem das rotas de backend correspondentes.
 
 ## Task Dependency Graph
@@ -591,15 +643,17 @@ graph TD
     F13["Fase 13 — Ativação do RLS (56)"]
     F14["Fase 14 — Refino de UI (58–59)"]
     F15["Fase 15 — Refino do Editor de Orçamento (60–62)"]
+    F16["Fase 16 — Sidebar Colapsável (63)"]
     F0 --> F1 --> F2 --> F3 --> F4 --> F5 --> F6 --> F7 --> F8 --> F9 --> F10 --> F11 --> F12
     F3 --> F13
     F10 --> F14
     F10 --> F15
+    F10 --> F16
 ```
 
 A Fase 13 (ativação do RLS) é uma correção de segurança transversal: depende apenas da infraestrutura de banco (Fase 2) e de auth/tenant (Fase 3), não das fases de feature. Pode ser priorizada e executada de forma independente.
 
-As Fases 14 e 15 são refinos de UI/produto sobre o frontend já entregue (Fase 10). Na Fase 15, a tarefa 60 (backend) precede a 61 (frontend) e a 62 (fiação envio/snapshot/PDF/público); a 61 e a 62 dependem da 60 e podem seguir em paralelo entre si.
+As Fases 14, 15 e 16 são refinos de UI/produto sobre o frontend já entregue (Fase 10). A Fase 16 (sidebar colapsável/app shell) é independente das Fases 14 e 15 e também depende apenas da Fase 10. Na Fase 15, a tarefa 60 (backend) precede a 61 (frontend) e a 62 (fiação envio/snapshot/PDF/público); a 61 e a 62 dependem da 60 e podem seguir em paralelo entre si.
 
 ```json
 {
@@ -619,7 +673,8 @@ As Fases 14 e 15 são refinos de UI/produto sobre o frontend já entregue (Fase 
     { "wave": 12, "name": "Deploy e Produção", "tasks": ["53", "54", "55"], "dependsOn": [11] },
     { "wave": 13, "name": "Ativação do RLS por Request", "tasks": ["56"], "dependsOn": [3] },
     { "wave": 14, "name": "Refinamento de UI (Fluent 2)", "tasks": ["58", "59"], "dependsOn": [10] },
-    { "wave": 15, "name": "Refino do Editor de Orçamento", "tasks": ["60", "61", "62"], "dependsOn": [10] }
+    { "wave": 15, "name": "Refino do Editor de Orçamento", "tasks": ["60", "61", "62"], "dependsOn": [10] },
+    { "wave": 16, "name": "Sidebar Colapsável (App Shell)", "tasks": ["63"], "dependsOn": [10] }
   ]
 }
 ```
