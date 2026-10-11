@@ -360,7 +360,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
 
 ### Fase 12 — Deploy e Produção
 
-- [ ] 53. Configurar Nginx na VPS
+- [x] 53. Configurar Nginx na VPS
   - Criar `nginx/ni-doc.conf`
   - Proxy reverso para backend; servir estáticos; TLS com Let's Encrypt; headers de segurança (HSTS, CSP)
   - DoD: HTTPS funciona, backend acessível via domínio
