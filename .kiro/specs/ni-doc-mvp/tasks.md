@@ -366,7 +366,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: HTTPS funciona, backend acessível via domínio
   - _Requirements: RNF-006_
 
-- [ ] 54. Pipeline de deploy
+- [x] 54. Pipeline de deploy
   - Criar `.github/workflows/deploy.yml`
   - Rodar CI; SSH na VPS; `git pull && docker compose -f docker-compose.prod.yml up -d --build`; migrations; health check; rollback automático se falhar
   - DoD: push na `main` faz deploy automático com health check
