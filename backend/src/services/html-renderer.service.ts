@@ -1,4 +1,8 @@
-import type { OrcamentoSnapshot, SnapshotItem } from './snapshot.service.js'
+import type {
+  OrcamentoSnapshot,
+  SnapshotCondicaoPagamento,
+  SnapshotItem,
+} from './snapshot.service.js'
 import type { LayoutTemplate } from '../repositories/template.repository.js'
 import { AppError } from '../errors/app-error.js'
 
@@ -217,6 +221,62 @@ function renderizarItens(itens: SnapshotItem[]): string {
   ].join('')
 }
 
+// Formata o percentual de forma determinística (50 -> '50%', 33.5 -> '33,5%').
+function formatarPercentual(valor: number): string {
+  const texto = Number.isInteger(valor) ? String(valor) : String(valor).replace('.', ',')
+  return `${texto}%`
+}
+
+// Renderiza a seção de condições de pagamento estruturadas (RF-005/RF-007). O
+// título é um <h2> (hierarquia coerente sob o <h1> do documento) e a tabela traz
+// rótulos textuais em <th scope="col"> — nenhuma informação depende de cor.
+// Retorna string vazia quando não há condições (o bloco some do documento).
+function renderizarCondicoesPagamento(condicoes: SnapshotCondicaoPagamento[]): string {
+  if (condicoes.length === 0) return ''
+
+  const ordenadas = [...condicoes].sort((a, b) => a.ordem - b.ordem)
+  const linhas = ordenadas
+    .map((condicao) => {
+      const marco = condicao.marco !== null ? escaparHtml(condicao.marco) : ''
+      return [
+        '<tr>',
+        `<td>${escaparHtml(condicao.descricao)}</td>`,
+        `<td>${escaparHtml(formatarPercentual(condicao.percentual))}</td>`,
+        `<td>${marco}</td>`,
+        `<td>${escaparHtml(condicao.forma_pagamento)}</td>`,
+        '</tr>',
+      ].join('')
+    })
+    .join('')
+
+  return [
+    '<section class="condicoes-pagamento">',
+    '<h2>Condições de pagamento</h2>',
+    '<table class="condicoes">',
+    '<caption>Condições de pagamento</caption>',
+    '<thead><tr>',
+    '<th scope="col">Descrição</th><th scope="col">Percentual</th>',
+    '<th scope="col">Marco</th><th scope="col">Forma de pagamento</th>',
+    '</tr></thead>',
+    `<tbody>${linhas}</tbody>`,
+    '</table>',
+    '</section>',
+  ].join('')
+}
+
+// Renderiza o bloco do prazo de entrega (RF-005). <h2> coerente na hierarquia e
+// rótulo textual. Vazio quando não informado (null).
+function renderizarPrazoEntrega(prazoEntregaDias: number | null): string {
+  if (prazoEntregaDias === null) return ''
+  const dias = escaparHtml(String(prazoEntregaDias))
+  return [
+    '<section class="prazo-entrega">',
+    '<h2>Prazo de entrega</h2>',
+    `<p>${dias} dias</p>`,
+    '</section>',
+  ].join('')
+}
+
 // Monta o bloco <style>, usando o CSS do template quando presente (string) e o
 // CSS mínimo de fallback caso contrário. O CSS é markup e não é escapado.
 function montarCss(layout: LayoutTemplate, mapa: Record<string, string>): string {
@@ -326,6 +386,11 @@ export function criarHtmlRendererService(): HtmlRendererService {
       } else {
         corpo = `${corpo}${tabelaItens}`
       }
+
+      // Condições de pagamento estruturadas e prazo de entrega (Tarefa 62). São
+      // anexados após os itens, antes do bloco de acesso online.
+      corpo = `${corpo}${renderizarCondicoesPagamento(snapshot.condicoes_pagamento_lista)}`
+      corpo = `${corpo}${renderizarPrazoEntrega(snapshot.prazo_entrega_dias)}`
 
       // Bloco "Acesso online": alternativa textual à URL/QR (acessibilidade).
       corpo = `${corpo}${montarBlocoAcessoOnline(input.urlPublica, urlPublicaNoCorpo)}`

@@ -73,9 +73,26 @@ function orcamentoMock(): OrcamentoComItens {
     total: 6840,
     versaoAtual: 1,
     observacoes: 'Observações gerais',
-    prazoEntregaDias: null,
+    prazoEntregaDias: 15,
     condicoesPagamentoTexto: '50% na aprovação, 50% na entrega',
-    condicoesPagamento: [],
+    condicoesPagamento: [
+      {
+        id: 'cond-1',
+        ordem: 1,
+        descricao: 'Entrada',
+        percentual: 50,
+        marco: 'Na aprovação',
+        formaPagamento: 'PIX',
+      },
+      {
+        id: 'cond-2',
+        ordem: 2,
+        descricao: 'Saldo',
+        percentual: 50,
+        marco: null,
+        formaPagamento: 'Boleto',
+      },
+    ],
     criadoEm: new Date('2026-10-01'),
     atualizadoEm: new Date('2026-10-01'),
     itens: [
@@ -283,6 +300,66 @@ describe('snapshot.service', () => {
       responsaveisPorId: new Map(),
     })
     expect(resultadoSoValor.desconto_global).toBeNull()
+  })
+
+  it('copia as condições de pagamento estruturadas e o prazo de entrega no snapshot', () => {
+    const snapshot = service.montar({
+      orcamento: orcamentoMock(),
+      cliente: clienteMock(),
+      empresaCliente: empresaMock(),
+      responsaveisPorId: new Map([['resp-1', responsavelMock()]]),
+    })
+
+    expect(snapshot.prazo_entrega_dias).toBe(15)
+    expect(snapshot.condicoes_pagamento_lista).toHaveLength(2)
+    expect(snapshot.condicoes_pagamento_lista[0]).toEqual({
+      ordem: 1,
+      descricao: 'Entrada',
+      percentual: 50,
+      marco: 'Na aprovação',
+      forma_pagamento: 'PIX',
+    })
+    expect(snapshot.condicoes_pagamento_lista[1]).toEqual({
+      ordem: 2,
+      descricao: 'Saldo',
+      percentual: 50,
+      marco: null,
+      forma_pagamento: 'Boleto',
+    })
+  })
+
+  it('prazo_entrega_dias é null e a lista de condições é vazia quando ausentes', () => {
+    const semExtras = orcamentoMock()
+    semExtras.prazoEntregaDias = null
+    semExtras.condicoesPagamento = []
+    const snapshot = service.montar({
+      orcamento: semExtras,
+      cliente: clienteMock(),
+      responsaveisPorId: new Map(),
+    })
+
+    expect(snapshot.prazo_entrega_dias).toBeNull()
+    expect(snapshot.condicoes_pagamento_lista).toEqual([])
+  })
+
+  it('as condições de pagamento são copiadas por valor (mutar a origem não altera o snapshot)', () => {
+    const orcamento = orcamentoMock()
+    const snapshot = service.montar({
+      orcamento,
+      cliente: clienteMock(),
+      responsaveisPorId: new Map(),
+    })
+
+    const cond0 = orcamento.condicoesPagamento[0]
+    if (cond0) {
+      cond0.descricao = 'ALTERADO'
+      cond0.percentual = 999
+    }
+
+    expect(snapshot.condicoes_pagamento_lista[0]?.descricao).toBe('Entrada')
+    expect(snapshot.condicoes_pagamento_lista[0]?.percentual).toBe(50)
+    // Não compartilha a referência do array nem dos itens.
+    expect(snapshot.condicoes_pagamento_lista).not.toBe(orcamento.condicoesPagamento)
   })
 
   it('copia os totais (subtotal, total e total de cada item) exatamente', () => {

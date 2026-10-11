@@ -1,6 +1,7 @@
 import type {
   DescontoTipo,
   OrcamentoComItens,
+  OrcamentoCondicaoPagamentoPublico,
   OrcamentoItemPublico,
 } from '../repositories/orcamento.repository.js'
 import type { ClientePublico } from '../repositories/cliente.repository.js'
@@ -43,6 +44,18 @@ export interface SnapshotResponsavel {
   registro_profissional: string | null
 }
 
+// Condição de pagamento estruturada copiada POR VALOR no snapshot (RF-005/
+// RF-007). Chaves em snake_case como o restante do snapshot. O `id` da linha do
+// banco NÃO entra: o snapshot é uma cópia independente do estado, não uma
+// referência às entidades vivas.
+export interface SnapshotCondicaoPagamento {
+  ordem: number
+  descricao: string
+  percentual: number
+  marco: string | null
+  forma_pagamento: string
+}
+
 export interface SnapshotItem {
   ordem: number
   nome: string
@@ -68,7 +81,14 @@ export interface OrcamentoSnapshot {
   desconto_global: SnapshotDescontoGlobal | null
   subtotal: number
   total: number
+  // Texto livre LEGADO (coluna `orcamentos.condicoes_pagamento`), preservado por
+  // compatibilidade com documentos/templates que ainda o referenciam.
   condicoes_pagamento: string | null
+  // Lista ESTRUTURADA de condições de pagamento (RF-005/RF-007), copiada por
+  // valor. Vazia quando o orçamento não possui condições estruturadas.
+  condicoes_pagamento_lista: SnapshotCondicaoPagamento[]
+  // Prazo de entrega em dias (RF-005); null quando não informado.
+  prazo_entrega_dias: number | null
   observacoes: string | null
   // Serializada como string ISO de data `YYYY-MM-DD` (ver `montarDataEmissao`).
   data_emissao: string
@@ -151,6 +171,20 @@ function montarItem(
   }
 }
 
+// Copia uma condição de pagamento POR VALOR (campo a campo), descartando o `id`
+// da entidade viva — o snapshot é independente dos cadastros.
+function montarCondicaoPagamento(
+  condicao: OrcamentoCondicaoPagamentoPublico,
+): SnapshotCondicaoPagamento {
+  return {
+    ordem: condicao.ordem,
+    descricao: condicao.descricao,
+    percentual: condicao.percentual,
+    marco: condicao.marco,
+    forma_pagamento: condicao.formaPagamento,
+  }
+}
+
 // `desconto_global` só existe quando tipo E valor estão presentes (espelha a
 // lógica do repositório de orçamentos, onde ambos são obrigatórios juntos).
 function montarDescontoGlobal(
@@ -177,6 +211,8 @@ export function criarSnapshotService(): SnapshotService {
         subtotal: orcamento.subtotal,
         total: orcamento.total,
         condicoes_pagamento: orcamento.condicoesPagamentoTexto,
+        condicoes_pagamento_lista: orcamento.condicoesPagamento.map(montarCondicaoPagamento),
+        prazo_entrega_dias: orcamento.prazoEntregaDias,
         observacoes: orcamento.observacoes,
         data_emissao: montarDataEmissao(orcamento.dataEmissao),
         validade_dias: orcamento.validadeDias,

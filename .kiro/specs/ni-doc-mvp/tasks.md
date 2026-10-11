@@ -544,7 +544,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
     `eslint-plugin-jsx-a11y` sem avisos; fluxo verificado por teclado; lint/build limpos
   - _Requirements: RF-005, RF-006, RF-007, RF-008_
 
-- [~] 62. Fiação de dados — condições/prazo no envio, snapshot, PDF e página pública
+- [x] 62. Fiação de dados — condições/prazo no envio, snapshot, PDF e página pública
   - **Snapshot/versionamento** (`services/snapshot.service.ts`, `versionamento.service.ts`):
     incluir condições de pagamento (lista estruturada) e `prazoEntregaDias` no snapshot JSONB
     da versão, por valor (cópia imutável, não referência), como já é feito com itens/cliente

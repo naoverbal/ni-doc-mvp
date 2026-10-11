@@ -60,6 +60,23 @@ const VISUALIZACAO: VisualizacaoPublica = {
     subtotal: 5000,
     total: 5000,
     condicoes_pagamento: '50% na assinatura',
+    condicoes_pagamento_lista: [
+      {
+        ordem: 1,
+        descricao: 'Entrada',
+        percentual: 50,
+        marco: 'Na assinatura',
+        forma_pagamento: 'PIX',
+      },
+      {
+        ordem: 2,
+        descricao: 'Saldo',
+        percentual: 50,
+        marco: null,
+        forma_pagamento: 'Boleto',
+      },
+    ],
+    prazo_entrega_dias: 20,
     observacoes: null,
     data_emissao: '2026-02-01',
     validade_dias: 30,
@@ -114,6 +131,43 @@ describe('PublicoOrcamento', () => {
     expect(screen.getByRole('heading', { level: 1, name: /ORC-2026-0001/i })).toBeInTheDocument()
     expect(screen.getByText(/Maria Souza/)).toBeInTheDocument()
     expect(screen.getByText(/Projeto arquitetônico/)).toBeInTheDocument()
+  })
+
+  it('exibe as condições de pagamento estruturadas e o prazo de entrega', async () => {
+    vi.mocked(api.get).mockResolvedValueOnce(VISUALIZACAO)
+    render(renderPagina())
+
+    await screen.findByRole('main')
+
+    // Condições estruturadas (descrição, percentual, marco, forma).
+    expect(
+      screen.getByRole('heading', { level: 2, name: /condições de pagamento/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Entrada')).toBeInTheDocument()
+    expect(screen.getByText('Saldo')).toBeInTheDocument()
+    expect(screen.getByText('Na assinatura')).toBeInTheDocument()
+    expect(screen.getAllByText('PIX').length).toBeGreaterThan(0)
+
+    // Prazo de entrega.
+    expect(screen.getByText(/prazo de entrega/i)).toBeInTheDocument()
+    expect(screen.getByText(/20 dias/i)).toBeInTheDocument()
+  })
+
+  it('não exibe prazo de entrega nem condições estruturadas quando ausentes', async () => {
+    vi.mocked(api.get).mockResolvedValueOnce({
+      ...VISUALIZACAO,
+      snapshot: {
+        ...VISUALIZACAO.snapshot,
+        condicoes_pagamento_lista: [],
+        prazo_entrega_dias: null,
+      },
+    })
+    render(renderPagina())
+
+    await screen.findByRole('main')
+
+    expect(screen.queryByText(/prazo de entrega/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('Entrada')).not.toBeInTheDocument()
   })
 
   it('exibe o selo "Documento íntegro" quando a versão é íntegra (não só por cor)', async () => {

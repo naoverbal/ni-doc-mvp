@@ -332,6 +332,14 @@ export interface SnapshotPublicoDescontoGlobal {
   valor: number
 }
 
+export interface SnapshotPublicoCondicaoPagamento {
+  ordem: number
+  descricao: string
+  percentual: number
+  marco: string | null
+  forma_pagamento: string
+}
+
 export interface OrcamentoSnapshotPublico {
   cliente: SnapshotPublicoCliente
   empresa_cliente: SnapshotPublicoEmpresa | null
@@ -339,7 +347,12 @@ export interface OrcamentoSnapshotPublico {
   desconto_global: SnapshotPublicoDescontoGlobal | null
   subtotal: number
   total: number
+  // Texto livre legado; preservado por compatibilidade.
   condicoes_pagamento: string | null
+  // Lista estruturada de condições de pagamento (RF-005/RF-007).
+  condicoes_pagamento_lista: SnapshotPublicoCondicaoPagamento[]
+  // Prazo de entrega em dias; null quando não informado.
+  prazo_entrega_dias: number | null
   observacoes: string | null
   data_emissao: string
   validade_dias: number
