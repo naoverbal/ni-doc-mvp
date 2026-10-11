@@ -24,6 +24,7 @@ import {
 } from '../schemas/orcamento.schema.js'
 import { validate } from '../middlewares/validate.js'
 import { criarMiddlewareAuth } from '../middlewares/auth.js'
+import { setTenant } from '../middlewares/tenant.js'
 import { AppError } from '../errors/app-error.js'
 
 export function criarOrcamentosRouter(
@@ -35,8 +36,9 @@ export function criarOrcamentosRouter(
   const router = Router()
   const autenticar = criarMiddlewareAuth(authService)
 
-  // Todas as rotas de orçamento exigem autenticação.
+  // Todas as rotas de orçamento exigem autenticação e isolamento por tenant (RLS).
   router.use(autenticar)
+  router.use(setTenant())
 
   function construirContexto(req: Request): OrcamentoContexto {
     return {

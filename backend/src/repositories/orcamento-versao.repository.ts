@@ -182,12 +182,6 @@ function mapRowVersaoSnapshotPorToken(row: VersaoSnapshotPorTokenRow): VersaoSna
   }
 }
 
-const COLUNAS_VERSAO_SNAPSHOT_POR_TOKEN = [
-  ...COLUNAS_VERSAO_POR_TOKEN,
-  'v.snapshot as snapshot',
-  'v.pdf_path as pdf_path',
-] as const
-
 const COLUNAS_VERSAO = [
   'id',
   'orcamento_id',
@@ -308,28 +302,33 @@ export function criarOrcamentoVersaoRepository(deps: {
       })
     },
 
+    // Lookup de bootstrap da rota PÚBLICA: resolve a versão pelo token (a
+    // credencial do cliente final) ANTES de haver tenant no contexto. Usa a
+    // função SECURITY DEFINER `rls_versao_por_token` (migration 004) para
+    // contornar o RLS apenas nesta busca estrita por token; o fluxo público
+    // segue depois escopado por `app.current_tenant` com o tenant resolvido aqui.
     async buscarPorToken(token: string): Promise<VersaoPorToken | null> {
-      const row = await db
-        .selectFrom('orcamento_versoes as v')
-        .innerJoin('orcamentos as o', 'o.id', 'v.orcamento_id')
-        .select(COLUNAS_VERSAO_POR_TOKEN)
-        .where('v.token_publico', '=', token)
-        .executeTakeFirst()
+      const resultado = await sql<VersaoPorTokenRow>`
+        SELECT versao_id, orcamento_id, tenant_id, numero, versao, pdf_hash,
+               token_publico, expira_em, status_orcamento
+        FROM rls_versao_por_token(${token})
+      `.execute(db)
 
+      const row = resultado.rows[0]
       if (!row) return null
-      return mapRowVersaoPorToken(row as unknown as VersaoPorTokenRow)
+      return mapRowVersaoPorToken(row)
     },
 
     async buscarSnapshotPorToken(token: string): Promise<VersaoSnapshotPorToken | null> {
-      const row = await db
-        .selectFrom('orcamento_versoes as v')
-        .innerJoin('orcamentos as o', 'o.id', 'v.orcamento_id')
-        .select(COLUNAS_VERSAO_SNAPSHOT_POR_TOKEN)
-        .where('v.token_publico', '=', token)
-        .executeTakeFirst()
+      const resultado = await sql<VersaoSnapshotPorTokenRow>`
+        SELECT versao_id, orcamento_id, tenant_id, numero, versao, pdf_hash,
+               token_publico, expira_em, status_orcamento, snapshot, pdf_path
+        FROM rls_versao_por_token(${token})
+      `.execute(db)
 
+      const row = resultado.rows[0]
       if (!row) return null
-      return mapRowVersaoSnapshotPorToken(row as unknown as VersaoSnapshotPorTokenRow)
+      return mapRowVersaoSnapshotPorToken(row)
     },
 
     async buscarVersaoAtualPorOrcamento(

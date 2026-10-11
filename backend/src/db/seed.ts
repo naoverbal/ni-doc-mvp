@@ -18,9 +18,12 @@ if (process.env['NODE_ENV'] === 'production') {
   process.exit(1)
 }
 
-const DATABASE_URL = process.env['DATABASE_URL']
+// O seed insere dados de MÚLTIPLOS tenants e usa `SET LOCAL row_security = off`,
+// que exige o papel PRIVILEGIADO. Usa DATABASE_URL_ADMIN quando definido; senão
+// cai para DATABASE_URL (compat com setups antigos que ainda usam o superusuário).
+const DATABASE_URL = process.env['DATABASE_URL_ADMIN'] ?? process.env['DATABASE_URL']
 if (!DATABASE_URL) {
-  console.error('DATABASE_URL não definido')
+  console.error('DATABASE_URL_ADMIN/DATABASE_URL não definido')
   process.exit(1)
 }
 

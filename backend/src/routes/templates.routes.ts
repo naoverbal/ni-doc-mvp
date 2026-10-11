@@ -9,6 +9,7 @@ import {
 } from '../schemas/template.schema.js'
 import { validate } from '../middlewares/validate.js'
 import { criarMiddlewareAuth, criarMiddlewareExigirPapel } from '../middlewares/auth.js'
+import { setTenant } from '../middlewares/tenant.js'
 
 export function criarTemplatesRouter(
   templateService: TemplateService,
@@ -18,8 +19,9 @@ export function criarTemplatesRouter(
   const autenticar = criarMiddlewareAuth(authService)
   const exigirAdmin = criarMiddlewareExigirPapel('admin')
 
-  // Todas as rotas de template exigem autenticação.
+  // Todas as rotas de template exigem autenticação e isolamento por tenant (RLS).
   router.use(autenticar)
+  router.use(setTenant())
 
   function construirContexto(req: Request): TemplateContexto {
     return {

@@ -15,7 +15,12 @@ const cryptoKeySchema = z.string().refine(
 )
 
 export const envSchema = z.object({
+  // Conexão do BACKEND em runtime: use o papel de aplicação SEM `BYPASSRLS`
+  // (ni_doc_app), para que as policies de RLS filtrem por tenant (RF-002).
   DATABASE_URL: z.string().url(),
+  // Conexão PRIVILEGIADA (owner/superusuário), reservada a `migrate`/`seed`.
+  // Opcional: quando ausente, as ferramentas de schema caem para DATABASE_URL.
+  DATABASE_URL_ADMIN: z.string().url().optional(),
   CRYPTO_KEY: cryptoKeySchema,
   SESSION_SECRET: z.string().min(32),
   PORT: z.coerce.number().default(3000),

@@ -111,6 +111,13 @@ interface AceiteServiceDeps {
   email?: Email
   // Fonte de tempo injetável para testes determinísticos de expiração.
   relogio?: () => Date
+  // Escopo de tenant para as operações que escrevem sob RLS (RF-002). Nas rotas
+  // PÚBLICAS o tenant só é conhecido após resolver o token, então a persistência
+  // da decisão precisa rodar dentro de `executarComTenant(tenantId, ...)` para
+  // que o GUC `app.current_tenant` esteja ativo (as rotas públicas não têm
+  // `setTenant`). Reentrante: no aceite manual (rota de domínio, já escopada)
+  // reaproveita o escopo existente. Default: passthrough (testes unitários).
+  escopoTenant?: <T>(tenantId: string, fn: () => Promise<T>) => Promise<T>
 }
 
 // Dados do comprovante (RF-021.2): identificação do orçamento + as evidências do
@@ -171,6 +178,7 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
     clienteRepo,
     email,
     relogio = () => new Date(),
+    escopoTenant = (_tenantId, fn) => fn(),
   } = deps
   // htmlRenderer é injetado para compor o wiring futuro, mas o comprovante usa
   // HTML próprio (determinístico) — por isso fica deliberadamente sem uso aqui.
@@ -230,6 +238,32 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
   // auditoria. Compartilhado pelos fluxos: muda o repo chamado (aprovar/reprovar),
   // o input, a ação de auditoria e se há comprovante. A reprovação NÃO gera PDF.
   async function registrarDecisao(args: {
+    versao: VersaoPorToken
+    hashDocumento: string
+    aceiteInput: RegistrarAceiteInput
+    acao: 'aprovar' | 'reprovar' | 'aceite_manual'
+    persistir: (input: RegistrarAceiteInput) => Promise<{
+      id: string
+      versaoId: string
+      metodo: 'cliente' | 'operador'
+      hashDocumento: string
+      criadoEm: Date
+    }>
+    gerarComprovante: boolean
+    usuarioId?: string
+    ip?: string
+    userAgent?: string
+  }): Promise<AceiteRegistrado> {
+    const { versao } = args
+
+    // Toda a persistência da decisão (aceite + status do orçamento + auditoria +
+    // notificação) roda escopada ao tenant da versão, para que o RLS filtre
+    // corretamente. Nas rotas públicas isso ativa o GUC (que ainda não existe);
+    // no aceite manual é reentrante e reaproveita o escopo do request.
+    return escopoTenant(versao.tenantId, () => persistirDecisao(args))
+  }
+
+  async function persistirDecisao(args: {
     versao: VersaoPorToken
     hashDocumento: string
     aceiteInput: RegistrarAceiteInput

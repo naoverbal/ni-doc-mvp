@@ -29,7 +29,10 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/nidoc
+      # Runtime: papel de aplicação sem BYPASSRLS (RLS ativo — RF-002).
+      DATABASE_URL: postgresql://ni_doc_app:ni_doc_app@postgres:5432/nidoc
+      # Privilegiado: usado só por migrate/seed (criam papel, funções e policies).
+      DATABASE_URL_ADMIN: postgresql://postgres:postgres@postgres:5432/nidoc
       NODE_ENV: development
       PORT: 3000
     env_file:

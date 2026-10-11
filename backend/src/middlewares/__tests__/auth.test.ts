@@ -3,14 +3,24 @@ import express from 'express'
 import request from 'supertest'
 import cookieParser from 'cookie-parser'
 import type { Request, Response, NextFunction } from 'express'
-import { Kysely, PostgresDialect, type CompiledQuery } from 'kysely'
-import { Pool } from 'pg'
 import { criarMiddlewareAuth } from '../auth.js'
 import { criarMiddlewareTenant, setTenant } from '../tenant.js'
+import { executarComTenant } from '../../config/database.js'
 import type { AuthService } from '../../services/auth.service.js'
 import type { UsuarioPublico } from '../../repositories/usuario.repository.js'
 import type { SessaoAtiva } from '../../repositories/sessao.repository.js'
-import type { Database } from '../../types/database.js'
+
+// O middleware de tenant abre o escopo de conexão por request via
+// `executarComTenant` (config/database). Aqui mockamos esse escopo para testar o
+// contrato do middleware sem um PostgreSQL real; a verificação ponta-a-ponta do
+// RLS fica para os testes de integração (tenant.integration.test.ts).
+vi.mock('../../config/database.js', () => ({
+  executarComTenant: vi.fn(
+    async (_tenantId: string, fn: () => Promise<unknown>): Promise<unknown> => fn(),
+  ),
+}))
+
+const executarComTenantMock = vi.mocked(executarComTenant)
 
 const usuarioMock: UsuarioPublico = {
   id: 'user-1',
@@ -97,14 +107,21 @@ describe('Middleware autenticar', () => {
 })
 
 describe('Middleware setTenant', () => {
-  function makeDbMock() {
-    // Instância real do Kysely (necessária para compilar o `sql` template),
-    // mas SEM conexão: o Pool nunca é usado porque executeQuery é um spy.
-    const db = new Kysely<Database>({
-      dialect: new PostgresDialect({ pool: new Pool() }),
-    })
-    const executeQuery = vi.spyOn(db, 'executeQuery').mockResolvedValue({ rows: [] } as never)
-    return { db, executeQuery }
+  // Resposta fake mínima: o middleware anexa handlers em `finish`/`close` para
+  // fechar o escopo quando a resposta termina. Guardamos esses handlers para
+  // disparar manualmente e simular o fim do request.
+  function makeRes(): { res: Response; finish: () => void } {
+    const handlers: Record<string, Array<() => void>> = {}
+    const res = {
+      on(evento: string, cb: () => void) {
+        ;(handlers[evento] ??= []).push(cb)
+        return this
+      },
+    } as unknown as Response
+    return {
+      res,
+      finish: () => (handlers['finish'] ?? []).forEach((cb) => cb()),
+    }
   }
 
   function makeReq(tenantId: string): Request {
@@ -113,57 +130,41 @@ describe('Middleware setTenant', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    executarComTenantMock.mockImplementation(
+      async (_tenantId: string, fn: () => Promise<unknown>): Promise<unknown> => fn(),
+    )
   })
 
-  it('executa set_config com o tenantId de req.usuario antes de next()', async () => {
-    const { db, executeQuery } = makeDbMock()
-    const middleware = criarMiddlewareTenant(db)
+  it('abre o escopo de tenant com o tenantId de req.usuario', async () => {
+    const middleware = criarMiddlewareTenant()
     const next = vi.fn() as unknown as NextFunction
-    const req = makeReq('tenant-xyz')
+    const { res, finish } = makeRes()
 
-    await middleware(req, {} as Response, next)
+    middleware(makeReq('tenant-xyz'), res, next)
+    // O escopo foi aberto com o tenant correto.
+    expect(executarComTenantMock).toHaveBeenCalledTimes(1)
+    expect(executarComTenantMock.mock.calls[0]![0]).toBe('tenant-xyz')
 
-    // SQL foi executado exatamente uma vez com o tenant correto.
-    expect(executeQuery).toHaveBeenCalledTimes(1)
-    const compiled = executeQuery.mock.calls[0]![0] as unknown as CompiledQuery
-    expect(compiled.sql.toLowerCase()).toContain('set_config')
-    expect(compiled.sql).toContain('app.current_tenant')
-    expect(compiled.parameters).toContain('tenant-xyz')
-
-    // next() foi chamado uma vez, sem erro.
+    // next() é chamado dentro do escopo (handler do request segue o pipeline).
     expect(next).toHaveBeenCalledTimes(1)
-    expect((next as unknown as ReturnType<typeof vi.fn>).mock.calls[0]).toHaveLength(0)
-  })
 
-  it('executa o SET do tenant ANTES de chamar next()', async () => {
-    const { db, executeQuery } = makeDbMock()
-    const ordem: string[] = []
-    executeQuery.mockImplementation(async () => {
-      ordem.push('set_config')
-      return { rows: [] }
-    })
-    const next = vi.fn(() => {
-      ordem.push('next')
-    }) as unknown as NextFunction
-    const middleware = criarMiddlewareTenant(db)
-
-    await middleware(makeReq('tenant-1'), {} as Response, next)
-
-    expect(ordem).toEqual(['set_config', 'next'])
+    // Encerrar a resposta resolve a Promise interna, fechando o escopo.
+    finish()
   })
 
   it('propaga o tenant do usuário logado (valor dinâmico por request)', async () => {
-    const { db, executeQuery } = makeDbMock()
-    const middleware = criarMiddlewareTenant(db)
+    const middleware = criarMiddlewareTenant()
     const next = vi.fn() as unknown as NextFunction
 
-    await middleware(makeReq('tenant-a'), {} as Response, next)
-    await middleware(makeReq('tenant-b'), {} as Response, next)
+    const a = makeRes()
+    const b = makeRes()
+    middleware(makeReq('tenant-a'), a.res, next)
+    middleware(makeReq('tenant-b'), b.res, next)
 
-    const paramsA = (executeQuery.mock.calls[0]![0] as unknown as CompiledQuery).parameters
-    const paramsB = (executeQuery.mock.calls[1]![0] as unknown as CompiledQuery).parameters
-    expect(paramsA).toContain('tenant-a')
-    expect(paramsB).toContain('tenant-b')
+    expect(executarComTenantMock.mock.calls[0]![0]).toBe('tenant-a')
+    expect(executarComTenantMock.mock.calls[1]![0]).toBe('tenant-b')
+    a.finish()
+    b.finish()
   })
 
   it('expõe o alias setTenant apontando para a mesma fábrica', () => {

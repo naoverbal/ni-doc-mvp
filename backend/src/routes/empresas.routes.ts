@@ -15,6 +15,7 @@ import {
 } from '../schemas/empresa.schema.js'
 import { validate } from '../middlewares/validate.js'
 import { criarMiddlewareAuth } from '../middlewares/auth.js'
+import { setTenant } from '../middlewares/tenant.js'
 import { AppError } from '../errors/app-error.js'
 
 const TIPOS_EMPRESA = ['tenant', 'cliente_pj'] as const
@@ -27,8 +28,9 @@ export function criarEmpresasRouter(
   const router = Router()
   const autenticar = criarMiddlewareAuth(authService)
 
-  // Todas as rotas de empresa exigem autenticação.
+  // Todas as rotas de empresa exigem autenticação e isolamento por tenant (RLS).
   router.use(autenticar)
+  router.use(setTenant())
 
   function construirContexto(req: Request): EmpresaContexto {
     return {

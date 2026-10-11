@@ -390,7 +390,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
 > transversal, independente das fases de feature, e pode ser executada assim que a
 > infraestrutura de dados (Fase 2) e de auth/tenant (Fase 3) estiver pronta.
 
-- [ ] 56. Ativar RLS por request (conexão por request + `setTenant` + papel sem BYPASSRLS)
+- [x] 56. Ativar RLS por request (conexão por request + `setTenant` + papel sem BYPASSRLS)
   - **Papel de banco:** criar/documentar um papel de aplicação sem `BYPASSRLS` e que não
     seja superusuário/owner das tabelas, usado pelo backend em runtime; reservar o papel
     privilegiado apenas para `migrate`/`seed`. Ajustar `.env.example` (`DATABASE_URL`) e
