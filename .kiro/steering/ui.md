@@ -15,7 +15,7 @@ Padrões visuais, de componentes e de interação do ni-doc. A UI é construída
 - Antes de criar um componente novo, confira o inventário (seção 3). Novo componente
   reutilizável vive em `components/common/` e deve ser documentado aqui.
 - Prefira semântica Fluent/HTML nativa; só use ARIA quando a nativa não cobrir.
-- Textos de UI em pt-BR. Veja também `accessibility.md` e `.kiro/specs/ni-doc-mvp/design.md`.
+- Textos de UI em pt-BR. Veja também `Acessibilidade.md` e `.kiro/specs/ni-doc-mvp/design.md`.
 
 ---
 
@@ -162,7 +162,7 @@ linking (`/orcamentos/:id`), estado de formulário preservado ao voltar.
 
 ## 6. Acessibilidade (específico de UI)
 
-Complementa `accessibility.md`.
+Complementa `Acessibilidade.md`.
 - Focus ring de marca (tom 80), 3px; nunca remover indicador de foco.
 - Contraste AA em todos os pares texto/fundo (validar no WebAIM).
 - Não comunicar informação só por cor — status de orçamento precisa de rótulo textual.
@@ -200,4 +200,4 @@ ferramentas + painel de propriedades) e Página Pública de Aprovação.
 - Fluent Theme Designer — https://react.fluentui.dev/?path=/docs/theme-theme-designer--docs
 - Fluent Icons — https://react.fluentui.dev/?path=/docs/icons-catalog--docs
 - Inter — https://rsms.me/inter/ · WebAIM Contrast Checker — https://webaim.org/resources/contrastchecker/
-- `accessibility.md` · `.kiro/specs/ni-doc-mvp/design.md`
+- `Acessibilidade.md` · `.kiro/specs/ni-doc-mvp/design.md`

@@ -6,7 +6,7 @@ inclusion: always
 
 Diretrizes de acessibilidade para o ni-doc. Aplicam-se à SPA (React + Vite) e a
 qualquer saída HTML renderizada pelo backend (templates de PDF, página pública
-de aceite). O alvo é **WCAG 2.1 nível AA**.
+de aceite). O alvo é **WCAG 2.2 nível AA**.
 
 > A conformidade total com WCAG exige teste manual com tecnologias assistivas e
 > revisão humana especializada. Estas regras cobrem o que é verificável em

@@ -660,6 +660,11 @@
         "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
         "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
         "timestamp": 1791467984118
+      },
+      {
+        "executionId": "fe6bc55b-e687-45a8-bd68-404da981d5ed",
+        "chatSessionId": "sess_b2430119-0f9a-4dee-b68d-1f10ac50f753",
+        "timestamp": 1791758308423
       }
     ],
     "54. Pipeline de deploy": [
@@ -667,6 +672,11 @@
         "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
         "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
         "timestamp": 1791467984151
+      },
+      {
+        "executionId": "9523882f-b23d-4049-a994-c15e113e4305",
+        "chatSessionId": "sess_648d3cb2-2528-40f1-9231-9257a094e163",
+        "timestamp": 1791758551508
       }
     ],
     "55. Job de limpeza de PDFs": [
@@ -674,6 +684,11 @@
         "executionId": "219139c9-5093-41f2-9181-73a1695c1867",
         "chatSessionId": "sess_51981262-f9ca-417d-9598-81c486cf4111",
         "timestamp": 1791467984183
+      },
+      {
+        "executionId": "c25e7100-8001-4e36-ba8b-cc917ba8ea73",
+        "chatSessionId": "sess_37ec325b-f8a5-49a0-8708-253b0dfb924c",
+        "timestamp": 1791758748697
       }
     ],
     "57. Acessibilidade do HTML renderizado (PDF)": [
@@ -681,6 +696,53 @@
         "executionId": "6a5132d9-d31b-4cb1-a51b-e2c1199d7b44",
         "chatSessionId": "sess_6b9d7be7-e84b-4f38-91bb-a54f2ea6cca2",
         "timestamp": 1791569547071
+      }
+    ],
+    "59. Refino de UI do Dashboard (mesmo padrão)": [
+      {
+        "executionId": "ae492707-f0a0-4910-b6a8-47aedd7eb2e2",
+        "chatSessionId": "sess_125860cd-4c9a-4fa1-9cc7-6301fc3b49c7",
+        "timestamp": 1791653793326
+      }
+    ],
+    "56. Ativar RLS por request (conexão por request + `setTenant` + papel sem BYPASSRLS)": [
+      {
+        "executionId": "f4e0b6ae-9bd6-4737-971a-a79165e7415b",
+        "chatSessionId": "sess_84f36351-7bc6-4ac4-bf84-a046cc44b76b",
+        "timestamp": 1791756628397
+      },
+      {
+        "executionId": "cbbef676-2012-4b56-bb23-b14aa7e9a0fa",
+        "chatSessionId": "sess_b00c86ed-d791-40d1-8c04-37094c851354",
+        "timestamp": 1791759164535
+      }
+    ],
+    "60. Backend — condições de pagamento estruturadas e prazo de entrega": [
+      {
+        "executionId": "1f225859-6946-4d64-87bb-61268e88766e",
+        "chatSessionId": "sess_899c4ffd-317e-46f1-957e-ccc18c010952",
+        "timestamp": 1791757611211
+      }
+    ],
+    "61. Frontend — reescrever o Editor de Orçamento em Fluent 2 (layout do protótipo)": [
+      {
+        "executionId": "582d00d2-c740-48a2-a361-e3ce03c91f21",
+        "chatSessionId": "sess_6f74f351-528f-4278-951b-a0ee4b5bb283",
+        "timestamp": 1791759841142
+      }
+    ],
+    "62. Fiação de dados — condições/prazo no envio, snapshot, PDF e página pública": [
+      {
+        "executionId": "71f37d05-720e-46ab-8e22-e862b2255b51",
+        "chatSessionId": "sess_d2928c6d-eb8d-413e-967c-cd51d54c94c1",
+        "timestamp": 1791760469250
+      }
+    ],
+    "63. Frontend — sidebar colapsável e app shell em Fluent 2 (layout do protótipo)": [
+      {
+        "executionId": "cd29dff0-ff84-4b42-99a3-c1aac8b0fe91",
+        "chatSessionId": "sess_40ea733b-e6be-49c6-be7f-76a8980eb12d",
+        "timestamp": 1791761157925
       }
     ]
   }
