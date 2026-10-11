@@ -100,6 +100,17 @@ export interface OrcamentoItem {
   responsavelId: string | null
 }
 
+// Condição de pagamento estruturada retornada pela API (RF-005/RF-007).
+// Espelha OrcamentoCondicaoPagamentoPublico do backend.
+export interface CondicaoPagamento {
+  id: string
+  ordem: number
+  descricao: string
+  percentual: number
+  marco: string | null
+  formaPagamento: string
+}
+
 export interface OrcamentoComItens {
   id: string
   tenantId: string
@@ -112,13 +123,15 @@ export interface OrcamentoComItens {
   status: OrcamentoStatus
   dataEmissao: string
   validadeDias: number
+  prazoEntregaDias: number | null
   descontoGlobalTipo: DescontoTipo | null
   descontoGlobalValor: number | null
   subtotal: number
   total: number
   versaoAtual: number
   observacoes: string | null
-  condicoesPagamento: string | null
+  // Lista estruturada de condições de pagamento (RF-005/RF-007).
+  condicoesPagamento: CondicaoPagamento[]
   criadoEm: string
   atualizadoEm: string
   itens: OrcamentoItem[]
@@ -136,13 +149,25 @@ export interface OrcamentoItemPayload {
   responsavelId?: string
 }
 
+// Payload de condição de pagamento estruturada (RF-005/RF-007). O backend exige
+// que a soma dos percentuais seja 100 quando a lista não é vazia.
+export interface CondicaoPagamentoPayload {
+  descricao: string
+  percentual: number
+  marco?: string
+  formaPagamento: string
+}
+
 // Payload de criação/atualização de orçamento. O backend exige >= 1 item.
 export interface SalvarOrcamentoPayload {
   clienteId: string
   titulo: string
   descricao?: string
+  validadeDias?: number
+  prazoEntregaDias?: number
   descontoGlobalTipo?: DescontoTipo
   descontoGlobalValor?: number
+  condicoesPagamento?: CondicaoPagamentoPayload[]
   itens: OrcamentoItemPayload[]
 }
 

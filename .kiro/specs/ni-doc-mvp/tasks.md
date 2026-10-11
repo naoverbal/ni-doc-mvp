@@ -372,7 +372,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: push na `main` faz deploy automático com health check
   - _Requirements: deploy_
 
-- [ ] 55. Job de limpeza de PDFs
+- [x] 55. Job de limpeza de PDFs
   - Criar `backend/src/jobs/limpar-pdfs.ts`
   - Cron diário; remover PDFs com mais de 1 ano (após retenção legal); registrar remoção na auditoria
   - DoD: job roda, PDFs antigos removidos, auditoria registrada
@@ -507,7 +507,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
     lint/build/testes limpos
   - _Requirements: RF-005, RF-006, RF-007_
 
-- [ ] 61. Frontend — reescrever o Editor de Orçamento em Fluent 2 (layout do protótipo)
+- [x] 61. Frontend — reescrever o Editor de Orçamento em Fluent 2 (layout do protótipo)
   - Reescrever `frontend/src/pages/OrcamentoEditor.tsx` com `@fluentui/react-components`
     (`Card`, `Field`, `Input`, `Textarea`, `Dropdown`, `Table`, `Button`, `Badge`, `Divider`,
     `Switch`, `Tooltip`) e `@fluentui/react-icons`, seguindo o layout do arquivo de referência
@@ -544,7 +544,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
     `eslint-plugin-jsx-a11y` sem avisos; fluxo verificado por teclado; lint/build limpos
   - _Requirements: RF-005, RF-006, RF-007, RF-008_
 
-- [ ] 62. Fiação de dados — condições/prazo no envio, snapshot, PDF e página pública
+- [~] 62. Fiação de dados — condições/prazo no envio, snapshot, PDF e página pública
   - **Snapshot/versionamento** (`services/snapshot.service.ts`, `versionamento.service.ts`):
     incluir condições de pagamento (lista estruturada) e `prazoEntregaDias` no snapshot JSONB
     da versão, por valor (cópia imutável, não referência), como já é feito com itens/cliente

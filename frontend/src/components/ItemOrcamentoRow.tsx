@@ -1,15 +1,39 @@
 import { useId, useState, type ReactElement } from 'react'
+import {
+  Button,
+  Caption1,
+  Dropdown,
+  Input,
+  Menu,
+  MenuItem,
+  MenuList,
+  MenuPopover,
+  MenuTrigger,
+  Option,
+  TableCell,
+  TableCellLayout,
+  TableRow,
+  Tooltip,
+  makeStyles,
+  tokens,
+} from '@fluentui/react-components'
+import { MoreHorizontal20Regular, ReOrderDotsVertical20Regular } from '@fluentui/react-icons'
 import type { DescontoTipo, ResponsavelResumo } from '@/types/api'
 import { calcularTotalItem } from '@/lib/orcamento-calculo'
 import { useBuscarResponsaveis } from '@/hooks/useReferencias'
 import { Autocomplete, type OpcaoAutocomplete } from '@/components/Autocomplete'
+import { formatarMoeda } from '@/lib/formato'
 
-// Forma de um item no estado do formulário. Mantém strings nos campos de
-// seleção/entrada para espelhar os controles do DOM; a conversão para números
-// acontece no cálculo e ao montar o payload de salvamento.
+// Unidades de medida disponíveis para um item (RF-006).
+export const UNIDADES_ITEM = ['un', 'h', 'm²', 'kit'] as const
+
+// Forma de um item no estado do formulário. Mantém os campos de seleção/entrada
+// com os tipos usados pelo cálculo; a conversão para o payload de salvamento
+// acontece no editor.
 export interface ItemFormulario {
   nome: string
   quantidade: number
+  unidade: string
   valorUnitario: number
   descontoTipo: DescontoTipo | ''
   descontoValor: number
@@ -27,15 +51,34 @@ export interface ItemOrcamentoRowProps {
   erroNome?: string
 }
 
-function formatarMoeda(valor: number): string {
-  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
+const useStyles = makeStyles({
+  celulaResponsavel: {
+    minWidth: '220px',
+  },
+  entradaResponsavel: {
+    marginTop: tokens.spacingVerticalXS,
+  },
+  erro: {
+    display: 'block',
+    marginTop: tokens.spacingVerticalXXS,
+    color: tokens.colorPaletteRedForeground1,
+    fontSize: tokens.fontSizeBase200,
+  },
+  celulaMoeda: {
+    textAlign: 'right',
+    whiteSpace: 'nowrap',
+    fontFamily: tokens.fontFamilyMonospace,
+  },
+  manipulador: {
+    color: tokens.colorNeutralForeground3,
+  },
+})
 
 /**
- * Uma linha editável de item do orçamento (RF-006). Agrupa os campos em um
- * `<fieldset>` com `<legend>` ("Item N"); cada campo tem `<label>` associado.
- * O total do item é recalculado em tempo real e exibido. O responsável técnico
- * (opcional) é escolhido por um combobox acessível.
+ * Uma linha editável de item do orçamento (RF-006), renderizada como `TableRow`
+ * Fluent. Cada campo tem nome acessível via `aria-label`; o total do item é
+ * recalculado em tempo real. O responsável técnico (opcional) usa um combobox
+ * acessível, exibido abaixo do nome do item.
  */
 export function ItemOrcamentoRow({
   indice,
@@ -45,12 +88,8 @@ export function ItemOrcamentoRow({
   podeRemover,
   erroNome,
 }: ItemOrcamentoRowProps): ReactElement {
-  const nomeId = useId()
+  const estilos = useStyles()
   const nomeErroId = useId()
-  const quantidadeId = useId()
-  const valorId = useId()
-  const descontoTipoId = useId()
-  const descontoValorId = useId()
   const respBaseId = useId()
   const numero = indice + 1
 
@@ -77,109 +116,124 @@ export function ItemOrcamentoRow({
     aoMudar({ ...item, [campo]: valor })
   }
 
+  // Converte uma string de entrada numérica para número, tratando vazio como NaN
+  // (o cálculo em tempo real trata NaN como 0).
+  function paraNumero(texto: string): number {
+    return texto === '' ? Number.NaN : Number(texto)
+  }
+
   return (
-    <fieldset>
-      <legend>Item {numero}</legend>
+    <TableRow>
+      <TableCell className="col-handle cell-handle">
+        <ReOrderDotsVertical20Regular aria-hidden className={estilos.manipulador} />
+      </TableCell>
 
-      <div>
-        <label htmlFor={nomeId}>Nome</label>
-        <input
-          id={nomeId}
-          type="text"
-          value={item.nome}
-          aria-invalid={erroNome ? true : undefined}
-          aria-describedby={erroNome ? nomeErroId : undefined}
-          onChange={(evento) => atualizar('nome', evento.target.value)}
-        />
-        {erroNome && (
-          <span id={nomeErroId} role="alert">
-            {erroNome}
-          </span>
-        )}
-      </div>
+      <TableCell>
+        <TableCellLayout>
+          <Input
+            aria-label={`Nome do item ${numero}`}
+            appearance="underline"
+            size="small"
+            value={item.nome}
+            aria-invalid={erroNome ? true : undefined}
+            aria-describedby={erroNome ? nomeErroId : undefined}
+            onChange={(_, dados) => atualizar('nome', dados.value)}
+          />
+          {erroNome && (
+            <span id={nomeErroId} role="alert" className={estilos.erro}>
+              {erroNome}
+            </span>
+          )}
+          <div className={estilos.celulaResponsavel}>
+            <Autocomplete
+              id={respBaseId}
+              className={estilos.entradaResponsavel}
+              rotulo={`Responsável técnico do item ${numero} (opcional)`}
+              rotuloOculto
+              texto={termoResp}
+              aoMudarTexto={(texto) => {
+                setTermoResp(texto)
+                if (texto.trim() === '') {
+                  aoMudar({ ...item, responsavelId: '', responsavelNome: '' })
+                }
+              }}
+              opcoes={opcoes}
+              selecionado={selecionado}
+              carregando={isLoading}
+              placeholder="Responsável técnico (opcional)"
+              aoSelecionar={(opcao) => {
+                setTermoResp(opcao.rotulo)
+                aoMudar({ ...item, responsavelId: opcao.id, responsavelNome: opcao.rotulo })
+              }}
+            />
+          </div>
+        </TableCellLayout>
+      </TableCell>
 
-      <div>
-        <label htmlFor={quantidadeId}>Quantidade</label>
-        <input
-          id={quantidadeId}
+      <TableCell>
+        <Input
+          aria-label={`Quantidade do item ${numero}`}
+          appearance="underline"
+          size="small"
           type="number"
           min={0}
           step="any"
-          value={Number.isFinite(item.quantidade) ? item.quantidade : ''}
-          onChange={(evento) => atualizar('quantidade', evento.target.valueAsNumber)}
+          value={Number.isFinite(item.quantidade) ? String(item.quantidade) : ''}
+          onChange={(_, dados) => atualizar('quantidade', paraNumero(dados.value))}
         />
-      </div>
+      </TableCell>
 
-      <div>
-        <label htmlFor={valorId}>Valor unitário</label>
-        <input
-          id={valorId}
-          type="number"
-          min={0}
-          step="any"
-          value={Number.isFinite(item.valorUnitario) ? item.valorUnitario : ''}
-          onChange={(evento) => atualizar('valorUnitario', evento.target.valueAsNumber)}
-        />
-      </div>
-
-      <div>
-        <label htmlFor={descontoTipoId}>Tipo de desconto</label>
-        <select
-          id={descontoTipoId}
-          value={item.descontoTipo}
-          onChange={(evento) => atualizar('descontoTipo', evento.target.value as DescontoTipo | '')}
+      <TableCell>
+        <Dropdown
+          aria-label={`Unidade do item ${numero}`}
+          size="small"
+          value={item.unidade}
+          selectedOptions={[item.unidade]}
+          onOptionSelect={(_, dados) => atualizar('unidade', dados.optionValue ?? 'un')}
         >
-          <option value="">Sem desconto</option>
-          <option value="percentual">Percentual (%)</option>
-          <option value="fixo">Fixo (R$)</option>
-        </select>
-      </div>
+          {UNIDADES_ITEM.map((unidade) => (
+            <Option key={unidade}>{unidade}</Option>
+          ))}
+        </Dropdown>
+      </TableCell>
 
-      <div>
-        <label htmlFor={descontoValorId}>Valor do desconto</label>
-        <input
-          id={descontoValorId}
+      <TableCell>
+        <Input
+          aria-label={`Valor unitário do item ${numero}`}
+          appearance="underline"
+          size="small"
           type="number"
           min={0}
           step="any"
-          value={Number.isFinite(item.descontoValor) ? item.descontoValor : ''}
-          disabled={item.descontoTipo === ''}
-          onChange={(evento) => atualizar('descontoValor', evento.target.valueAsNumber)}
+          contentBefore={<Caption1>R$</Caption1>}
+          value={Number.isFinite(item.valorUnitario) ? String(item.valorUnitario) : ''}
+          onChange={(_, dados) => atualizar('valorUnitario', paraNumero(dados.value))}
         />
-      </div>
+      </TableCell>
 
-      <Autocomplete
-        id={respBaseId}
-        rotulo="Responsável técnico (opcional)"
-        texto={termoResp}
-        aoMudarTexto={(texto) => {
-          setTermoResp(texto)
-          // Limpar o texto desassocia o responsável selecionado.
-          if (texto.trim() === '') {
-            aoMudar({ ...item, responsavelId: '', responsavelNome: '' })
-          }
-        }}
-        opcoes={opcoes}
-        selecionado={selecionado}
-        carregando={isLoading}
-        aoSelecionar={(opcao) => {
-          setTermoResp(opcao.rotulo)
-          aoMudar({ ...item, responsavelId: opcao.id, responsavelNome: opcao.rotulo })
-        }}
-      />
+      <TableCell className={`col-total ${estilos.celulaMoeda}`}>{formatarMoeda(total)}</TableCell>
 
-      <p>
-        Total do item: <strong>{formatarMoeda(total)}</strong>
-      </p>
-
-      <button
-        type="button"
-        aria-label={`Remover item ${numero}`}
-        onClick={aoRemover}
-        disabled={!podeRemover}
-      >
-        Remover
-      </button>
-    </fieldset>
+      <TableCell className="col-actions">
+        <Menu>
+          <MenuTrigger disableButtonEnhancement>
+            <Tooltip content={`Ações do item ${numero}`} relationship="label">
+              <Button
+                appearance="subtle"
+                size="small"
+                aria-label={`Ações do item ${numero}`}
+                icon={<MoreHorizontal20Regular />}
+              />
+            </Tooltip>
+          </MenuTrigger>
+          <MenuPopover>
+            <MenuList>
+              <MenuItem disabled={!podeRemover} onClick={aoRemover}>
+                Remover item {numero}
+              </MenuItem>
+            </MenuList>
+          </MenuPopover>
+        </Menu>
+      </TableCell>
+    </TableRow>
   )
 }

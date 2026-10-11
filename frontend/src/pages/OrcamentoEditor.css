@@ -1,0 +1,240 @@
+/*
+ * Layout do Editor de Orçamento (tarefa 61). Convertido do protótipo Tailwind
+ * para CSS com tokens Fluent (variáveis `--color*`, `--borderRadius*`,
+ * `--shadow*`), sem Tailwind e sem duplicar o tema. Apenas a região de conteúdo
+ * do editor é estilizada aqui — a casca (header/nav) vem de LayoutApp.
+ */
+
+.orcamento-editor {
+  min-height: 100%;
+  background: var(--colorNeutralBackground3);
+}
+
+/* Barra de ações fixa no topo da área de conteúdo. */
+.orcamento-editor__action-bar {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacingHorizontalL);
+  min-height: 56px;
+  padding: var(--spacingVerticalS) var(--spacingHorizontalXXXL);
+  border-bottom: 1px solid var(--colorNeutralStroke2);
+  background: var(--colorNeutralBackground1);
+  box-shadow: var(--shadow2);
+}
+
+.orcamento-editor__action-bar > .fui-Divider {
+  flex-grow: 0;
+  height: 24px;
+}
+
+.orcamento-editor__identidade,
+.orcamento-editor__acoes {
+  display: flex;
+  align-items: center;
+  gap: var(--spacingHorizontalS);
+}
+
+.orcamento-editor__acoes {
+  margin-left: auto;
+}
+
+.orcamento-editor__container {
+  width: min(100%, 1200px);
+  margin: 0 auto;
+  padding: var(--spacingVerticalL) var(--spacingHorizontalXXXL) var(--spacingVerticalXXXL);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacingVerticalXXL);
+}
+
+.orcamento-editor__secao {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacingVerticalL);
+}
+
+.orcamento-editor__titulo-secao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacingHorizontalM);
+  min-height: 36px;
+}
+
+.orcamento-editor__titulo-secao-rotulo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacingHorizontalSNudge);
+}
+
+.orcamento-editor__titulo-secao-rotulo > svg {
+  color: var(--colorBrandForeground1);
+}
+
+.chevron--recolhido {
+  transform: rotate(180deg);
+}
+
+/* Card de dados: grid de 6 colunas em telas largas. */
+.orcamento-editor__dados {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--spacingVerticalL) var(--spacingHorizontalL);
+}
+
+.orcamento-editor__dados > * {
+  grid-column: span 2;
+}
+
+.orcamento-editor__campo-cliente,
+.orcamento-editor__campo-titulo {
+  grid-column: span 3;
+}
+
+.orcamento-editor__campo-largo {
+  grid-column: 1 / -1;
+}
+
+/* Tabela de itens. */
+.orcamento-editor__itens-card {
+  padding: 0;
+  overflow-x: auto;
+}
+
+.orcamento-editor__itens-tabela {
+  min-width: 920px;
+}
+
+.orcamento-editor__itens-tabela .col-handle,
+.orcamento-editor__itens-tabela .col-actions {
+  width: 44px;
+}
+
+.orcamento-editor__itens-tabela .col-total {
+  width: 150px;
+}
+
+.cell-handle {
+  color: var(--colorNeutralForeground3);
+}
+
+.orcamento-editor__totais-tabela {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--spacingVerticalSNudge);
+  padding: var(--spacingVerticalL) var(--spacingHorizontalXXL);
+  border-top: 1px solid var(--colorNeutralStroke2);
+  background: var(--colorNeutralBackground2);
+}
+
+.orcamento-editor__totais-tabela > div {
+  display: grid;
+  grid-template-columns: 180px 140px;
+  text-align: right;
+}
+
+/* Condições de pagamento. */
+.orcamento-editor__condicoes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacingVerticalSNudge);
+}
+
+.orcamento-editor__condicao {
+  display: grid;
+  grid-template-columns: 28px 1fr 112px 1.2fr 180px 36px;
+  align-items: end;
+  gap: var(--spacingHorizontalM);
+  padding: var(--spacingVerticalM) var(--spacingHorizontalL);
+}
+
+.orcamento-editor__condicao > .fui-Badge {
+  align-self: center;
+}
+
+/* Resumo financeiro. */
+.orcamento-editor__resumo-card {
+  width: min(100%, 680px);
+  margin-left: auto;
+  padding: var(--spacingVerticalXXL);
+}
+
+.orcamento-editor__resumo-linha {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacingHorizontalXXL);
+  padding: var(--spacingVerticalS) 0;
+}
+
+.orcamento-editor__resumo-linha--total {
+  align-items: center;
+  padding-top: var(--spacingVerticalL);
+}
+
+.orcamento-editor__controles-desconto {
+  display: grid;
+  grid-template-columns: 84px 120px;
+  gap: var(--spacingHorizontalS);
+  margin-top: var(--spacingVerticalSNudge);
+}
+
+.orcamento-editor__moeda,
+.orcamento-editor__total-destaque {
+  font-family: var(--fontFamilyMonospace);
+}
+
+.orcamento-editor__total-destaque {
+  color: var(--colorBrandForeground1);
+  font-size: var(--fontSizeHero700);
+  line-height: var(--lineHeightHero700);
+}
+
+.orcamento-editor__acoes-finais {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--spacingHorizontalM);
+  padding: var(--spacingVerticalXXL) 0;
+}
+
+/* Oculto visualmente, acessível a leitores de tela. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 1080px) {
+  .orcamento-editor__container {
+    padding-left: var(--spacingHorizontalL);
+    padding-right: var(--spacingHorizontalL);
+  }
+}
+
+@media (max-width: 760px) {
+  .orcamento-editor__action-bar {
+    padding-left: var(--spacingHorizontalL);
+    padding-right: var(--spacingHorizontalL);
+  }
+
+  .orcamento-editor__dados {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .orcamento-editor__condicao {
+    grid-template-columns: 28px 1fr 36px;
+  }
+}

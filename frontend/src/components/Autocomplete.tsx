@@ -21,6 +21,24 @@ export interface AutocompleteProps {
   invalido?: boolean
   descritoPor?: string
   placeholder?: string
+  // Classe aplicada ao contêiner externo (integração com makeStyles do consumidor).
+  className?: string
+  // Oculta visualmente o rótulo (mantendo-o acessível) quando o contexto já o
+  // comunica — ex.: dentro de uma célula de tabela com cabeçalho próprio.
+  rotuloOculto?: boolean
+}
+
+// Oculta visualmente mantendo acessível a leitores de tela (padrão sr-only).
+const estiloRotuloOculto: React.CSSProperties = {
+  position: 'absolute',
+  width: '1px',
+  height: '1px',
+  padding: 0,
+  margin: '-1px',
+  overflow: 'hidden',
+  clip: 'rect(0, 0, 0, 0)',
+  whiteSpace: 'nowrap',
+  border: 0,
 }
 
 /**
@@ -49,6 +67,8 @@ export function Autocomplete({
   invalido = false,
   descritoPor,
   placeholder,
+  className,
+  rotuloOculto = false,
 }: AutocompleteProps): ReactElement {
   const listboxId = `${id}-listbox`
   const anuncioId = useId()
@@ -134,8 +154,10 @@ export function Autocomplete({
       : undefined
 
   return (
-    <div ref={containerRef}>
-      <label htmlFor={id}>{rotulo}</label>
+    <div ref={containerRef} className={className}>
+      <label htmlFor={id} style={rotuloOculto ? estiloRotuloOculto : undefined}>
+        {rotulo}
+      </label>
       {/* O próprio input é o combobox (não um wrapper): aria-controls aponta
           para a listbox e aria-activedescendant para a opção destacada, mantendo
           o foco no input conforme o padrão combobox do WAI-ARIA. */}
