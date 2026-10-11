@@ -73,7 +73,9 @@ function orcamentoMock(): OrcamentoComItens {
     total: 6840,
     versaoAtual: 1,
     observacoes: 'Observações gerais',
-    condicoesPagamento: '50% na aprovação, 50% na entrega',
+    prazoEntregaDias: null,
+    condicoesPagamentoTexto: '50% na aprovação, 50% na entrega',
+    condicoesPagamento: [],
     criadoEm: new Date('2026-10-01'),
     atualizadoEm: new Date('2026-10-01'),
     itens: [

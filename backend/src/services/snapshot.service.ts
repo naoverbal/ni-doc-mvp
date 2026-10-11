@@ -176,7 +176,7 @@ export function criarSnapshotService(): SnapshotService {
         ),
         subtotal: orcamento.subtotal,
         total: orcamento.total,
-        condicoes_pagamento: orcamento.condicoesPagamento,
+        condicoes_pagamento: orcamento.condicoesPagamentoTexto,
         observacoes: orcamento.observacoes,
         data_emissao: montarDataEmissao(orcamento.dataEmissao),
         validade_dias: orcamento.validadeDias,

@@ -1,6 +1,7 @@
 import { AppError } from '../errors/app-error.js'
 import type {
   AtualizarOrcamentoInput,
+  CriarOrcamentoCondicaoPagamentoInput,
   CriarOrcamentoItemInput,
   DescontoTipo,
   ListaOrcamentos,
@@ -24,10 +25,12 @@ export interface CriarOrcamentoDados {
   titulo: string
   descricao?: string
   validadeDias?: number
+  prazoEntregaDias?: number
   descontoGlobalTipo?: DescontoTipo
   descontoGlobalValor?: number
   observacoes?: string
-  condicoesPagamento?: string
+  condicoesPagamentoTexto?: string
+  condicoesPagamento?: CriarOrcamentoCondicaoPagamentoInput[]
   itens: CriarOrcamentoItemInput[]
 }
 
@@ -74,9 +77,11 @@ export function criarOrcamentoService(deps: OrcamentoServiceDeps): OrcamentoServ
         titulo: dados.titulo,
         descricao: dados.descricao,
         validadeDias: dados.validadeDias,
+        prazoEntregaDias: dados.prazoEntregaDias,
         descontoGlobalTipo: dados.descontoGlobalTipo,
         descontoGlobalValor: dados.descontoGlobalValor,
         observacoes: dados.observacoes,
+        condicoesPagamentoTexto: dados.condicoesPagamentoTexto,
         condicoesPagamento: dados.condicoesPagamento,
         itens: dados.itens,
       })
@@ -87,6 +92,12 @@ export function criarOrcamentoService(deps: OrcamentoServiceDeps): OrcamentoServ
         acao: 'criar',
         entidade: 'orcamentos',
         entidadeId: orcamento.id,
+        estadoNovo: {
+          titulo: orcamento.titulo,
+          prazoEntregaDias: orcamento.prazoEntregaDias,
+          condicoesPagamento: orcamento.condicoesPagamento,
+          total: orcamento.total,
+        },
         ip: ctx.ip,
         userAgent: ctx.userAgent,
       })
@@ -134,7 +145,20 @@ export function criarOrcamentoService(deps: OrcamentoServiceDeps): OrcamentoServ
         acao: 'atualizar',
         entidade: 'orcamentos',
         entidadeId: id,
-        estadoNovo: dados,
+        // Estado anterior/novo cobrindo os campos relevantes (incl. os novos:
+        // prazo de entrega e condições de pagamento estruturadas).
+        estadoAnterior: {
+          titulo: existente.titulo,
+          prazoEntregaDias: existente.prazoEntregaDias,
+          condicoesPagamento: existente.condicoesPagamento,
+          total: existente.total,
+        },
+        estadoNovo: {
+          titulo: atualizado.titulo,
+          prazoEntregaDias: atualizado.prazoEntregaDias,
+          condicoesPagamento: atualizado.condicoesPagamento,
+          total: atualizado.total,
+        },
         ip: ctx.ip,
         userAgent: ctx.userAgent,
       })

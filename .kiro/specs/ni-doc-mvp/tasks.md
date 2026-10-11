@@ -454,13 +454,119 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - Aplicar o mesmo padrão de refinamento visual à tela de Dashboard (sessão futura)
   - _Requirements: RF-023_
 
+### Fase 15 — Refino do Editor de Orçamento (Fluent 2 + campos do protótipo)
+
+> **Motivação:** protótipo de alta fidelidade em Fluent 2 (arquivo de referência
+> `designorçamentoscreen/src/App.tsx` + `index.css`, fornecido pelo usuário) definiu uma
+> nova composição para a tela de criar/editar orçamento: app shell com sidebar e header,
+> barra de ação sticky (Voltar · nº ORC + badges versão/status · Salvar rascunho · Enviar),
+> e o formulário em cards — **Dados do Orçamento**, **Itens do Orçamento** (tabela com
+> unidade e total por linha), **Condições de Pagamento** (lista estruturada com validação
+> "soma dos percentuais = 100%") e **Resumo Financeiro** (subtotal, desconto global, total).
+> O refino traz essa composição para o `OrcamentoEditor` real (hoje em HTML cru) e adiciona
+> os campos do protótipo que ainda faltam no domínio. Diferente da Fase 14 (puramente de UI),
+> esta fase atravessa backend → frontend, por isso é dividida em três tarefas atômicas.
+>
+> **Decisões de modelagem (confirmadas com o usuário):**
+> - **Condições de pagamento = tabela-filha estruturada** `orcamento_condicoes_pagamento`
+>   (não o campo texto `condicoes_pagamento` atual, que fica obsoleto/descontinuado), com
+>   RLS via `EXISTS` em `orcamentos`, análoga a `orcamento_itens`.
+> - **Prazo de entrega** = nova coluna `prazo_entrega_dias` em `orcamentos`.
+> - Reaproveitar o que o backend já tem: `numero`, `data_emissao`, `validade_dias` e
+>   `unidade` por item já existem; o refino apenas os expõe na UI.
+> - Imutabilidade: condições de pagamento e prazo entram no snapshot da versão, como os
+>   itens — uma versão enviada preserva o estado do momento do envio.
+
+- [x] 60. Backend — condições de pagamento estruturadas e prazo de entrega
+  - **Migration:** criar `backend/src/db/migrations/004_condicoes_pagamento.sql` (idempotente,
+    `DROP ... IF EXISTS` antes de `CREATE`): adicionar `prazo_entrega_dias INT NULL` em
+    `orcamentos`; criar a tabela `orcamento_condicoes_pagamento` (`id`, `orcamento_id` FK
+    ON DELETE CASCADE, `ordem INT`, `descricao TEXT`, `percentual NUMERIC`, `marco TEXT NULL`,
+    `forma_pagamento TEXT`, `criado_em`); habilitar RLS e criar policy de isolamento via
+    `EXISTS` contra `orcamentos` (espelhando `002_rls_policies.sql` para `orcamento_itens`)
+  - **Tipos:** adicionar `OrcamentoCondicaoPagamentoTable` em `backend/src/types/database.ts`,
+    registrar em `Database` (`orcamento_condicoes_pagamento`) e incluir `prazo_entrega_dias`
+    em `OrcamentoTable`
+  - **Schema Zod** (`backend/src/schemas/orcamento.schema.ts`): adicionar
+    `prazoEntregaDias: z.number().int().positive().optional()` e um `condicoesPagamento`
+    estruturado — array de `{ descricao, percentual (0–100), marco?, formaPagamento }` — em
+    `criarOrcamentoSchema` e `atualizarOrcamentoSchema`; descontinuar o antigo
+    `condicoesPagamento: string` (remoção ou renome documentado). Validar no backend que, se
+    houver condições, a **soma dos percentuais = 100** (mensagem pt-BR); permitir lista vazia
+  - **Repositório** (`orcamento.repository.ts`): persistir/substituir as condições de pagamento
+    dentro da mesma transação de `criar`/`atualizar` (como os itens, com `ordem`); mapear
+    `snake_case ↔ camelCase` via `mapRow*`; `buscarPorId`/`listar` retornam as condições e o
+    `prazoEntregaDias`
+  - **Serviço** (`orcamento.service.ts`): incluir condições/prazo em criar/atualizar; manter a
+    regra "só edita rascunho" e a auditoria (estado anterior/novo cobrindo os novos campos)
+  - **TDD:** testes de repositório (persistência transacional, substituição no update, mapeamento),
+    de serviço (validação soma=100, só-rascunho, auditoria) e de schema (aceita/rejeita payloads);
+    testes existentes de orçamento continuam verdes
+  - DoD: migration aplica com `npm run migrate`; RLS cobre a nova tabela via `EXISTS`; soma dos
+    percentuais validada; `prazo_entrega_dias` persistido; cobertura de repo/serviço ≥ 80%;
+    lint/build/testes limpos
+  - _Requirements: RF-005, RF-006, RF-007_
+
+- [ ] 61. Frontend — reescrever o Editor de Orçamento em Fluent 2 (layout do protótipo)
+  - Reescrever `frontend/src/pages/OrcamentoEditor.tsx` com `@fluentui/react-components`
+    (`Card`, `Field`, `Input`, `Textarea`, `Dropdown`, `Table`, `Button`, `Badge`, `Divider`,
+    `Switch`, `Tooltip`) e `@fluentui/react-icons`, seguindo o layout do arquivo de referência
+    `/Users/nilson/Downloads/designorçamentoscreen/src/App.tsx` (+ `index.css`)
+  - **Reusar o tema do projeto** (`frontend/src/theme/ni-doc-theme.ts` + `<FluentProvider>` já
+    na raiz) — NÃO duplicar `createLightTheme`/`BrandVariants` como no arquivo de referência.
+    **Converter o CSS Tailwind → tokens Fluent** (`makeStyles`/`tokens` ou CSS com `--color*`,
+    sem `@import "tailwindcss"`), conforme as regras de ouro de `.kiro/steering/ui.md`
+  - **Layout:** barra de ação sticky (Voltar · `numero` + badge versão + badge de status ·
+    Salvar rascunho `outline` · Enviar `primary`), repetida como ações finais com Cancelar;
+    card **Dados do Orçamento** colapsável (Cliente autocomplete, Título, Descrição, Data de
+    emissão, Validade (dias), Prazo de entrega (dias)); card **Itens** (tabela com Nome, Qtd,
+    Un via `Dropdown`, Valor unitário, Total por linha e menu de ações; subtotal/desconto no
+    rodapé); card **Condições de Pagamento** (lista estruturada numerada com Descrição,
+    Percentual, Marco, Forma de pagamento + badge "Soma dos percentuais: X%" em success/warning
+    + "Adicionar condição"); card **Resumo Financeiro** (Subtotal, Desconto global tipo+valor,
+    TOTAL em destaque)
+  - **Ligar à lógica real** (não usar estado fake/`defaultValue` do protótipo): manter os hooks
+    TanStack Query (`useOrcamentos`), a validação Zod, o cálculo de totais em tempo real
+    (`@/lib/orcamento-calculo`), o fluxo de salvar/enviar e o `ModalConfirmacao`/link público
+    existentes; ligar os novos campos (prazo, condições de pagamento estruturadas) aos
+    schemas/endpoints da tarefa 60; reaproveitar/ajustar `components/ItemOrcamentoRow.tsx`
+    e `components/Autocomplete.tsx`
+  - **Acessibilidade (WCAG AA):** `<label>`/`Field` em todo campo; erros Zod via
+    `aria-describedby` + `aria-invalid`; total e "soma dos percentuais" anunciados via
+    `aria-live="polite"`; status/erros de envio anunciados; botões ícone-only com `aria-label`;
+    status do orçamento com rótulo textual (não só cor); foco visível; operável por teclado;
+    `eslint-plugin-jsx-a11y` sem avisos
+  - **TDD:** atualizar `pages/__tests__/OrcamentoEditor.test.tsx` para a nova árvore (cards,
+    tabela, condições, resumo) cobrindo: cálculo em tempo real, validação, adicionar/remover
+    item e condição, badge de soma=100, salvar e enviar
+  - DoD: tela reconstruída fiel ao protótipo em Fluent reusando o tema do projeto; sem Tailwind;
+    criar/editar/salvar/enviar funcionam com os campos novos; testes de `OrcamentoEditor` verdes;
+    `eslint-plugin-jsx-a11y` sem avisos; fluxo verificado por teclado; lint/build limpos
+  - _Requirements: RF-005, RF-006, RF-007, RF-008_
+
+- [ ] 62. Fiação de dados — condições/prazo no envio, snapshot, PDF e página pública
+  - **Snapshot/versionamento** (`services/snapshot.service.ts`, `versionamento.service.ts`):
+    incluir condições de pagamento (lista estruturada) e `prazoEntregaDias` no snapshot JSONB
+    da versão, por valor (cópia imutável, não referência), como já é feito com itens/cliente
+  - **HTML/PDF** (`services/html-renderer.service.ts` + CSS do template): renderizar as
+    condições de pagamento e o prazo de entrega no documento; manter a diretriz de documentos
+    renderizados (estrutura de títulos coerente, não distinguir só por cor)
+  - **Página pública** (`frontend/src/pages/PublicoOrcamento.tsx` e o GET de snapshot público):
+    exibir condições de pagamento e prazo quando presentes no snapshot, de forma acessível
+  - **TDD:** testes de snapshot (imutabilidade — alterar o orçamento depois não muda a versão;
+    condições/prazo presentes e por valor), do renderer (saída HTML contém as condições e o
+    prazo) e, se aplicável, do consumo público
+  - DoD: versões enviadas preservam condições de pagamento e prazo; PDF e página pública os
+    exibem; testes de snapshot/renderer verdes; lint/build limpos
+  - _Requirements: RF-008, RF-015, RF-016, RF-019_
+
 ## Notes
 
 - Ciclo TDD obrigatório: testes antes da implementação; tarefa concluída só com testes passando e lint sem erros.
 - Cobertura: `lib/` exige 100%; serviços e repositórios 80%+.
 - Multi-tenancy: a partir da Fase 3, todo acesso a dados respeita isolamento por `tenant_id`. O isolamento no banco via RLS (`SET LOCAL app.current_tenant`) só passa a ser efetivamente ativo após a Fase 13 (tarefa 56); até lá o isolamento é garantido apenas pelo filtro aplicacional `WHERE tenant_id` nos repositórios.
 - Imutabilidade: snapshots e PDFs emitidos são imutáveis; alterações posteriores em entidades de referência não afetam versões já emitidas.
-- Acessibilidade: as tarefas de UI (45–50) e do HTML renderizado (tarefa 57) seguem WCAG 2.1 AA no que é verificável em código — HTML semântico, operação por teclado, rótulos/`aria-*` e contraste. Rodar `eslint-plugin-jsx-a11y` e verificar o fluxo por teclado antes de concluir cada tarefa; a conformidade total ainda exige teste manual com tecnologia assistiva.
+- Acessibilidade: as tarefas de UI (45–50, 58–59, 61) e do HTML renderizado (tarefas 57, 62) seguem WCAG 2.1 AA no que é verificável em código — HTML semântico, operação por teclado, rótulos/`aria-*` e contraste. Rodar `eslint-plugin-jsx-a11y` e verificar o fluxo por teclado antes de concluir cada tarefa; a conformidade total ainda exige teste manual com tecnologia assistiva.
 - Dependências cruzadas: a tarefa 33 (rota de envio) retorna versão sem PDF; `pdf_path` só é preenchido pela tarefa 40 (integração envio → PDF), que depende das tarefas 36–39. A tarefa 41 (aceite) reutiliza a geração de PDF da Fase 8. As telas de frontend dependem das rotas de backend correspondentes.
 
 ## Task Dependency Graph
@@ -483,11 +589,17 @@ graph TD
     F11["Fase 11 — Notificações (51–52)"]
     F12["Fase 12 — Deploy (53–55)"]
     F13["Fase 13 — Ativação do RLS (56)"]
+    F14["Fase 14 — Refino de UI (58–59)"]
+    F15["Fase 15 — Refino do Editor de Orçamento (60–62)"]
     F0 --> F1 --> F2 --> F3 --> F4 --> F5 --> F6 --> F7 --> F8 --> F9 --> F10 --> F11 --> F12
     F3 --> F13
+    F10 --> F14
+    F10 --> F15
 ```
 
 A Fase 13 (ativação do RLS) é uma correção de segurança transversal: depende apenas da infraestrutura de banco (Fase 2) e de auth/tenant (Fase 3), não das fases de feature. Pode ser priorizada e executada de forma independente.
+
+As Fases 14 e 15 são refinos de UI/produto sobre o frontend já entregue (Fase 10). Na Fase 15, a tarefa 60 (backend) precede a 61 (frontend) e a 62 (fiação envio/snapshot/PDF/público); a 61 e a 62 dependem da 60 e podem seguir em paralelo entre si.
 
 ```json
 {
@@ -505,7 +617,9 @@ A Fase 13 (ativação do RLS) é uma correção de segurança transversal: depen
     { "wave": 10, "name": "Frontend", "tasks": ["44", "45", "46", "47", "48", "49", "50", "57"], "dependsOn": [9] },
     { "wave": 11, "name": "Notificações", "tasks": ["51", "52"], "dependsOn": [10] },
     { "wave": 12, "name": "Deploy e Produção", "tasks": ["53", "54", "55"], "dependsOn": [11] },
-    { "wave": 13, "name": "Ativação do RLS por Request", "tasks": ["56"], "dependsOn": [3] }
+    { "wave": 13, "name": "Ativação do RLS por Request", "tasks": ["56"], "dependsOn": [3] },
+    { "wave": 14, "name": "Refinamento de UI (Fluent 2)", "tasks": ["58", "59"], "dependsOn": [10] },
+    { "wave": 15, "name": "Refino do Editor de Orçamento", "tasks": ["60", "61", "62"], "dependsOn": [10] }
   ]
 }
 ```

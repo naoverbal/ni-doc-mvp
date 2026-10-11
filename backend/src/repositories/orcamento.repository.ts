@@ -35,6 +35,15 @@ export interface CriarOrcamentoItemInput {
   // 'ordem' é atribuída pelo repositório pela posição no array (1-based).
 }
 
+// Condição de pagamento estruturada (RF-005/RF-007). A `ordem` 1-based é
+// atribuída pelo repositório pela posição no array (como os itens).
+export interface CriarOrcamentoCondicaoPagamentoInput {
+  descricao: string
+  percentual: number
+  marco?: string
+  formaPagamento: string
+}
+
 export interface CriarOrcamentoInput {
   tenantId: string
   clienteId: string
@@ -43,10 +52,14 @@ export interface CriarOrcamentoInput {
   titulo: string
   descricao?: string
   validadeDias?: number // default 30
+  prazoEntregaDias?: number
   descontoGlobalTipo?: DescontoTipo
   descontoGlobalValor?: number
   observacoes?: string
-  condicoesPagamento?: string
+  // Texto livre legado (coluna `condicoes_pagamento`), mantido só para o
+  // pipeline de snapshot/PDF. A entrada estruturada é `condicoesPagamento`.
+  condicoesPagamentoTexto?: string
+  condicoesPagamento?: CriarOrcamentoCondicaoPagamentoInput[]
   itens: CriarOrcamentoItemInput[] // >= 1 (RF-005.4); validação de Zod é da tarefa 30
 }
 
@@ -56,10 +69,13 @@ export interface AtualizarOrcamentoInput {
   titulo?: string
   descricao?: string
   validadeDias?: number
+  prazoEntregaDias?: number
   descontoGlobalTipo?: DescontoTipo
   descontoGlobalValor?: number
   observacoes?: string
-  condicoesPagamento?: string
+  condicoesPagamentoTexto?: string
+  // SUBSTITUI todas as condições quando informado (undefined mantém as atuais).
+  condicoesPagamento?: CriarOrcamentoCondicaoPagamentoInput[]
   itens: CriarOrcamentoItemInput[] // SUBSTITUI todos os itens
 }
 
@@ -80,6 +96,15 @@ export interface OrcamentoItemPublico {
   responsavelId: string | null
 }
 
+export interface OrcamentoCondicaoPagamentoPublico {
+  id: string
+  ordem: number
+  descricao: string
+  percentual: number
+  marco: string | null
+  formaPagamento: string
+}
+
 export interface OrcamentoComItens {
   id: string
   tenantId: string
@@ -92,13 +117,17 @@ export interface OrcamentoComItens {
   status: OrcamentoStatus
   dataEmissao: Date
   validadeDias: number
+  prazoEntregaDias: number | null
   descontoGlobalTipo: DescontoTipo | null
   descontoGlobalValor: number | null
   subtotal: number
   total: number
   versaoAtual: number
   observacoes: string | null
-  condicoesPagamento: string | null
+  // Texto livre legado (coluna `condicoes_pagamento`), consumido pelo snapshot/PDF.
+  condicoesPagamentoTexto: string | null
+  // Lista estruturada de condições de pagamento (RF-005/RF-007).
+  condicoesPagamento: OrcamentoCondicaoPagamentoPublico[]
   criadoEm: Date
   atualizadoEm: Date
   itens: OrcamentoItemPublico[]
@@ -164,8 +193,19 @@ interface OrcamentoRow {
   versao_atual: number
   observacoes: string | null
   condicoes_pagamento: string | null
+  prazo_entrega_dias: number | null
   criado_em: Date
   atualizado_em: Date
+}
+
+interface OrcamentoCondicaoPagamentoRow {
+  id: string
+  orcamento_id: string
+  ordem: number
+  descricao: string
+  percentual: string
+  marco: string | null
+  forma_pagamento: string
 }
 
 interface OrcamentoItemRow {
@@ -204,7 +244,24 @@ function mapRowItem(row: OrcamentoItemRow): OrcamentoItemPublico {
   }
 }
 
-function mapRowOrcamento(row: OrcamentoRow, itens: OrcamentoItemPublico[]): OrcamentoComItens {
+function mapRowCondicaoPagamento(
+  row: OrcamentoCondicaoPagamentoRow,
+): OrcamentoCondicaoPagamentoPublico {
+  return {
+    id: row.id,
+    ordem: row.ordem,
+    descricao: row.descricao,
+    percentual: Number(row.percentual),
+    marco: row.marco,
+    formaPagamento: row.forma_pagamento,
+  }
+}
+
+function mapRowOrcamento(
+  row: OrcamentoRow,
+  itens: OrcamentoItemPublico[],
+  condicoesPagamento: OrcamentoCondicaoPagamentoPublico[],
+): OrcamentoComItens {
   return {
     id: row.id,
     tenantId: row.tenant_id,
@@ -217,13 +274,15 @@ function mapRowOrcamento(row: OrcamentoRow, itens: OrcamentoItemPublico[]): Orca
     status: row.status,
     dataEmissao: row.data_emissao,
     validadeDias: row.validade_dias,
+    prazoEntregaDias: row.prazo_entrega_dias,
     descontoGlobalTipo: row.desconto_global_tipo,
     descontoGlobalValor: numeroOpcional(row.desconto_global_valor),
     subtotal: Number(row.subtotal),
     total: Number(row.total),
     versaoAtual: row.versao_atual,
     observacoes: row.observacoes,
-    condicoesPagamento: row.condicoes_pagamento,
+    condicoesPagamentoTexto: row.condicoes_pagamento,
+    condicoesPagamento,
     criadoEm: row.criado_em,
     atualizadoEm: row.atualizado_em,
     itens,
@@ -264,8 +323,19 @@ const COLUNAS_ORCAMENTO = [
   'versao_atual',
   'observacoes',
   'condicoes_pagamento',
+  'prazo_entrega_dias',
   'criado_em',
   'atualizado_em',
+] as const
+
+const COLUNAS_CONDICAO = [
+  'id',
+  'orcamento_id',
+  'ordem',
+  'descricao',
+  'percentual',
+  'marco',
+  'forma_pagamento',
 ] as const
 
 const COLUNAS_ITEM = [
@@ -384,6 +454,46 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
     return (rows as OrcamentoItemRow[]).map(mapRowItem)
   }
 
+  // Insere as condições de pagamento na transação, com `ordem` 1-based pela
+  // posição no array. Lista vazia é permitida (retorna []).
+  async function inserirCondicoes(
+    trx: Transaction<Database>,
+    orcamentoId: string,
+    condicoes: CriarOrcamentoCondicaoPagamentoInput[],
+  ): Promise<OrcamentoCondicaoPagamentoPublico[]> {
+    if (condicoes.length === 0) return []
+
+    const valores = condicoes.map((condicao, indice) => ({
+      orcamento_id: orcamentoId,
+      ordem: indice + 1,
+      descricao: condicao.descricao,
+      // NUMERIC: a coluna é tipada como string (driver pg); envie string.
+      percentual: String(condicao.percentual),
+      marco: condicao.marco ?? null,
+      forma_pagamento: condicao.formaPagamento,
+    }))
+
+    const rows = await trx
+      .insertInto('orcamento_condicoes_pagamento')
+      .values(valores)
+      .returning(COLUNAS_CONDICAO)
+      .execute()
+
+    return (rows as OrcamentoCondicaoPagamentoRow[]).map(mapRowCondicaoPagamento)
+  }
+
+  // Lê as condições de pagamento de um orçamento ordenadas por `ordem` ASC.
+  async function buscarCondicoes(id: string): Promise<OrcamentoCondicaoPagamentoPublico[]> {
+    const rows = await db
+      .selectFrom('orcamento_condicoes_pagamento')
+      .select(COLUNAS_CONDICAO)
+      .where('orcamento_id', '=', id)
+      .orderBy('ordem', 'asc')
+      .execute()
+
+    return (rows as OrcamentoCondicaoPagamentoRow[]).map(mapRowCondicaoPagamento)
+  }
+
   return {
     async criar(input: CriarOrcamentoInput): Promise<OrcamentoComItens> {
       const subtotal = calcularSubtotal(
@@ -423,14 +533,17 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
             subtotal: String(subtotal),
             total: String(total),
             observacoes: input.observacoes ?? null,
-            condicoes_pagamento: input.condicoesPagamento ?? null,
+            condicoes_pagamento: input.condicoesPagamentoTexto ?? null,
+            prazo_entrega_dias: input.prazoEntregaDias ?? null,
           })
           .returning(COLUNAS_ORCAMENTO)
           .executeTakeFirstOrThrow()
 
-        const itens = await inserirItens(trx, (orcamentoRow as OrcamentoRow).id, input.itens)
+        const orcamentoId = (orcamentoRow as OrcamentoRow).id
+        const itens = await inserirItens(trx, orcamentoId, input.itens)
+        const condicoes = await inserirCondicoes(trx, orcamentoId, input.condicoesPagamento ?? [])
 
-        return mapRowOrcamento(orcamentoRow as OrcamentoRow, itens)
+        return mapRowOrcamento(orcamentoRow as OrcamentoRow, itens, condicoes)
       })
     },
 
@@ -445,7 +558,8 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
       if (!row) return null
 
       const itens = await buscarItens(id)
-      return mapRowOrcamento(row as OrcamentoRow, itens)
+      const condicoes = await buscarCondicoes(id)
+      return mapRowOrcamento(row as OrcamentoRow, itens, condicoes)
     },
 
     async atualizar(
@@ -478,13 +592,14 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
         if (dados.titulo !== undefined) set['titulo'] = dados.titulo
         if (dados.descricao !== undefined) set['descricao'] = dados.descricao
         if (dados.validadeDias !== undefined) set['validade_dias'] = dados.validadeDias
+        if (dados.prazoEntregaDias !== undefined) set['prazo_entrega_dias'] = dados.prazoEntregaDias
         if (dados.descontoGlobalTipo !== undefined)
           set['desconto_global_tipo'] = dados.descontoGlobalTipo
         if (dados.descontoGlobalValor !== undefined)
           set['desconto_global_valor'] = String(dados.descontoGlobalValor)
         if (dados.observacoes !== undefined) set['observacoes'] = dados.observacoes
-        if (dados.condicoesPagamento !== undefined)
-          set['condicoes_pagamento'] = dados.condicoesPagamento
+        if (dados.condicoesPagamentoTexto !== undefined)
+          set['condicoes_pagamento'] = dados.condicoesPagamentoTexto
 
         const orcamentoRow = await trx
           .updateTable('orcamentos')
@@ -501,7 +616,26 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
 
         const itens = await inserirItens(trx, id, dados.itens)
 
-        return mapRowOrcamento(orcamentoRow as OrcamentoRow, itens)
+        // SUBSTITUI as condições apenas quando informadas; `undefined` mantém as
+        // atuais (relê do banco para preservar o retorno completo).
+        let condicoes: OrcamentoCondicaoPagamentoPublico[]
+        if (dados.condicoesPagamento !== undefined) {
+          await trx
+            .deleteFrom('orcamento_condicoes_pagamento')
+            .where('orcamento_id', '=', id)
+            .execute()
+          condicoes = await inserirCondicoes(trx, id, dados.condicoesPagamento)
+        } else {
+          const rows = await trx
+            .selectFrom('orcamento_condicoes_pagamento')
+            .select(COLUNAS_CONDICAO)
+            .where('orcamento_id', '=', id)
+            .orderBy('ordem', 'asc')
+            .execute()
+          condicoes = (rows as OrcamentoCondicaoPagamentoRow[]).map(mapRowCondicaoPagamento)
+        }
+
+        return mapRowOrcamento(orcamentoRow as OrcamentoRow, itens, condicoes)
       })
     },
 
