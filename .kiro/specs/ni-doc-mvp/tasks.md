@@ -299,42 +299,42 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - Instalar e configurar `eslint-plugin-jsx-a11y` no `frontend/eslint.config.mjs` (regras recomendadas); resolver os avisos antes de concluir
   - Acessibilidade (WCAG AA): cada campo com `<label htmlFor>`/`id` (placeholder não é rótulo); erro de validação vinculado ao campo via `aria-describedby` + `aria-invalid`; mensagem de erro de login anunciada com `aria-live="assertive"`; botão de submit descreve a ação ("Entrar"); operável só por teclado com foco visível
   - DoD: login funciona, erros exibidos e anunciados, rota privada redireciona; `eslint-plugin-jsx-a11y` sem avisos; fluxo verificado por teclado (Tab/Enter)
-  - _Requirements: RF-001_
+  - _Requirements: RF-001, RNF-007_
 
 - [x] 46. Lista de orçamentos
   - Criar `frontend/src/pages/OrcamentoLista.tsx`, `hooks/useOrcamentos.ts`
   - Listar com TanStack Query; filtros por status; botão novo; ações editar/visualizar/excluir
   - Acessibilidade (WCAG AA): usar `<table>` semântica com `<th scope>` (ou lista semântica); status do orçamento com rótulo textual, nunca só por cor (contraste ≥ 4.5:1); ações ícone-only com `aria-label`; estado de carregamento/vazio anunciado via `aria-live="polite"`; navegação e ações operáveis por teclado com foco visível
   - DoD: lista carrega e navegação para o editor funciona; status perceptível sem depender de cor; `eslint-plugin-jsx-a11y` sem avisos
-  - _Requirements: RF-005_
+  - _Requirements: RF-005, RNF-007_
 
 - [x] 47. Editor de orçamento
   - Criar `frontend/src/pages/OrcamentoEditor.tsx`, `components/ItemOrcamentoRow.tsx`, `components/Autocomplete.tsx`
   - Form com cliente (autocomplete), título, descrição; itens editáveis; cálculo em tempo real; autocomplete de responsável; salvar rascunho
   - Acessibilidade (WCAG AA): todo campo com `<label>` associado; agrupar itens/seções em `<fieldset>` com `<legend>`; erros do Zod via `aria-describedby` + `aria-invalid`; `Autocomplete` com padrão combobox (`role`, `aria-expanded`, `aria-activedescendant`), navegável por teclado (setas/Enter/Esc) e seleção anunciada; total recalculado anunciado via `aria-live="polite"`
   - DoD: criar/editar/salvar funcionam, cálculos em tempo real, validação; autocomplete operável por teclado; `eslint-plugin-jsx-a11y` sem avisos
-  - _Requirements: RF-005, RF-006, RF-007_
+  - _Requirements: RF-005, RF-006, RF-007, RNF-007_
 
 - [x] 48. Envio e versionamento (frontend)
   - Adicionar botão "Enviar" em `OrcamentoEditor.tsx`
   - Modal de confirmação; `POST /api/orcamentos/:id/enviar`; exibir link público; listar versões
   - Acessibilidade (WCAG AA): modal com `role="dialog"` + `aria-modal`, foco movido para dentro ao abrir, foco preso no diálogo (focus trap), `Esc` fecha e foco retorna ao gatilho; link público com texto autoexplicativo (não "clique aqui") e botão de copiar com `aria-label`; confirmação de envio anunciada via `aria-live`
   - DoD: envio funciona, versões listadas; modal acessível por teclado com gestão de foco; `eslint-plugin-jsx-a11y` sem avisos
-  - _Requirements: RF-008_
+  - _Requirements: RF-008, RNF-007_
 
 - [x] 49. Editor de template
   - Criar `frontend/src/pages/TemplateEditor.tsx`, `components/CanvasA4.tsx`
   - Canvas A4 com drag & drop; upload de PDF de fundo, imagens e fontes; placeholders; área de itens; salvar
   - Acessibilidade (WCAG AA): oferecer alternativa por teclado ao drag & drop (mover/posicionar elementos via teclado), não só mouse; inputs de upload com `<label>` e nome acessível; cada elemento posicionável com nome acessível; não transmitir informação só por cor; foco visível em todos os controles
   - DoD: editor funcional, template salvo como JSON, nova versão criada; posicionamento operável por teclado; `eslint-plugin-jsx-a11y` sem avisos
-  - _Requirements: RF-014_
+  - _Requirements: RF-014, RNF-007_
 
 - [x] 50. Página pública de aprovação
   - Criar `frontend/src/pages/PublicoOrcamento.tsx`
   - Ler token da URL; `GET /api/publico/orcamento/:token`; PDF embutido; checkbox + Aprovar/Reprovar; confirmação
   - Acessibilidade (WCAG AA): página crítica para clientes finais em qualquer dispositivo — `<main>` com estrutura semântica e `lang="pt-BR"`; PDF embutido com título/alternativa textual e link para abrir/baixar o documento; checkbox com `<label>` associado; botões "Aprovar"/"Reprovar" com nome acessível e contraste ≥ 4.5:1 (não só cor); resultado (sucesso/erro/comprovante) anunciado via `aria-live`; fluxo completo operável por teclado com foco visível
   - DoD: cliente acessa/aprova/vê comprovante; token inválido mostra erro; fluxo de aprovação verificado por teclado; `eslint-plugin-jsx-a11y` sem avisos
-  - _Requirements: RF-019_
+  - _Requirements: RF-019, RNF-007_
 
 - [x] 57. Acessibilidade do HTML renderizado (PDF)
   - Revisar `backend/src/services/html-renderer.service.ts` e o CSS do template (tarefa 36, já concluída) para a saída HTML que origina o PDF
@@ -342,7 +342,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - QR Code e link público com alternativa textual equivalente (ex.: a URL de aceite impressa como texto junto ao QR), conforme a diretriz de documentos renderizados
   - Testes: o HTML gerado tem hierarquia de títulos válida, inclui a URL pública como texto além do QR e define o idioma; não há dependência exclusiva de cor para informação
   - DoD: HTML do PDF segue WCAG AA no que é verificável em código (estrutura, idioma, alternativa textual do QR/link); contraste do template documentado para revisão
-  - _Requirements: RF-015, RF-016, RF-018_
+  - _Requirements: RF-015, RF-016, RF-018, RNF-007_
 
 ### Fase 11 — Notificações (MVP Simplificado)
 
@@ -448,7 +448,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: tela reconstruída em Fluent respeitando o layout do protótipo; funcionalidade
     preservada (adicionar elementos, uploads, salvar versão, posicionar por teclado);
     testes de `TemplateEditor` verdes; lint/build limpos
-  - _Requirements: RF-014_
+  - _Requirements: RF-014, RF-023, RNF-007_
 
 - [x] 59. Refino de UI do Dashboard (mesmo padrão)
   - Aplicar o mesmo padrão de refinamento visual à tela de Dashboard (sessão futura)
@@ -542,7 +542,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
   - DoD: tela reconstruída fiel ao protótipo em Fluent reusando o tema do projeto; sem Tailwind;
     criar/editar/salvar/enviar funcionam com os campos novos; testes de `OrcamentoEditor` verdes;
     `eslint-plugin-jsx-a11y` sem avisos; fluxo verificado por teclado; lint/build limpos
-  - _Requirements: RF-005, RF-006, RF-007, RF-008_
+  - _Requirements: RF-005, RF-006, RF-007, RF-008, RF-023, RNF-007_
 
 - [x] 62. Fiação de dados — condições/prazo no envio, snapshot, PDF e página pública
   - **Snapshot/versionamento** (`services/snapshot.service.ts`, `versionamento.service.ts`):
@@ -558,7 +558,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
     prazo) e, se aplicável, do consumo público
   - DoD: versões enviadas preservam condições de pagamento e prazo; PDF e página pública os
     exibem; testes de snapshot/renderer verdes; lint/build limpos
-  - _Requirements: RF-008, RF-015, RF-016, RF-019_
+  - _Requirements: RF-008, RF-015, RF-016, RF-019, RNF-007_
 
 ### Fase 16 — Sidebar Colapsável (App Shell em Fluent 2)
 
@@ -610,7 +610,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
     mobile) e estado persistido; toggle de tema e logout funcionam; skip link e landmarks preservados;
     testes de `LayoutApp`/sidebar verdes; `eslint-plugin-jsx-a11y` sem avisos; fluxo verificado por
     teclado; lint/build limpos
-  - _Requirements: RF-023, RNF-003_
+  - _Requirements: RF-023, RNF-007_
 
 ## Notes
 

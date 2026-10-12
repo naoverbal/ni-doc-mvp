@@ -383,6 +383,27 @@ O **ni-doc** é uma aplicação web server-side para emissão, versionamento, en
 
 ---
 
+### Módulo 8 — Interface e Experiência (UI/UX)
+
+#### RF-023 — Design System Fluent 2 e App Shell
+
+**User Story:** Como usuário (admin ou operador), quero uma interface consistente, moderna e responsiva, construída sobre um design system único, para trabalhar com eficiência em qualquer tela.
+
+**Critérios de Aceitação:**
+
+1. **O sistema deve** construir a UI da área logada sobre Microsoft Fluent 2 (`@fluentui/react-components`), usando exclusivamente design tokens (`tokens.*` / CSS vars), sem valores hard-coded.
+2. **O sistema deve** aplicar o tema de marca `#4d5d53` (verde-sálvia) com suporte a modo claro e escuro, iniciando pelo `prefers-color-scheme` e permitindo alternância manual persistida na sessão.
+3. **O sistema deve** apresentar a área logada como um app shell: sidebar de navegação à esquerda, header sticky de 56px e área de conteúdo.
+4. **A sidebar deve** ter 240px expandida e 64px colapsada (apenas ícones com tooltip do rótulo), com estado de colapso persistido.
+5. **O sistema deve** marcar o item de navegação ativo com reforço não-cromático (não apenas por cor) e `aria-current="page"`.
+6. **O sistema deve** exibir itens de navegação sem destino ainda como desabilitados (`aria-disabled`, não focáveis como link ativo) com indicação textual "em breve".
+7. **O sistema deve** ser responsivo: colapsar a sidebar automaticamente em tablet (< 1024px) e, em mobile (< 640px), substituí-la por um drawer overlay acionado por hambúrguer no header, com fechamento por `Esc`, foco preso e devolvido ao gatilho.
+8. **O header deve** exibir identidade do usuário/tenant, alternância de tema claro/escuro e ação de logout resiliente (que encerra a sessão local mesmo se a chamada ao servidor falhar).
+9. **O sistema deve** respeitar `prefers-reduced-motion` em todas as transições e animações.
+10. **O sistema deve** reutilizar o mesmo design system e tokens em todas as telas logadas (login, dashboard, lista e editor de orçamento, editor de template), mantendo consistência visual.
+
+---
+
 ## Requisitos Não-Funcionais
 
 ### RNF-001 — Performance
@@ -427,6 +448,20 @@ O **ni-doc** é uma aplicação web server-side para emissão, versionamento, en
 
 ---
 
+### RNF-007 — Acessibilidade (WCAG 2.2 AA)
+
+1. **O sistema deve** mirar a conformidade WCAG 2.2 nível AA no que é verificável em código, tanto na SPA quanto no HTML renderizado (PDF e página pública de aceite).
+2. **O sistema deve** preferir HTML semântico e só recorrer a ARIA quando a semântica nativa não cobrir o caso.
+3. **O sistema deve** ser operável por teclado em todos os fluxos, com indicador de foco visível (focus ring de marca) e ordem de foco lógica.
+4. **O sistema deve** garantir contraste mínimo de 4.5:1 para texto normal e 3:1 para texto grande e componentes, e nunca transmitir informação apenas por cor (ex.: status de orçamento com rótulo textual).
+5. **O sistema deve** associar `<label>` a todos os campos de formulário, vincular erros de validação ao campo via `aria-describedby` + `aria-invalid` e usar o idioma `lang="pt-BR"`.
+6. **O sistema deve** anunciar feedback dinâmico (sucesso, erro, recálculo de total, mudança de status) via `aria-live`, e dar nome acessível (`aria-label`/`Tooltip`) a controles ícone-only.
+7. **O sistema deve** gerir foco em modais e drawers (`aria-modal`, focus trap, retorno de foco ao gatilho) e oferecer alternativa por teclado ao drag & drop no editor de template.
+8. **O sistema deve** manter o skip link "Pular para o conteúdo" e os landmarks de página (`<main id="conteudo">`, `<nav aria-label="Principal">`).
+9. **O sistema deve** passar o `eslint-plugin-jsx-a11y` sem avisos antes de concluir uma tarefa de UI; a conformidade total ainda exige teste manual com tecnologia assistiva.
+
+---
+
 ## Rastreabilidade
 
 | Requisito | Módulo | Prioridade |
@@ -438,3 +473,4 @@ O **ni-doc** é uma aplicação web server-side para emissão, versionamento, en
 | RF-016 a RF-017 | PDF | MVP |
 | RF-018 a RF-021 | Aprovação | MVP |
 | RF-022 | Notificações | Fase 2 (simplificado no MVP) |
+| RF-023 | Interface e Experiência (UI/UX) | MVP |

@@ -40,13 +40,47 @@ O schema SQL completo, o diagrama ER e a estrutura do snapshot JSONB estão na s
 
 ## Correctness Properties
 
-1. **Isolamento de tenant:** toda query com `tenant_id` é coberta por RLS — `SET LOCAL app.current_tenant = '<uuid>'` é executado em cada transação pelo middleware `tenant.ts`.
-2. **Imutabilidade de versões emitidas:** após `status = 'enviado'`, `orcamento_versoes` e seus snapshots JSONB nunca são modificados; PDFs armazenados nunca são regenerados.
-3. **Integridade do snapshot:** o snapshot captura uma cópia completa de cliente, empresa, itens e responsáveis no momento da emissão; alterações posteriores nesses cadastros não afetam versões já emitidas.
-4. **Integridade do PDF:** o hash SHA-256 é calculado no momento da geração e armazenado em `pdf_hash`; qualquer adulteração do arquivo em disco torna o hash inválido.
-5. **Token público não adivinável:** `token_publico = UUID-v4 + HMAC-SHA256`, garantindo que a posse do token seja necessária para acessar o orçamento.
-6. **Unicidade de aceite:** a constraint `UNIQUE (versao_id)` em `orcamento_aceites` impede duplo aceite para a mesma versão.
-7. **Senhas protegidas por Argon2id:** parâmetros OWASP 2024; o hash nunca é exposto em logs ou respostas de API.
+### Property 1: Isolamento de tenant
+
+Toda query com `tenant_id` é coberta por RLS — `SET LOCAL app.current_tenant = '<uuid>'` é executado em cada transação pelo middleware `tenant.ts`.
+
+**Validates: Requirements RF-002, RNF-002**
+
+### Property 2: Imutabilidade de versões emitidas
+
+Após `status = 'enviado'`, `orcamento_versoes` e seus snapshots JSONB nunca são modificados; PDFs armazenados nunca são regenerados.
+
+**Validates: Requirements RF-008, RF-016**
+
+### Property 3: Integridade do snapshot
+
+O snapshot captura uma cópia completa de cliente, empresa, itens e responsáveis no momento da emissão; alterações posteriores nesses cadastros não afetam versões já emitidas.
+
+**Validates: Requirements RF-008, RF-010, RF-011, RF-012**
+
+### Property 4: Integridade do PDF
+
+O hash SHA-256 é calculado no momento da geração e armazenado em `pdf_hash`; qualquer adulteração do arquivo em disco torna o hash inválido.
+
+**Validates: Requirements RF-017, RF-019**
+
+### Property 5: Token público não adivinável
+
+`token_publico = UUID-v4 + HMAC-SHA256`, garantindo que a posse do token seja necessária para acessar o orçamento.
+
+**Validates: Requirements RF-018, RF-019**
+
+### Property 6: Unicidade de aceite
+
+A constraint `UNIQUE (versao_id)` em `orcamento_aceites` impede duplo aceite para a mesma versão.
+
+**Validates: Requirements RF-019, RF-020**
+
+### Property 7: Senhas protegidas por Argon2id
+
+Parâmetros OWASP 2024; o hash nunca é exposto em logs ou respostas de API.
+
+**Validates: Requirements RF-004, RNF-002**
 
 ## Error Handling
 
@@ -170,8 +204,12 @@ O **ni-doc** é uma aplicação web server-side com SPA no cliente. A arquitetur
 | Estado servidor | TanStack Query | Cache, retry, sincronização com API |
 | Estado cliente | Zustand | Leve, sem boilerplate |
 | Formulários | React Hook Form + Zod | Performance + validação tipada |
-| Estilo | CSS Modules + variáveis CSS | Simples, sem dependência de framework CSS |
-| Editor de template | Implementação própria | Baseada no projeto anterior |
+| Design system | Microsoft Fluent 2 (`@fluentui/react-components`) | Componentes acessíveis prontos, tokens de tema, light/dark; ver seção 20 |
+| Estilo | Tokens Fluent via `makeStyles`/`tokens` (CSS-in-JS) | Sem valores hard-coded; tema de marca verde-sálvia claro/escuro |
+| Tipografia | Inter (`@fontsource/inter`) + JetBrains Mono | Legibilidade; mono para números/códigos |
+| Ícones | `@fluentui/react-icons` | Alinhados ao Fluent 2 |
+| Acessibilidade (lint) | `eslint-plugin-jsx-a11y` | WCAG 2.2 AA verificável em código; ver RNF-007 |
+| Editor de template | Implementação própria (canvas A4) sobre Fluent 2 | Baseada no projeto anterior, reescrita com tokens Fluent |
 
 ### 2.3. Infraestrutura
 
@@ -1429,6 +1467,22 @@ Similar ao de dev, mas:
 
 **Justificativa:** Garante que o hash SHA-256 permaneça válido. Impede fraude por regeneração com dados alterados.
 
+### ADR-010: Fluent 2 como design system do frontend
+
+**Contexto:** A UI inicial usava HTML/estilos crus, sem consistência visual nem base de acessibilidade. Um protótipo de alta fidelidade definiu uma composição em Fluent 2.
+
+**Decisão:** Adotar Microsoft Fluent 2 (`@fluentui/react-components`) como design system único, com tema de marca verde-sálvia (`#4d5d53`), light/dark mode e tokens de design; sem Tailwind nem valores hard-coded.
+
+**Justificativa:** Componentes acessíveis prontos (foco, ARIA, teclado), tokens de tema consistentes e menos CSS artesanal. Atende RF-023 e dá base para RNF-007. Custo: acoplamento ao ecossistema Fluent e tamanho de bundle maior.
+
+### ADR-011: Acessibilidade WCAG 2.2 AA verificável em código
+
+**Contexto:** O produto precisa ser operável por teclado e por leitores de tela (SPA, PDF e página pública de aceite), mas conformidade total exige teste manual com tecnologia assistiva.
+
+**Decisão:** Mirar WCAG 2.2 AA no que é verificável em código, com `eslint-plugin-jsx-a11y` sem avisos como gate por tarefa de UI, HTML semântico, `aria-*`, contraste mínimo e navegação por teclado verificada; teste manual com AT fica como validação complementar.
+
+**Justificativa:** Torna a acessibilidade um critério objetivo e automatizável no CI, sem alegar conformidade que só o teste manual confirma. Atende RNF-007.
+
 ---
 
 ## 19. Riscos e Mitigações
@@ -1441,5 +1495,80 @@ Similar ao de dev, mas:
 | PDFs acumulam em disco | Médio | Job de limpeza para PDFs > 1 ano (após retenção legal) |
 | Complexidade do editor de template | Alto | MVP simplificado: 1 template ativo, sem comparação visual |
 | Snapshot desatualizado por bug | Crítico | Testes que garantem imutabilidade após emissão |
+| Regressão de acessibilidade (teclado/leitor de tela) | Médio | `eslint-plugin-jsx-a11y` como gate no CI + verificação por teclado; teste manual com AT antes de releases |
 
 ---
+
+## 20. Design de Frontend (UI/UX)
+
+Esta seção descreve a camada de apresentação da SPA. Deriva de RF-023 (Design System
+Fluent 2 e App Shell) e RNF-007 (Acessibilidade WCAG 2.2 AA). O detalhamento operacional
+de tokens, inventário de componentes e padrões de interação vive no steering `.kiro/steering/ui.md`
+(e `Acessibilidade.md`); aqui ficam as decisões de design que o guiam.
+
+### 20.1. Design System e Tema
+
+- **Base:** Microsoft Fluent 2 (`@fluentui/react-components`). Regra de ouro: usar sempre
+  design tokens (`tokens.*` / CSS vars), nunca valores hard-coded.
+- **Tema:** `frontend/src/theme/ni-doc-theme.ts` exporta `lightTheme` e `darkTheme`, gerados
+  de uma `BrandVariants` (rampa de 16 tons) com cor de marca base `#4d5d53` (verde-sálvia),
+  `fontFamilyBase: Inter` e mono `JetBrains Mono`.
+- **Provider:** `<FluentProvider>` envolve a app na raiz (`App.tsx`), alternando o tema pelo
+  `theme.store.ts` (Zustand). O modo inicial segue `prefers-color-scheme`; a escolha manual
+  persiste na sessão.
+
+### 20.2. App Shell (área logada)
+
+Layout em três partes, nos componentes `components/layout/` (`AppShell`, `Sidebar`, `Header`):
+
+```
+┌──────────┬───────────────────────────────────────────┐
+│          │  Header sticky (56px): usuário/tenant ·     │
+│ Sidebar  │  toggle de tema · Sair · (hambúrguer mobile)│
+│ 240/64px ├───────────────────────────────────────────┤
+│ (nav)    │                                           │
+│          │  Conteúdo (<Outlet/>) — a PÁGINA renderiza  │
+│  marca   │  <main id="conteudo">                       │
+│  itens   │                                           │
+│  conta   │                                           │
+└──────────┴───────────────────────────────────────────┘
+```
+
+- **Sidebar:** 240px expandida / 64px colapsada (só ícones + `Tooltip` com o rótulo). Topo com
+  a marca "ni-doc" + legenda "Gestão comercial"; itens de navegação (ícone + rótulo via `NavLink`);
+  rodapé com conta/tenant. Item ativo recebe `aria-current="page"` e reforço não-cromático
+  (não apenas cor). Itens sem rota ainda aparecem desabilitados (`aria-disabled` + "em breve").
+- **Estado de colapso:** `stores/layout.store.ts` (Zustand, padrão do `theme.store.ts`), persistido.
+- **Header:** sticky, 56px; identidade do usuário/tenant, `Switch` de tema claro/escuro (com
+  rótulo textual e `aria-label`, não só ícone/cor) e botão **Sair** com logout resiliente
+  (limpa a sessão local no `finally` mesmo se o `POST /auth/logout` falhar).
+
+### 20.3. Responsividade
+
+Breakpoints do steering:
+- **Desktop (≥ 1024px):** sidebar fixa (240/64), colapso manual.
+- **Tablet (< 1024px):** sidebar colapsa automaticamente para 64px.
+- **Mobile (< 640px):** a sidebar fixa é substituída por um `Drawer` overlay acionado pelo
+  hambúrguer do header; fecha com `Esc`, com foco preso e devolvido ao gatilho.
+- Todas as transições respeitam `prefers-reduced-motion`.
+
+### 20.4. Landmarks e navegação
+
+- O **shell NÃO renderiza `<main>`**; cada página expõe `<main id="conteudo">`, alvo do skip link
+  "Pular para o conteúdo" (primeiro elemento focável).
+- A navegação principal é `<nav aria-label="Principal">`.
+- Telas: Login, Dashboard, Lista de Orçamentos (DataGrid), Editor de Orçamento, Editor de
+  Template (canvas A4) e a Página Pública de Aprovação (layout público sem sidebar).
+
+### 20.5. Acessibilidade (RNF-007)
+
+Alvo WCAG 2.2 AA no que é verificável em código (ver `.kiro/steering/Acessibilidade.md`):
+- HTML semântico primeiro; ARIA só quando a semântica nativa não cobrir.
+- Operável por teclado em todos os fluxos; foco visível (focus ring de marca); ordem de foco lógica.
+- Contraste ≥ 4.5:1 (texto normal) / 3:1 (texto grande e componentes); nunca informação só por cor.
+- Formulários: `<label>` associado, erros via `aria-describedby` + `aria-invalid`; feedback
+  dinâmico via `aria-live`; controles ícone-only com nome acessível.
+- Modais/drawers com `aria-modal`, focus trap e retorno de foco; alternativa por teclado ao
+  drag & drop do editor de template.
+- Gate por tarefa de UI: `eslint-plugin-jsx-a11y` sem avisos + verificação por teclado. A
+  conformidade total ainda exige teste manual com tecnologia assistiva.
