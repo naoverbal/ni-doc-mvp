@@ -138,10 +138,13 @@ export function Header({
       <div className={estilos.acoes}>
         <div className={estilos.tema}>
           <span aria-hidden>{ehEscuro ? <WeatherMoon20Regular /> : <WeatherSunny20Regular />}</span>
+          {/* Sem label visível: 'Tema escuro'/'Tema claro' tinham larguras
+              diferentes e refluíam o header a cada toggle. O estado atual é
+              comunicado pelo ícone sol/lua ao lado e pela posição on/off do
+              Switch; o aria-label garante o nome acessível do controle. */}
           <Switch
             checked={ehEscuro}
             onChange={alternarTema}
-            label={ehEscuro ? 'Tema escuro' : 'Tema claro'}
             aria-label="Alternar tema claro e escuro"
           />
         </div>
