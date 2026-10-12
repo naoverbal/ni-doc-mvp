@@ -13,6 +13,16 @@ import type { OrcamentoComItens, ListaOrcamentos } from '../../repositories/orca
 import type { UsuarioPublico } from '../../repositories/usuario.repository.js'
 import type { SessaoAtiva } from '../../repositories/sessao.repository.js'
 
+// `setTenant` chama `executarComTenant` (config/database.js), que acessa o pool
+// `pg` real — sem Postgres no teste, viraria 500. O mock torna `executarComTenant`
+// um passthrough (`fn()`), mantendo o `tenant.ts` real no caminho e a propagação
+// do contexto do tenant aos services. Não reproduz o RLS de produção. Factory
+// assíncrona (import dinâmico) porque `vi.mock` é hoisted acima dos imports.
+vi.mock('../../config/database.js', async () => {
+  const { fakeDatabaseModule } = await import('../../__tests__/mock-tenant.js')
+  return fakeDatabaseModule()
+})
+
 const CLIENTE_ID = '11111111-1111-1111-1111-111111111111'
 
 const usuarioPublicoMock: UsuarioPublico = {

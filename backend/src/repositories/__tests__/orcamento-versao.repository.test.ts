@@ -3,10 +3,11 @@ import { criarOrcamentoVersaoRepository } from '../orcamento-versao.repository.j
 import type { CriarVersaoEnviarInput } from '../orcamento-versao.repository.js'
 import { AppError } from '../../errors/app-error.js'
 import { validarTokenPublico } from '../../lib/token.js'
+import { criarKyselyFake } from '../../__tests__/kysely-fake.js'
 import type { Kysely } from 'kysely'
 import type { Database } from '../../types/database.js'
 
-// Builder fluente de SELECT com join (buscarPorToken / buscarVersaoAtualPorOrcamento).
+// Builder fluente de SELECT com join (buscarVersaoAtualPorOrcamento, ainda fluente).
 function makeSelectJoinBuilder(result: unknown) {
   const builder = {
     innerJoin: vi.fn(),
@@ -336,9 +337,9 @@ describe('OrcamentoVersaoRepository', () => {
     const gerarPdfDaVersao = vi.fn().mockRejectedValue(new AppError(500, 'falha ao gerar PDF'))
 
     const repo = criarOrcamentoVersaoRepository({ db })
-    await expect(
-      repo.criarVersaoEnviar({ ...inputBase, gerarPdfDaVersao }),
-    ).rejects.toMatchObject({ statusCode: 500 })
+    await expect(repo.criarVersaoEnviar({ ...inputBase, gerarPdfDaVersao })).rejects.toMatchObject({
+      statusCode: 500,
+    })
 
     expect(insertVersao.values).not.toHaveBeenCalled()
     expect(updateOrcamento.set).not.toHaveBeenCalled()
@@ -378,23 +379,18 @@ describe('OrcamentoVersaoRepository', () => {
     expect(versao.pdfHash).toBeNull()
   })
 
+  // `buscarPorToken`/`buscarSnapshotPorToken` usam `sql`...`.execute(db)` sobre a
+  // função SECURITY DEFINER `rls_versao_por_token` (lookup público por token,
+  // antes de haver tenant). Por isso usam o fake executor (kysely-fake.ts).
   describe('buscarPorToken()', () => {
-    it('retorna VersaoPorToken (join com orcamentos) filtrando pelo token', async () => {
-      const selectBuilder = makeSelectJoinBuilder(versaoPorTokenRow())
-      const db = {
-        selectFrom: vi.fn().mockReturnValue(selectBuilder),
-      } as unknown as Kysely<Database>
+    it('retorna VersaoPorToken (rls_versao_por_token) filtrando pelo token', async () => {
+      const { db, sqlExecutado } = criarKyselyFake({ rows: [versaoPorTokenRow()] })
 
       const repo = criarOrcamentoVersaoRepository({ db })
       const versao = await repo.buscarPorToken('uuid.hmac')
 
-      expect(db.selectFrom).toHaveBeenCalledWith('orcamento_versoes as v')
-      expect(selectBuilder.innerJoin).toHaveBeenCalledWith(
-        'orcamentos as o',
-        'o.id',
-        'v.orcamento_id',
-      )
-      expect(selectBuilder.where).toHaveBeenCalledWith('v.token_publico', '=', 'uuid.hmac')
+      expect(sqlExecutado[0]?.sql).toContain('rls_versao_por_token')
+      expect(sqlExecutado[0]?.parameters).toEqual(['uuid.hmac'])
       expect(versao).toEqual({
         versaoId: 'versao-1',
         orcamentoId: 'orc-1',
@@ -409,10 +405,7 @@ describe('OrcamentoVersaoRepository', () => {
     })
 
     it('retorna null quando o token não existe', async () => {
-      const selectBuilder = makeSelectJoinBuilder(undefined)
-      const db = {
-        selectFrom: vi.fn().mockReturnValue(selectBuilder),
-      } as unknown as Kysely<Database>
+      const { db } = criarKyselyFake({ rows: [] })
 
       const repo = criarOrcamentoVersaoRepository({ db })
       const versao = await repo.buscarPorToken('inexistente')
@@ -470,22 +463,14 @@ describe('OrcamentoVersaoRepository', () => {
       }
     }
 
-    it('retorna a versão COM snapshot (join com orcamentos) filtrando pelo token', async () => {
-      const selectBuilder = makeSelectJoinBuilder(snapshotRow())
-      const db = {
-        selectFrom: vi.fn().mockReturnValue(selectBuilder),
-      } as unknown as Kysely<Database>
+    it('retorna a versão COM snapshot (rls_versao_por_token) filtrando pelo token', async () => {
+      const { db, sqlExecutado } = criarKyselyFake({ rows: [snapshotRow()] })
 
       const repo = criarOrcamentoVersaoRepository({ db })
       const versao = await repo.buscarSnapshotPorToken('uuid.hmac')
 
-      expect(db.selectFrom).toHaveBeenCalledWith('orcamento_versoes as v')
-      expect(selectBuilder.innerJoin).toHaveBeenCalledWith(
-        'orcamentos as o',
-        'o.id',
-        'v.orcamento_id',
-      )
-      expect(selectBuilder.where).toHaveBeenCalledWith('v.token_publico', '=', 'uuid.hmac')
+      expect(sqlExecutado[0]?.sql).toContain('rls_versao_por_token')
+      expect(sqlExecutado[0]?.parameters).toEqual(['uuid.hmac'])
       expect(versao).toEqual({
         versaoId: 'versao-1',
         orcamentoId: 'orc-1',
@@ -502,10 +487,7 @@ describe('OrcamentoVersaoRepository', () => {
     })
 
     it('retorna null quando o token não existe', async () => {
-      const selectBuilder = makeSelectJoinBuilder(undefined)
-      const db = {
-        selectFrom: vi.fn().mockReturnValue(selectBuilder),
-      } as unknown as Kysely<Database>
+      const { db } = criarKyselyFake({ rows: [] })
 
       const repo = criarOrcamentoVersaoRepository({ db })
       const versao = await repo.buscarSnapshotPorToken('inexistente')

@@ -1,50 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { criarSessaoRepository } from '../sessao.repository.js'
-import type { Kysely } from 'kysely'
-import type { Database } from '../../types/database.js'
+import { criarKyselyFake } from '../../__tests__/kysely-fake.js'
 
-// Helpers para construir o mock fluent do Kysely
-function makeInsertBuilder(result: unknown) {
-  const builder = {
-    values: vi.fn(),
-    returning: vi.fn(),
-    executeTakeFirstOrThrow: vi.fn().mockResolvedValue(result),
-  }
-  builder.values.mockReturnValue(builder)
-  builder.returning.mockReturnValue(builder)
-  return builder
-}
-
-function makeSelectBuilder(result: unknown) {
-  const builder = {
-    select: vi.fn(),
-    where: vi.fn(),
-    executeTakeFirst: vi.fn().mockResolvedValue(result),
-  }
-  builder.select.mockReturnValue(builder)
-  builder.where.mockReturnValue(builder)
-  return builder
-}
-
-function makeDeleteBuilder() {
-  const builder = {
-    where: vi.fn(),
-    execute: vi.fn().mockResolvedValue(undefined),
-  }
-  builder.where.mockReturnValue(builder)
-  return builder
-}
-
-function makeUpdateBuilder() {
-  const builder = {
-    set: vi.fn(),
-    where: vi.fn(),
-    execute: vi.fn().mockResolvedValue(undefined),
-  }
-  builder.set.mockReturnValue(builder)
-  builder.where.mockReturnValue(builder)
-  return builder
-}
+// Os quatro métodos de sessão usam `sql`...`.execute(db)` chamando funções
+// SECURITY DEFINER (fluxo de bootstrap, sem tenant no contexto). Por isso o
+// mock usa um `Kysely<Database>` real com driver falso (ver kysely-fake.ts), em
+// vez de objeto literal: `sql.execute(db)` precisa de um `getExecutor()` real.
 
 const expiraEm = new Date('2024-06-01T20:00:00Z')
 const sessaoRow = {
@@ -60,11 +21,10 @@ describe('SessaoRepository', () => {
   })
 
   describe('criar()', () => {
-    it('insere a sessão e retorna id e expiraEm', async () => {
-      const insertBuilder = makeInsertBuilder({ id: 'sessao-id-1', expira_em: expiraEm })
-      const db = {
-        insertInto: vi.fn().mockReturnValue(insertBuilder),
-      } as unknown as Kysely<Database>
+    it('insere a sessão (rls_criar_sessao) e retorna id e expiraEm', async () => {
+      const { db, sqlExecutado } = criarKyselyFake({
+        rows: [{ id: 'sessao-id-1', expira_em: expiraEm }],
+      })
 
       const repo = criarSessaoRepository(db)
       const result = await repo.criar({
@@ -74,40 +34,27 @@ describe('SessaoRepository', () => {
         expiraEm,
       })
 
-      expect(db.insertInto).toHaveBeenCalledWith('sessoes')
-      expect(insertBuilder.values).toHaveBeenCalledWith({
-        usuario_id: 'user-1',
-        ip: '10.0.0.1',
-        user_agent: 'vitest',
-        expira_em: expiraEm,
-      })
+      expect(sqlExecutado).toHaveLength(1)
+      expect(sqlExecutado[0]?.sql).toContain('rls_criar_sessao')
+      expect(sqlExecutado[0]?.parameters).toEqual(['user-1', '10.0.0.1', 'vitest', expiraEm])
       expect(result).toEqual({ id: 'sessao-id-1', expiraEm })
     })
 
     it('usa null para ip e userAgent ausentes', async () => {
-      const insertBuilder = makeInsertBuilder({ id: 'sessao-id-2', expira_em: expiraEm })
-      const db = {
-        insertInto: vi.fn().mockReturnValue(insertBuilder),
-      } as unknown as Kysely<Database>
+      const { db, sqlExecutado } = criarKyselyFake({
+        rows: [{ id: 'sessao-id-2', expira_em: expiraEm }],
+      })
 
       const repo = criarSessaoRepository(db)
       await repo.criar({ usuarioId: 'user-1', expiraEm })
 
-      expect(insertBuilder.values).toHaveBeenCalledWith({
-        usuario_id: 'user-1',
-        ip: null,
-        user_agent: null,
-        expira_em: expiraEm,
-      })
+      expect(sqlExecutado[0]?.parameters).toEqual(['user-1', null, null, expiraEm])
     })
   })
 
   describe('buscarPorId()', () => {
     it('retorna null quando a sessão não existe', async () => {
-      const selectBuilder = makeSelectBuilder(undefined)
-      const db = {
-        selectFrom: vi.fn().mockReturnValue(selectBuilder),
-      } as unknown as Kysely<Database>
+      const { db } = criarKyselyFake({ rows: [] })
 
       const repo = criarSessaoRepository(db)
       const result = await repo.buscarPorId('inexistente')
@@ -115,15 +62,14 @@ describe('SessaoRepository', () => {
       expect(result).toBeNull()
     })
 
-    it('mapeia a linha para SessaoAtiva', async () => {
-      const selectBuilder = makeSelectBuilder(sessaoRow)
-      const db = {
-        selectFrom: vi.fn().mockReturnValue(selectBuilder),
-      } as unknown as Kysely<Database>
+    it('mapeia a linha (rls_sessao_por_id) para SessaoAtiva', async () => {
+      const { db, sqlExecutado } = criarKyselyFake({ rows: [sessaoRow] })
 
       const repo = criarSessaoRepository(db)
       const result = await repo.buscarPorId('sessao-id-1')
 
+      expect(sqlExecutado[0]?.sql).toContain('rls_sessao_por_id')
+      expect(sqlExecutado[0]?.parameters).toEqual(['sessao-id-1'])
       expect(result).toEqual({
         id: 'sessao-id-1',
         usuarioId: 'user-1',
@@ -134,37 +80,26 @@ describe('SessaoRepository', () => {
   })
 
   describe('invalidar()', () => {
-    it('deleta a sessão pelo id', async () => {
-      const deleteBuilder = makeDeleteBuilder()
-      const db = {
-        deleteFrom: vi.fn().mockReturnValue(deleteBuilder),
-      } as unknown as Kysely<Database>
+    it('invalida a sessão pelo id (rls_invalidar_sessao)', async () => {
+      const { db, sqlExecutado } = criarKyselyFake({ rows: [] })
 
       const repo = criarSessaoRepository(db)
       await repo.invalidar('sessao-id-1')
 
-      expect(db.deleteFrom).toHaveBeenCalledWith('sessoes')
-      expect(deleteBuilder.where).toHaveBeenCalledWith('id', '=', 'sessao-id-1')
-      expect(deleteBuilder.execute).toHaveBeenCalledOnce()
+      expect(sqlExecutado[0]?.sql).toContain('rls_invalidar_sessao')
+      expect(sqlExecutado[0]?.parameters).toEqual(['sessao-id-1'])
     })
   })
 
   describe('atualizarAtividade()', () => {
-    it('atualiza ultima_atividade da sessão', async () => {
-      const updateBuilder = makeUpdateBuilder()
-      const db = {
-        updateTable: vi.fn().mockReturnValue(updateBuilder),
-      } as unknown as Kysely<Database>
+    it('atualiza a atividade da sessão (rls_tocar_sessao)', async () => {
+      const { db, sqlExecutado } = criarKyselyFake({ rows: [] })
 
       const repo = criarSessaoRepository(db)
       await repo.atualizarAtividade('sessao-id-1')
 
-      expect(db.updateTable).toHaveBeenCalledWith('sessoes')
-      expect(updateBuilder.set).toHaveBeenCalledOnce()
-      const setArg = updateBuilder.set.mock.calls[0]?.[0] as { ultima_atividade: Date }
-      expect(setArg.ultima_atividade).toBeInstanceOf(Date)
-      expect(updateBuilder.where).toHaveBeenCalledWith('id', '=', 'sessao-id-1')
-      expect(updateBuilder.execute).toHaveBeenCalledOnce()
+      expect(sqlExecutado[0]?.sql).toContain('rls_tocar_sessao')
+      expect(sqlExecutado[0]?.parameters).toEqual(['sessao-id-1'])
     })
   })
 })
