@@ -23,7 +23,11 @@ const CONSULTA_MOBILE = '(max-width: 639px)'
 const useStyles = makeStyles({
   shell: {
     display: 'flex',
-    minHeight: '100vh',
+    // Altura fixa da viewport + overflow escondido no shell: a sidebar fixa de
+    // desktop/tablet fica presa à viewport (não rola com o conteúdo) e ocupa a
+    // altura total da lateral. Só a coluna de conteúdo rola (overflowY abaixo).
+    height: '100vh',
+    overflow: 'hidden',
     backgroundColor: tokens.colorNeutralBackground3,
   },
   coluna: {
@@ -31,6 +35,9 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     flexGrow: 1,
     minWidth: 0,
+    // A coluna é o container de rolagem vertical; o Header sticky gruda no topo
+    // dela (não da janela), permanecendo visível enquanto o conteúdo rola.
+    overflowY: 'auto',
   },
 })
 
