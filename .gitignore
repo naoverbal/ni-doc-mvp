@@ -7,3 +7,4 @@ coverage/
 *.log
 .nyc_output/
 backend/.agents/
+.kiro/
