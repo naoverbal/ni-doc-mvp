@@ -39,6 +39,17 @@ const useStyles = makeStyles({
     // dela (não da janela), permanecendo visível enquanto o conteúdo rola.
     overflowY: 'auto',
   },
+  // No mobile a Sidebar é hospedada por um DrawerBody, que aplica um padding
+  // padrão do Fluent em volta do conteúdo. Como a Sidebar já tem paddings
+  // internos próprios (marca/nav/rodapé), esse padding extra comprime o menu.
+  // Zeramos o padding do DrawerBody e garantimos height:100% para a Sidebar
+  // (que já usa height:100%) preencher toda a altura do Drawer, deixando o
+  // conteúdo encostar nas bordas. Afeta só o Drawer mobile; a coluna fixa de
+  // desktop/tablet não usa DrawerBody e permanece inalterada.
+  corpoDrawer: {
+    padding: 0,
+    height: '100%',
+  },
 })
 
 interface AppShellProps {
@@ -137,7 +148,7 @@ export function AppShell({ aoSair, saindo }: AppShellProps): ReactElement {
               Navegação
             </DrawerHeaderTitle>
           </DrawerHeader>
-          <DrawerBody>
+          <DrawerBody className={estilos.corpoDrawer}>
             {/* No Drawer a sidebar sempre renderiza expandida (rótulos visíveis);
                 ao escolher um item, fecha e devolve o foco ao gatilho. */}
             <Sidebar colapsada={false} aoNavegar={fecharDrawer} />
