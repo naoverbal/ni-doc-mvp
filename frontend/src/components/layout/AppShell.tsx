@@ -1,14 +1,6 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { Outlet } from 'react-router-dom'
-import {
-  OverlayDrawer,
-  DrawerBody,
-  DrawerHeader,
-  DrawerHeaderTitle,
-  Button,
-  makeStyles,
-  tokens,
-} from '@fluentui/react-components'
+import { OverlayDrawer, DrawerBody, Button, makeStyles, tokens } from '@fluentui/react-components'
 import { Dismiss24Regular } from '@fluentui/react-icons'
 import { useLayoutStore } from '@/stores/layout.store'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
@@ -39,6 +31,17 @@ const useStyles = makeStyles({
     // dela (não da janela), permanecendo visível enquanto o conteúdo rola.
     overflowY: 'auto',
   },
+  // Alinha a largura do Drawer mobile à da sidebar expandida (240px, espelha
+  // LARGURA_EXPANDIDA em Sidebar.tsx). O OverlayDrawer size="small" do Fluent
+  // mede 320px (define a CSS var `--fui-Drawer--size: 320px`); como a Sidebar
+  // tem largura fixa de 240px, sobrava uma faixa branca de ~80px à direita.
+  // Sobrescrevemos a mesma var do Fluent para 240px, zerando a faixa sem tocar
+  // a Sidebar reutilizável (que também serve a coluna fixa de desktop/tablet).
+  // Griffel aplica esta classe depois da classe de `size`, então a sobrescrita
+  // da var vence no cascade.
+  drawer: {
+    '--fui-Drawer--size': '240px',
+  },
   // No mobile a Sidebar é hospedada por um DrawerBody, que aplica um padding
   // padrão do Fluent em volta do conteúdo. Como a Sidebar já tem paddings
   // internos próprios (marca/nav/rodapé), esse padding extra comprime o menu.
@@ -49,6 +52,16 @@ const useStyles = makeStyles({
   corpoDrawer: {
     padding: 0,
     height: '100%',
+  },
+  // Botão de fechar sobreposto no canto superior direito do Drawer. Removemos o
+  // DrawerHeader com título "Navegação" (redundante com a marca "ni-doc" no topo
+  // da própria Sidebar); o nome acessível do Drawer é mantido via aria-label no
+  // OverlayDrawer. O botão fica acima do conteúdo (zIndex) sem reservar faixa.
+  botaoFechar: {
+    position: 'absolute',
+    top: tokens.spacingVerticalS,
+    right: tokens.spacingHorizontalS,
+    zIndex: 1,
   },
 })
 
@@ -127,27 +140,24 @@ export function AppShell({ aoSair, saindo }: AppShellProps): ReactElement {
 
       {ehMobile && (
         <OverlayDrawer
+          className={estilos.drawer}
           open={drawerAberto}
           onOpenChange={(_, { open }) => (open ? setDrawerAberto(true) : fecharDrawer())}
           position="start"
           // O Drawer do Fluent já aplica aria-modal, focus trap e fechamento por
-          // Esc; o retorno de foco ao gatilho é garantido por fecharDrawer().
+          // Esc; o retorno de foco ao gatilho é garantido por fecharDrawer(). Sem
+          // DrawerHeader com título, o nome acessível do Drawer vem deste
+          // aria-label.
+          aria-label="Navegação"
           size="small"
         >
-          <DrawerHeader>
-            <DrawerHeaderTitle
-              action={
-                <Button
-                  appearance="subtle"
-                  aria-label="Fechar menu de navegação"
-                  icon={<Dismiss24Regular />}
-                  onClick={fecharDrawer}
-                />
-              }
-            >
-              Navegação
-            </DrawerHeaderTitle>
-          </DrawerHeader>
+          <Button
+            className={estilos.botaoFechar}
+            appearance="subtle"
+            aria-label="Fechar menu de navegação"
+            icon={<Dismiss24Regular />}
+            onClick={fecharDrawer}
+          />
           <DrawerBody className={estilos.corpoDrawer}>
             {/* No Drawer a sidebar sempre renderiza expandida (rótulos visíveis);
                 ao escolher um item, fecha e devolve o foco ao gatilho. */}
