@@ -92,8 +92,19 @@ const orcamentoRowBase = {
   versao_atual: 0,
   observacoes: null,
   condicoes_pagamento: null,
+  prazo_entrega_dias: null,
   criado_em: new Date('2026-01-10'),
   atualizado_em: new Date('2026-01-10'),
+}
+
+const condicaoRowBase = {
+  id: 'cond-1',
+  orcamento_id: 'orc-1',
+  ordem: 1,
+  descricao: 'Entrada',
+  percentual: '100.00',
+  marco: null,
+  forma_pagamento: 'PIX',
 }
 
 const itemRowBase = {
@@ -126,8 +137,12 @@ const criarInputBase: CriarOrcamentoInput = {
 function makeTrx(options: {
   insertOrcamento?: ReturnType<typeof makeInsertBuilder>
   insertItens?: ReturnType<typeof makeInsertBuilder>
+  insertCondicoes?: ReturnType<typeof makeInsertBuilder>
   updateOrcamento?: ReturnType<typeof makeUpdateBuilder>
   deleteItens?: ReturnType<typeof makeDeleteBuilder>
+  deleteCondicoes?: ReturnType<typeof makeDeleteBuilder>
+  // Condições relidas quando o update NÃO envia `condicoesPagamento`.
+  selectCondicoes?: ReturnType<typeof makeSelectBuilder>
   maxSeq?: number | null
 }) {
   const sqlExecutado: string[] = []
@@ -152,10 +167,15 @@ function makeTrx(options: {
     sqlExecutado,
     insertInto: vi.fn((tabela: string) => {
       if (tabela === 'orcamentos') return options.insertOrcamento
+      if (tabela === 'orcamento_condicoes_pagamento') return options.insertCondicoes
       return options.insertItens
     }),
     updateTable: vi.fn().mockReturnValue(options.updateOrcamento),
-    deleteFrom: vi.fn().mockReturnValue(options.deleteItens),
+    deleteFrom: vi.fn((tabela: string) => {
+      if (tabela === 'orcamento_condicoes_pagamento') return options.deleteCondicoes
+      return options.deleteItens
+    }),
+    selectFrom: vi.fn().mockReturnValue(options.selectCondicoes),
   }
   return trx
 }
@@ -299,6 +319,143 @@ describe('OrcamentoRepository', () => {
     })
   })
 
+  describe('condições de pagamento e prazo de entrega (RF-005/RF-007)', () => {
+    it('persiste prazo_entrega_dias e condições com ordem 1-based na criação', async () => {
+      const insertOrcamento = makeInsertBuilder(orcamentoRowBase)
+      const insertItens = makeInsertBuilder([itemRowBase], true)
+      const insertCondicoes = makeInsertBuilder([condicaoRowBase], true)
+      const trx = makeTrx({ insertOrcamento, insertItens, insertCondicoes, maxSeq: null })
+      const db = makeDbComTransacao(trx)
+
+      const repo = criarOrcamentoRepository({ db })
+      await repo.criar({
+        ...criarInputBase,
+        prazoEntregaDias: 15,
+        condicoesPagamento: [
+          { descricao: 'Entrada', percentual: 40, formaPagamento: 'PIX' },
+          { descricao: 'Saldo', percentual: 60, marco: 'Na entrega', formaPagamento: 'Boleto' },
+        ],
+      })
+
+      expect(insertOrcamento.values).toHaveBeenCalledWith(
+        expect.objectContaining({ prazo_entrega_dias: 15 }),
+      )
+      expect(trx.insertInto).toHaveBeenCalledWith('orcamento_condicoes_pagamento')
+      expect(insertCondicoes.values).toHaveBeenCalledWith([
+        expect.objectContaining({
+          ordem: 1,
+          descricao: 'Entrada',
+          percentual: '40',
+          marco: null,
+          forma_pagamento: 'PIX',
+        }),
+        expect.objectContaining({
+          ordem: 2,
+          descricao: 'Saldo',
+          percentual: '60',
+          marco: 'Na entrega',
+          forma_pagamento: 'Boleto',
+        }),
+      ])
+    })
+
+    it('não insere condições quando a lista está vazia', async () => {
+      const insertOrcamento = makeInsertBuilder(orcamentoRowBase)
+      const insertItens = makeInsertBuilder([itemRowBase], true)
+      const insertCondicoes = makeInsertBuilder([], true)
+      const trx = makeTrx({ insertOrcamento, insertItens, insertCondicoes, maxSeq: null })
+      const db = makeDbComTransacao(trx)
+
+      const repo = criarOrcamentoRepository({ db })
+      await repo.criar({ ...criarInputBase, condicoesPagamento: [] })
+
+      expect(trx.insertInto).not.toHaveBeenCalledWith('orcamento_condicoes_pagamento')
+    })
+
+    it('SUBSTITUI as condições no update (apaga por orcamento_id e reinsere)', async () => {
+      const updateOrcamento = makeUpdateBuilder(orcamentoRowBase)
+      const insertItens = makeInsertBuilder([itemRowBase], true)
+      const insertCondicoes = makeInsertBuilder([condicaoRowBase], true)
+      const deleteItens = makeDeleteBuilder()
+      const deleteCondicoes = makeDeleteBuilder()
+      const trx = makeTrx({
+        updateOrcamento,
+        insertItens,
+        insertCondicoes,
+        deleteItens,
+        deleteCondicoes,
+      })
+      const db = makeDbComTransacao(trx)
+
+      const repo = criarOrcamentoRepository({ db })
+      await repo.atualizar('tenant-1', 'orc-1', {
+        itens: [{ nome: 'A', quantidade: 1, valorUnitario: 10 }],
+        condicoesPagamento: [{ descricao: 'À vista', percentual: 100, formaPagamento: 'PIX' }],
+      })
+
+      expect(trx.deleteFrom).toHaveBeenCalledWith('orcamento_condicoes_pagamento')
+      expect(deleteCondicoes.where).toHaveBeenCalledWith('orcamento_id', '=', 'orc-1')
+      expect(trx.insertInto).toHaveBeenCalledWith('orcamento_condicoes_pagamento')
+      expect(insertCondicoes.values).toHaveBeenCalledWith([
+        expect.objectContaining({ ordem: 1, percentual: '100', forma_pagamento: 'PIX' }),
+      ])
+    })
+
+    it('mantém as condições atuais no update quando o campo é omitido', async () => {
+      const updateOrcamento = makeUpdateBuilder(orcamentoRowBase)
+      const insertItens = makeInsertBuilder([itemRowBase], true)
+      const deleteItens = makeDeleteBuilder()
+      const deleteCondicoes = makeDeleteBuilder()
+      const selectCondicoes = makeSelectBuilder([condicaoRowBase], true)
+      const trx = makeTrx({
+        updateOrcamento,
+        insertItens,
+        deleteItens,
+        deleteCondicoes,
+        selectCondicoes,
+      })
+      const db = makeDbComTransacao(trx)
+
+      const repo = criarOrcamentoRepository({ db })
+      const result = await repo.atualizar('tenant-1', 'orc-1', {
+        titulo: 'Só título',
+        itens: [{ nome: 'A', quantidade: 1, valorUnitario: 10 }],
+      })
+
+      // Não apaga nem reinsere condições; relê as existentes.
+      expect(trx.deleteFrom).not.toHaveBeenCalledWith('orcamento_condicoes_pagamento')
+      expect(result?.condicoesPagamento).toHaveLength(1)
+      expect(result?.condicoesPagamento[0]?.descricao).toBe('Entrada')
+    })
+
+    it('atualiza prazo_entrega_dias quando informado', async () => {
+      const updateOrcamento = makeUpdateBuilder(orcamentoRowBase)
+      const insertItens = makeInsertBuilder([itemRowBase], true)
+      const deleteItens = makeDeleteBuilder()
+      const deleteCondicoes = makeDeleteBuilder()
+      const insertCondicoes = makeInsertBuilder([], true)
+      const trx = makeTrx({
+        updateOrcamento,
+        insertItens,
+        deleteItens,
+        deleteCondicoes,
+        insertCondicoes,
+      })
+      const db = makeDbComTransacao(trx)
+
+      const repo = criarOrcamentoRepository({ db })
+      await repo.atualizar('tenant-1', 'orc-1', {
+        prazoEntregaDias: 7,
+        itens: [{ nome: 'A', quantidade: 1, valorUnitario: 10 }],
+        condicoesPagamento: [],
+      })
+
+      expect(updateOrcamento.set).toHaveBeenCalledWith(
+        expect.objectContaining({ prazo_entrega_dias: 7 }),
+      )
+    })
+  })
+
   describe('buscarPorId()', () => {
     it('retorna null quando o orçamento não existe', async () => {
       const selectOrcamento = makeSelectBuilder(undefined)
@@ -312,11 +469,13 @@ describe('OrcamentoRepository', () => {
       expect(result).toBeNull()
     })
 
-    it('retorna o orçamento COM itens ordenados por ordem ASC e filtra por tenant', async () => {
+    it('retorna o orçamento COM itens e condições ordenados por ordem ASC e filtra por tenant', async () => {
       const selectOrcamento = makeSelectBuilder(orcamentoRowBase)
       const selectItens = makeSelectBuilder([itemRowBase], true)
+      const selectCondicoes = makeSelectBuilder([condicaoRowBase], true)
       const selectFrom = vi.fn((tabela: string) => {
         if (tabela === 'orcamentos') return selectOrcamento
+        if (tabela === 'orcamento_condicoes_pagamento') return selectCondicoes
         return selectItens
       })
       const db = { selectFrom } as unknown as Kysely<Database>
@@ -326,8 +485,14 @@ describe('OrcamentoRepository', () => {
 
       expect(selectOrcamento.where).toHaveBeenCalledWith('tenant_id', '=', 'tenant-1')
       expect(selectItens.orderBy).toHaveBeenCalledWith('ordem', 'asc')
+      expect(selectCondicoes.orderBy).toHaveBeenCalledWith('ordem', 'asc')
       expect(result?.itens).toHaveLength(1)
       expect(result?.itens[0]?.total).toBe(100)
+      // Condições estruturadas mapeadas (NUMERIC string → number).
+      expect(result?.condicoesPagamento).toHaveLength(1)
+      expect(result?.condicoesPagamento[0]?.percentual).toBe(100)
+      expect(result?.condicoesPagamento[0]?.formaPagamento).toBe('PIX')
+      expect(result?.prazoEntregaDias).toBeNull()
     })
   })
 
@@ -352,7 +517,8 @@ describe('OrcamentoRepository', () => {
       const updateOrcamento = makeUpdateBuilder(orcamentoRowBase)
       const insertItens = makeInsertBuilder([itemRowBase], true)
       const deleteItens = makeDeleteBuilder()
-      const trx = makeTrx({ updateOrcamento, insertItens, deleteItens })
+      const selectCondicoes = makeSelectBuilder([], true)
+      const trx = makeTrx({ updateOrcamento, insertItens, deleteItens, selectCondicoes })
       const transactionSpy = vi.fn(() => ({
         execute: (cb: (t: unknown) => unknown) => cb(trx),
       }))
@@ -381,7 +547,8 @@ describe('OrcamentoRepository', () => {
       const updateOrcamento = makeUpdateBuilder(orcamentoRowBase)
       const insertItens = makeInsertBuilder([itemRowBase], true)
       const deleteItens = makeDeleteBuilder()
-      const trx = makeTrx({ updateOrcamento, insertItens, deleteItens })
+      const selectCondicoes = makeSelectBuilder([], true)
+      const trx = makeTrx({ updateOrcamento, insertItens, deleteItens, selectCondicoes })
       const db = makeDbComTransacao(trx)
 
       const repo = criarOrcamentoRepository({ db })

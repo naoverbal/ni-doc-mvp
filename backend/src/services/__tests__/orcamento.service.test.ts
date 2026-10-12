@@ -27,7 +27,9 @@ function orcamentoMock(status: OrcamentoStatus = 'rascunho'): OrcamentoComItens 
     total: 100,
     versaoAtual: 1,
     observacoes: null,
-    condicoesPagamento: null,
+    prazoEntregaDias: null,
+    condicoesPagamentoTexto: null,
+    condicoesPagamento: [],
     criadoEm: new Date('2024-01-01'),
     atualizadoEm: new Date('2024-01-01'),
     itens: [
@@ -163,6 +165,33 @@ describe('OrcamentoService', () => {
         }),
       )
     })
+
+    it('repassa prazoEntregaDias e condições de pagamento ao repositório', async () => {
+      const deps = makeDeps()
+      const service = criarOrcamentoService(deps)
+
+      const condicoesPagamento = [
+        { descricao: 'À vista', percentual: 100, formaPagamento: 'PIX' },
+      ]
+      await service.criar(ctx, { ...dadosValidos, prazoEntregaDias: 5, condicoesPagamento })
+
+      expect(deps.orcamentoRepo.criar).toHaveBeenCalledWith(
+        expect.objectContaining({ prazoEntregaDias: 5, condicoesPagamento }),
+      )
+    })
+
+    it('audita o estado novo cobrindo prazo e condições', async () => {
+      const deps = makeDeps()
+      const service = criarOrcamentoService(deps)
+
+      await service.criar(ctx, dadosValidos)
+
+      const registrar = vi.mocked(deps.auditoriaService.registrar)
+      const evento = registrar.mock.calls[0]?.[0]
+      expect(evento?.acao).toBe('criar')
+      expect(evento?.estadoNovo).toHaveProperty('prazoEntregaDias')
+      expect(evento?.estadoNovo).toHaveProperty('condicoesPagamento')
+    })
   })
 
   describe('buscarPorId()', () => {
@@ -227,6 +256,21 @@ describe('OrcamentoService', () => {
       expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
         expect.objectContaining({ acao: 'atualizar', entidade: 'orcamentos' }),
       )
+    })
+
+    it('audita estado anterior e novo cobrindo prazo e condições', async () => {
+      const deps = makeDeps()
+      const service = criarOrcamentoService(deps)
+
+      await service.atualizar(ctx, 'orcamento-1', { titulo: 'Novo', itens })
+
+      const registrar = vi.mocked(deps.auditoriaService.registrar)
+      const evento = registrar.mock.calls[0]?.[0]
+      expect(evento?.acao).toBe('atualizar')
+      expect(evento?.estadoAnterior).toHaveProperty('prazoEntregaDias')
+      expect(evento?.estadoAnterior).toHaveProperty('condicoesPagamento')
+      expect(evento?.estadoNovo).toHaveProperty('prazoEntregaDias')
+      expect(evento?.estadoNovo).toHaveProperty('condicoesPagamento')
     })
 
     it('lança AppError(404) quando o orçamento não existe', async () => {

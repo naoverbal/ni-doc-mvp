@@ -49,6 +49,23 @@ function snapshotMock(overrides: Partial<OrcamentoSnapshot> = {}): OrcamentoSnap
     subtotal: 7200,
     total: 6840,
     condicoes_pagamento: '50% na aprovação, 50% na entrega',
+    condicoes_pagamento_lista: [
+      {
+        ordem: 1,
+        descricao: 'Entrada',
+        percentual: 50,
+        marco: 'Na aprovação',
+        forma_pagamento: 'PIX',
+      },
+      {
+        ordem: 2,
+        descricao: 'Saldo',
+        percentual: 50,
+        marco: null,
+        forma_pagamento: 'Boleto',
+      },
+    ],
+    prazo_entrega_dias: 15,
     observacoes: 'Observações gerais',
     data_emissao: '2026-10-01',
     validade_dias: 30,
@@ -311,6 +328,90 @@ describe('html-renderer.service', () => {
     expect(html).not.toContain('{itens}')
   })
 
+  // ---------------------------------------------------------------------------
+  // Condições de pagamento estruturadas e prazo de entrega no documento
+  // (Tarefa 62, RF-015/RF-016). A versão enviada preserva esses dados no
+  // snapshot; o documento que origina o PDF deve exibi-los.
+  // ---------------------------------------------------------------------------
+  describe('condições de pagamento e prazo de entrega', () => {
+    it('renderiza as condições de pagamento estruturadas (descrição, percentual, marco e forma)', () => {
+      const html = service.renderizar(input())
+
+      expect(html).toContain('Entrada')
+      expect(html).toContain('Saldo')
+      expect(html).toContain('50%')
+      expect(html).toContain('Na aprovação')
+      expect(html).toContain('PIX')
+      expect(html).toContain('Boleto')
+    })
+
+    it('renderiza o prazo de entrega em dias quando presente', () => {
+      const html = service.renderizar(input())
+
+      expect(html).toContain('15')
+      expect(html.toLowerCase()).toContain('prazo de entrega')
+    })
+
+    it('não exibe o bloco de prazo de entrega quando ausente (null)', () => {
+      const snapshot = snapshotMock({ prazo_entrega_dias: null })
+      const html = service.renderizar(input({ snapshot }))
+
+      expect(html.toLowerCase()).not.toContain('prazo de entrega')
+    })
+
+    it('não exibe o bloco de condições estruturadas quando a lista está vazia', () => {
+      const snapshot = snapshotMock({ condicoes_pagamento_lista: [] })
+      const html = service.renderizar(input({ snapshot }))
+
+      expect(html).not.toContain('<th scope="col">Marco</th>')
+    })
+
+    it('a tabela de condições de pagamento usa cabeçalhos de coluna com escopo', () => {
+      const html = service.renderizar(input())
+
+      expect(html).toContain('<th scope="col">Descrição</th>')
+      expect(html).toContain('<th scope="col">Percentual</th>')
+      expect(html).toContain('<th scope="col">Marco</th>')
+      expect(html).toContain('<th scope="col">Forma de pagamento</th>')
+    })
+
+    it('escapa caracteres especiais nas condições de pagamento', () => {
+      const snapshot = snapshotMock({
+        condicoes_pagamento_lista: [
+          {
+            ordem: 1,
+            descricao: 'Tom & <Jerry>',
+            percentual: 100,
+            marco: null,
+            forma_pagamento: 'PIX',
+          },
+        ],
+      })
+      const html = service.renderizar(input({ snapshot }))
+
+      expect(html).toContain('Tom &amp; &lt;Jerry&gt;')
+      expect(html).not.toContain('Tom & <Jerry>')
+    })
+
+    it('mantém hierarquia de títulos coerente com os novos blocos (h2)', () => {
+      const html = service.renderizar(input())
+      const regex = /<h([1-6])(?:\s[^>]*)?>/g
+      const niveis: number[] = []
+      let m: RegExpExecArray | null
+      while ((m = regex.exec(html)) !== null) {
+        niveis.push(Number(m[1]))
+      }
+      expect(niveis[0]).toBe(1)
+      for (let i = 1; i < niveis.length; i++) {
+        const anterior = niveis[i - 1] as number
+        const atual = niveis[i] as number
+        if (atual > anterior) {
+          expect(atual - anterior).toBeLessThanOrEqual(1)
+        }
+      }
+    })
+  })
+
   it('lança AppError(422) quando o snapshot não tem itens', () => {
     const snapshot = snapshotMock({ itens: [] })
 
@@ -425,9 +526,7 @@ describe('html-renderer.service', () => {
     })
 
     it('escapa a URL pública para não quebrar a estrutura do documento', () => {
-      const html = service.renderizar(
-        input({ urlPublica: 'https://app/pub?a=1&b=<x>' }),
-      )
+      const html = service.renderizar(input({ urlPublica: 'https://app/pub?a=1&b=<x>' }))
 
       expect(html).toContain('https://app/pub?a=1&amp;b=&lt;x&gt;')
       expect(html).not.toContain('b=<x>')

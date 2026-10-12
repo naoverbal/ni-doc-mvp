@@ -2,7 +2,9 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { FluentProvider, Table, TableBody } from '@fluentui/react-components'
 import type { ReactElement, ReactNode } from 'react'
+import { lightTheme } from '@/theme/ni-doc-theme'
 import { ItemOrcamentoRow, type ItemFormulario } from '@/components/ItemOrcamentoRow'
 
 vi.mock('@/services/api', async () => {
@@ -16,6 +18,7 @@ vi.mock('@/services/api', async () => {
 const ITEM: ItemFormulario = {
   nome: 'Serviço de pintura',
   quantidade: 2,
+  unidade: 'un',
   valorUnitario: 150,
   descontoTipo: '',
   descontoValor: 0,
@@ -23,56 +26,48 @@ const ITEM: ItemFormulario = {
   responsavelNome: '',
 }
 
-function wrapper(children: ReactNode): ReactElement {
+// Envolve a linha num contexto de tabela Fluent + tema, como no editor.
+function renderRow(props: Partial<Parameters<typeof ItemOrcamentoRow>[0]> = {}): void {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  const children: ReactNode = (
+    <ItemOrcamentoRow
+      indice={0}
+      item={ITEM}
+      aoMudar={vi.fn()}
+      aoRemover={vi.fn()}
+      podeRemover
+      {...props}
+    />
+  )
+  const arvore: ReactElement = (
+    <FluentProvider theme={lightTheme}>
+      <QueryClientProvider client={queryClient}>
+        <Table aria-label="Itens">
+          <TableBody>{children}</TableBody>
+        </Table>
+      </QueryClientProvider>
+    </FluentProvider>
+  )
+  render(arvore)
 }
 
 describe('ItemOrcamentoRow', () => {
-  it('agrupa os campos do item em um fieldset com legend', () => {
-    render(
-      wrapper(
-        <ItemOrcamentoRow
-          indice={0}
-          item={ITEM}
-          aoMudar={vi.fn()}
-          aoRemover={vi.fn()}
-          podeRemover
-        />,
-      ),
-    )
-    expect(screen.getByRole('group', { name: /item 1/i })).toBeInTheDocument()
+  it('renderiza como uma linha de tabela', () => {
+    renderRow()
+    expect(screen.getByRole('row')).toBeInTheDocument()
   })
 
   it('tem campos rotulados para nome, quantidade e valor unitário', () => {
-    render(
-      wrapper(
-        <ItemOrcamentoRow
-          indice={0}
-          item={ITEM}
-          aoMudar={vi.fn()}
-          aoRemover={vi.fn()}
-          podeRemover
-        />,
-      ),
+    renderRow()
+    expect(screen.getByRole('textbox', { name: /nome do item 1/i })).toHaveValue(
+      'Serviço de pintura',
     )
-    expect(screen.getByLabelText(/nome/i)).toHaveValue('Serviço de pintura')
-    expect(screen.getByLabelText(/quantidade/i)).toHaveValue(2)
-    expect(screen.getByLabelText(/valor unitário/i)).toHaveValue(150)
+    expect(screen.getByRole('spinbutton', { name: /quantidade do item 1/i })).toHaveValue(2)
+    expect(screen.getByRole('spinbutton', { name: /valor unitário do item 1/i })).toHaveValue(150)
   })
 
   it('exibe o total do item calculado', () => {
-    render(
-      wrapper(
-        <ItemOrcamentoRow
-          indice={0}
-          item={ITEM}
-          aoMudar={vi.fn()}
-          aoRemover={vi.fn()}
-          podeRemover
-        />,
-      ),
-    )
+    renderRow()
     // 2 * 150 = 300
     expect(screen.getByText(/R\$\s?300,00/)).toBeInTheDocument()
   })
@@ -80,53 +75,29 @@ describe('ItemOrcamentoRow', () => {
   it('chama aoMudar ao editar a quantidade', async () => {
     const aoMudar = vi.fn()
     const usuario = userEvent.setup()
-    render(
-      wrapper(
-        <ItemOrcamentoRow
-          indice={0}
-          item={ITEM}
-          aoMudar={aoMudar}
-          aoRemover={vi.fn()}
-          podeRemover
-        />,
-      ),
-    )
-    const quantidade = screen.getByLabelText(/quantidade/i)
+    renderRow({ aoMudar })
+    const quantidade = screen.getByRole('spinbutton', { name: /quantidade do item 1/i })
     await usuario.clear(quantidade)
     await usuario.type(quantidade, '5')
     expect(aoMudar).toHaveBeenCalled()
   })
 
-  it('aciona aoRemover pelo botão rotulado', async () => {
+  it('aciona aoRemover pelo menu de ações', async () => {
     const aoRemover = vi.fn()
     const usuario = userEvent.setup()
-    render(
-      wrapper(
-        <ItemOrcamentoRow
-          indice={0}
-          item={ITEM}
-          aoMudar={vi.fn()}
-          aoRemover={aoRemover}
-          podeRemover
-        />,
-      ),
-    )
-    await usuario.click(screen.getByRole('button', { name: /remover item 1/i }))
+    renderRow({ aoRemover })
+    await usuario.click(screen.getByRole('button', { name: /ações do item 1/i }))
+    await usuario.click(await screen.findByRole('menuitem', { name: /remover item 1/i }))
     expect(aoRemover).toHaveBeenCalled()
   })
 
-  it('desabilita a remoção quando não é permitido remover', () => {
-    render(
-      wrapper(
-        <ItemOrcamentoRow
-          indice={0}
-          item={ITEM}
-          aoMudar={vi.fn()}
-          aoRemover={vi.fn()}
-          podeRemover={false}
-        />,
-      ),
+  it('desabilita a remoção quando não é permitido remover', async () => {
+    const usuario = userEvent.setup()
+    renderRow({ podeRemover: false })
+    await usuario.click(screen.getByRole('button', { name: /ações do item 1/i }))
+    expect(await screen.findByRole('menuitem', { name: /remover item 1/i })).toHaveAttribute(
+      'aria-disabled',
+      'true',
     )
-    expect(screen.getByRole('button', { name: /remover item 1/i })).toBeDisabled()
   })
 })

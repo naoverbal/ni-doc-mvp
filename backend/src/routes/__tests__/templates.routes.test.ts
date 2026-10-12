@@ -11,6 +11,16 @@ import type { TemplatePublico } from '../../repositories/template.repository.js'
 import type { UsuarioPublico } from '../../repositories/usuario.repository.js'
 import type { SessaoAtiva } from '../../repositories/sessao.repository.js'
 
+// `setTenant` chama `executarComTenant` (config/database.js), que acessa o pool
+// `pg` real — sem Postgres no teste, viraria 500. O mock torna `executarComTenant`
+// um passthrough (`fn()`), mantendo o `tenant.ts` real no caminho e a propagação
+// do contexto do tenant aos services. Não reproduz o RLS de produção. Factory
+// assíncrona (import dinâmico) porque `vi.mock` é hoisted acima dos imports.
+vi.mock('../../config/database.js', async () => {
+  const { fakeDatabaseModule } = await import('../../__tests__/mock-tenant.js')
+  return fakeDatabaseModule()
+})
+
 const usuarioAdminMock: UsuarioPublico = {
   id: 'user-1',
   tenantId: 'tenant-1',
@@ -83,9 +93,7 @@ describe('GET /api/templates/atual', () => {
     const authService = makeAuthService()
     const app = makeApp(templateService, authService)
 
-    const res = await request(app)
-      .get('/api/templates/atual')
-      .set('Cookie', 'session=sessao-id-1')
+    const res = await request(app).get('/api/templates/atual').set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(200)
     expect(res.body.id).toBe('template-1')
@@ -101,9 +109,7 @@ describe('GET /api/templates/atual', () => {
     const authService = makeAuthService()
     const app = makeApp(templateService, authService)
 
-    const res = await request(app)
-      .get('/api/templates/atual')
-      .set('Cookie', 'session=sessao-id-1')
+    const res = await request(app).get('/api/templates/atual').set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(404)
   })

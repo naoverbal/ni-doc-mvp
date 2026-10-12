@@ -2,10 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { criarUsuarioRepository } from '../usuario.repository.js'
 import * as crypto from '../../lib/crypto.js'
 import * as senha from '../../lib/senha.js'
+import { criarKyselyFake } from '../../__tests__/kysely-fake.js'
 import type { Kysely } from 'kysely'
 import type { Database } from '../../types/database.js'
 
-// Helpers para construir o mock fluent do Kysely
+// `criar()` ainda usa o builder fluente (`db.insertInto`) → mock fluente.
+// `buscarPorEmail`/`buscarPorId` usam `sql`...`.execute(db)` chamando funções
+// SECURITY DEFINER (bootstrap de login/sessão) → fake executor (kysely-fake.ts).
 function makeInsertBuilder(result: unknown) {
   const builder = {
     values: vi.fn(),
@@ -14,17 +17,6 @@ function makeInsertBuilder(result: unknown) {
   }
   builder.values.mockReturnValue(builder)
   builder.returning.mockReturnValue(builder)
-  return builder
-}
-
-function makeSelectBuilder(result: unknown) {
-  const builder = {
-    select: vi.fn(),
-    where: vi.fn(),
-    executeTakeFirst: vi.fn().mockResolvedValue(result),
-  }
-  builder.select.mockReturnValue(builder)
-  builder.where.mockReturnValue(builder)
   return builder
 }
 
@@ -114,10 +106,7 @@ describe('UsuarioRepository', () => {
 
   describe('buscarPorEmail()', () => {
     it('retorna null quando usuário não existe', async () => {
-      const selectBuilder = makeSelectBuilder(undefined)
-      const db = {
-        selectFrom: vi.fn().mockReturnValue(selectBuilder),
-      } as unknown as Kysely<Database>
+      const { db } = criarKyselyFake({ rows: [] })
 
       const repo = criarUsuarioRepository(db)
       const result = await repo.buscarPorEmail('naoexiste@exemplo.com')
@@ -126,14 +115,12 @@ describe('UsuarioRepository', () => {
     })
 
     it('retorna usuário com email descriptografado e senhaHash', async () => {
-      const selectBuilder = makeSelectBuilder(rowBase)
-      const db = {
-        selectFrom: vi.fn().mockReturnValue(selectBuilder),
-      } as unknown as Kysely<Database>
+      const { db, sqlExecutado } = criarKyselyFake({ rows: [rowBase] })
 
       const repo = criarUsuarioRepository(db)
       const result = await repo.buscarPorEmail('joao@exemplo.com')
 
+      expect(sqlExecutado[0]?.sql).toContain('rls_usuario_por_email_hash')
       expect(result).not.toBeNull()
       expect(result?.email).toBe('joao@exemplo.com')
       expect(result?.senhaHash).toBe('$argon2id$hash')
@@ -141,10 +128,7 @@ describe('UsuarioRepository', () => {
 
     it('busca pelo hash do email (não pelo email em texto plano)', async () => {
       const hashDocumentoSpy = vi.spyOn(crypto, 'hashDocumento')
-      const selectBuilder = makeSelectBuilder(null)
-      const db = {
-        selectFrom: vi.fn().mockReturnValue(selectBuilder),
-      } as unknown as Kysely<Database>
+      const { db } = criarKyselyFake({ rows: [] })
 
       const repo = criarUsuarioRepository(db)
       await repo.buscarPorEmail('Joao@Exemplo.com')
@@ -155,10 +139,7 @@ describe('UsuarioRepository', () => {
 
   describe('buscarPorId()', () => {
     it('retorna null quando usuário não existe', async () => {
-      const selectBuilder = makeSelectBuilder(undefined)
-      const db = {
-        selectFrom: vi.fn().mockReturnValue(selectBuilder),
-      } as unknown as Kysely<Database>
+      const { db } = criarKyselyFake({ rows: [] })
 
       const repo = criarUsuarioRepository(db)
       const result = await repo.buscarPorId('id-inexistente')
@@ -167,15 +148,13 @@ describe('UsuarioRepository', () => {
     })
 
     it('retorna usuário com email descriptografado', async () => {
-      const rowSemSenha = { ...rowBase }
-      const selectBuilder = makeSelectBuilder(rowSemSenha)
-      const db = {
-        selectFrom: vi.fn().mockReturnValue(selectBuilder),
-      } as unknown as Kysely<Database>
+      const { db, sqlExecutado } = criarKyselyFake({ rows: [{ ...rowBase }] })
 
       const repo = criarUsuarioRepository(db)
       const result = await repo.buscarPorId('user-id-1')
 
+      expect(sqlExecutado[0]?.sql).toContain('rls_usuario_por_id')
+      expect(sqlExecutado[0]?.parameters).toEqual(['user-id-1'])
       expect(result).not.toBeNull()
       expect(result?.email).toBe('joao@exemplo.com')
       expect(result?.id).toBe('user-id-1')

@@ -1,0 +1,164 @@
+name: Deploy
+
+# Deploy automático para a VPS de produção (Hostinger).
+#
+# Fluxo (design.md §17.1):
+#   1. Push na `main`
+#   2. Job `ci` roda a esteira de verificação (lint -> build -> testes), com um
+#      PostgreSQL de serviço, espelhando o workflow de CI (ci.yml).
+#   3. Se o CI passar, o job `deploy` faz SSH na VPS e executa, no diretório do
+#      projeto: `git pull`, `docker compose -f docker-compose.prod.yml up -d
+#      --build`, migrations e um health check contra o backend `/health`.
+#   4. Se o health check falhar, faz rollback automático para o commit anterior
+#      e sobe de novo, para não deixar o serviço fora do ar.
+#
+# Pré-requisitos (configurar nos Secrets do repositório — Settings > Secrets):
+#   VPS_HOST    host/IP da VPS
+#   VPS_USER    usuário SSH (dono do diretório do projeto na VPS)
+#   VPS_SSH_KEY chave privada SSH (PEM) com acesso ao VPS_USER
+#   VPS_PORT    porta SSH (opcional; default 22)
+#   VPS_PATH    caminho do projeto na VPS (opcional; default /var/www/ni-doc)
+#
+# Observação: o deploy depende de `docker-compose.prod.yml` existir na raiz do
+# repositório na VPS (ver design.md §16.2). Esta pipeline o referencia; a
+# criação do arquivo em si está fora do escopo desta tarefa.
+
+on:
+  push:
+    branches:
+      - main
+  # Permite disparar o deploy manualmente pela aba Actions.
+  workflow_dispatch:
+
+# Evita deploys concorrentes: um novo push cancela um deploy em andamento.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Gate de verificação: reproduz lint -> build -> testes do ci.yml. O deploy
+  # só acontece se este job passar (ver `needs: ci` abaixo).
+  # ---------------------------------------------------------------------------
+  ci:
+    name: Lint, Build e Testes
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nidoc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nidoc_test
+      CRYPTO_KEY: dGVzdGtleXRlc3RrZXl0ZXN0a2V5dGVzdGtleXQ=
+      SESSION_SECRET: test-session-secret-for-ci-only
+      NODE_ENV: test
+      PORT: 3001
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Testes
+        run: npm test
+
+  # ---------------------------------------------------------------------------
+  # Deploy na VPS: só roda se o job `ci` passar e só na branch `main`.
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy na VPS
+    needs: ci
+    runs-on: ubuntu-latest
+    # Dupla trava: só na main (push ou dispatch a partir dela).
+    if: github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - name: Deploy via SSH (git pull, build, migrations, health check, rollback)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          # Envia variáveis para dentro da sessão SSH.
+          envs: VPS_PATH
+          # Falha o passo (e o workflow) se qualquer comando remoto falhar.
+          script_stop: true
+          command_timeout: 20m
+          script: |
+            set -euo pipefail
+
+            # Caminho do projeto na VPS (default coerente com design.md §17.2).
+            PROJETO="${VPS_PATH:-/var/www/ni-doc}"
+            COMPOSE="docker compose -f docker-compose.prod.yml"
+            # Endpoint de health do backend (app.ts expõe GET /health).
+            HEALTH_URL="http://127.0.0.1:3000/health"
+
+            cd "$PROJETO"
+
+            # Guarda o commit atual para permitir rollback se o deploy falhar.
+            COMMIT_ANTERIOR="$(git rev-parse HEAD)"
+            echo "Commit atual (para rollback): $COMMIT_ANTERIOR"
+
+            echo "==> Atualizando o código (git pull)"
+            git fetch --prune origin main
+            git reset --hard origin/main
+
+            echo "==> Subindo os containers (build)"
+            $COMPOSE up -d --build
+
+            echo "==> Rodando migrations"
+            $COMPOSE exec -T backend npm run migrate
+
+            # ----------------------------------------------------------------
+            # Health check: tenta por até ~60s até o backend responder 200 em
+            # /health. Se não responder, dispara o rollback.
+            # ----------------------------------------------------------------
+            echo "==> Health check em $HEALTH_URL"
+            saudavel=0
+            for i in $(seq 1 30); do
+              if curl -fsS --max-time 5 "$HEALTH_URL" > /dev/null 2>&1; then
+                echo "Backend saudável (tentativa $i)."
+                saudavel=1
+                break
+              fi
+              echo "Aguardando backend... (tentativa $i/30)"
+              sleep 2
+            done
+
+            if [ "$saudavel" -ne 1 ]; then
+              echo "!! Health check falhou. Iniciando rollback para $COMMIT_ANTERIOR"
+              git reset --hard "$COMMIT_ANTERIOR"
+              $COMPOSE up -d --build
+              echo "Rollback concluído. Verifique os logs do deploy que falhou."
+              exit 1
+            fi
+
+            echo "==> Deploy concluído com sucesso."

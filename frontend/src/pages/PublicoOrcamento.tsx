@@ -76,6 +76,43 @@ function TabelaItens({ snapshot }: { snapshot: OrcamentoSnapshotPublico }): Reac
   )
 }
 
+// Formata o percentual (50 -> '50%', 33.5 -> '33,5%').
+function formatarPercentual(valor: number): string {
+  const texto = Number.isInteger(valor) ? String(valor) : String(valor).replace('.', ',')
+  return `${texto}%`
+}
+
+// Tabela de condições de pagamento (semântica, cabeçalhos de coluna com escopo).
+function TabelaCondicoesPagamento({
+  snapshot,
+}: {
+  snapshot: OrcamentoSnapshotPublico
+}): ReactElement {
+  return (
+    <table>
+      <caption>Condições de pagamento</caption>
+      <thead>
+        <tr>
+          <th scope="col">Descrição</th>
+          <th scope="col">Percentual</th>
+          <th scope="col">Marco</th>
+          <th scope="col">Forma de pagamento</th>
+        </tr>
+      </thead>
+      <tbody>
+        {snapshot.condicoes_pagamento_lista.map((condicao) => (
+          <tr key={condicao.ordem}>
+            <th scope="row">{condicao.descricao}</th>
+            <td>{formatarPercentual(condicao.percentual)}</td>
+            <td>{condicao.marco ?? '—'}</td>
+            <td>{condicao.forma_pagamento}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 export function PublicoOrcamento(): ReactElement {
   const { token } = useParams<{ token: string }>()
 
@@ -135,10 +172,19 @@ export function PublicoOrcamento(): ReactElement {
         <p>Documento: {snapshot.cliente.documento}</p>
         <p>Data de emissão: {formatarData(snapshot.data_emissao)}</p>
         <p>Validade: {snapshot.validade_dias} dias</p>
-        {snapshot.condicoes_pagamento && (
-          <p>Condições de pagamento: {snapshot.condicoes_pagamento}</p>
+        {snapshot.prazo_entrega_dias !== null && (
+          <p>Prazo de entrega: {snapshot.prazo_entrega_dias} dias</p>
         )}
       </section>
+
+      {/* Condições de pagamento estruturadas (RF-007): tabela semântica com
+          cabeçalhos de coluna; só aparece quando há condições. */}
+      {snapshot.condicoes_pagamento_lista.length > 0 && (
+        <section aria-labelledby={`${aceiteId}-condicoes`}>
+          <h2 id={`${aceiteId}-condicoes`}>Condições de pagamento</h2>
+          <TabelaCondicoesPagamento snapshot={snapshot} />
+        </section>
+      )}
 
       <section aria-label="Itens do orçamento">
         <TabelaItens snapshot={snapshot} />

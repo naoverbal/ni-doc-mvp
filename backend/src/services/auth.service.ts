@@ -33,12 +33,23 @@ interface AuthServiceDeps {
   usuarioRepo: UsuarioRepository
   sessaoRepo: SessaoRepository
   auditoriaService: AuditoriaService
+  // Escopo de tenant (RLS). As rotas `/api/auth/*` não têm `setTenant`, mas a
+  // auditoria de login/logout escreve em `eventos_auditoria` (tabela com RLS
+  // forçado). Como o tenant do usuário já é conhecido nesse ponto, o registro de
+  // auditoria roda dentro de `executarComTenant(tenantId, ...)` para ativar o
+  // GUC `app.current_tenant`. Default: passthrough (testes unitários).
+  escopoTenant?: <T>(tenantId: string, fn: () => Promise<T>) => Promise<T>
 }
 
 const OITO_HORAS_MS = 8 * 60 * 60 * 1000
 
 export function criarAuthService(deps: AuthServiceDeps): AuthService {
-  const { usuarioRepo, sessaoRepo, auditoriaService } = deps
+  const {
+    usuarioRepo,
+    sessaoRepo,
+    auditoriaService,
+    escopoTenant = (_tenantId, fn) => fn(),
+  } = deps
 
   return {
     async login(input: LoginInput): Promise<LoginResult> {
@@ -65,15 +76,17 @@ export function criarAuthService(deps: AuthServiceDeps): AuthService {
         expiraEm,
       })
 
-      await auditoriaService.registrar({
-        tenantId: usuario.tenantId,
-        usuarioId: usuario.id,
-        acao: 'login',
-        entidade: 'usuarios',
-        entidadeId: usuario.id,
-        ip: input.ip,
-        userAgent: input.userAgent,
-      })
+      await escopoTenant(usuario.tenantId, () =>
+        auditoriaService.registrar({
+          tenantId: usuario.tenantId,
+          usuarioId: usuario.id,
+          acao: 'login',
+          entidade: 'usuarios',
+          entidadeId: usuario.id,
+          ip: input.ip,
+          userAgent: input.userAgent,
+        }),
+      )
 
       return {
         sessaoId: sessao.id,
@@ -96,13 +109,15 @@ export function criarAuthService(deps: AuthServiceDeps): AuthService {
       if (sessao) {
         const usuario = await usuarioRepo.buscarPorId(sessao.usuarioId)
         if (usuario) {
-          await auditoriaService.registrar({
-            tenantId: usuario.tenantId,
-            usuarioId: usuario.id,
-            acao: 'logout',
-            entidade: 'usuarios',
-            entidadeId: usuario.id,
-          })
+          await escopoTenant(usuario.tenantId, () =>
+            auditoriaService.registrar({
+              tenantId: usuario.tenantId,
+              usuarioId: usuario.id,
+              acao: 'logout',
+              entidade: 'usuarios',
+              entidadeId: usuario.id,
+            }),
+          )
         }
       }
     },

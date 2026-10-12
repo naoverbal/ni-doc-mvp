@@ -114,6 +114,11 @@ const useStyles = makeStyles({
     paddingBlock: tokens.spacingVerticalXXXL,
     textAlign: 'center',
   },
+  // Texto secundário (descrições, estados vazios) com cor de token Fluent,
+  // seguindo o padrão de makeStyles das demais telas (sem inline style).
+  textoSecundario: {
+    color: tokens.colorNeutralForeground2,
+  },
   carregando: {
     display: 'flex',
     flexDirection: 'column',
@@ -226,7 +231,7 @@ export function Dashboard(): ReactElement {
           <Text size={500} weight="semibold">
             Nenhum orçamento ainda
           </Text>
-          <Text size={300} style={{ color: tokens.colorNeutralForeground2 }}>
+          <Text size={300} className={estilos.textoSecundario}>
             Crie seu primeiro orçamento para acompanhar o panorama por aqui.
           </Text>
           <Button as="a" href="/orcamentos/novo" appearance="primary" icon={<DocumentAdd24Regular />}>
@@ -359,7 +364,7 @@ export function Dashboard(): ReactElement {
               ))}
             </ul>
           ) : (
-            <Text style={{ color: tokens.colorNeutralForeground2 }}>
+            <Text className={estilos.textoSecundario}>
               Nenhum orçamento aguardando decisão.
             </Text>
           )}

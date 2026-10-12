@@ -15,6 +15,7 @@ import {
 } from '../schemas/responsavel.schema.js'
 import { validate } from '../middlewares/validate.js'
 import { criarMiddlewareAuth } from '../middlewares/auth.js'
+import { setTenant } from '../middlewares/tenant.js'
 
 export function criarResponsaveisRouter(
   responsavelService: ResponsavelService,
@@ -23,8 +24,9 @@ export function criarResponsaveisRouter(
   const router = Router()
   const autenticar = criarMiddlewareAuth(authService)
 
-  // Todas as rotas de responsável técnico exigem autenticação.
+  // Todas as rotas de responsável técnico exigem autenticação e isolamento (RLS).
   router.use(autenticar)
+  router.use(setTenant())
 
   function construirContexto(req: Request): ResponsavelContexto {
     return {

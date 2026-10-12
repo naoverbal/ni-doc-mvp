@@ -5,9 +5,12 @@ import { fileURLToPath } from 'node:url'
 
 const { Pool } = pg
 
-const DATABASE_URL = process.env['DATABASE_URL']
+// Migrations rodam com o papel PRIVILEGIADO (owner/superusuário): criam o papel
+// de aplicação, funções SECURITY DEFINER e policies de RLS. Usa
+// DATABASE_URL_ADMIN quando definido; senão cai para DATABASE_URL (compat).
+const DATABASE_URL = process.env['DATABASE_URL_ADMIN'] ?? process.env['DATABASE_URL']
 if (!DATABASE_URL) {
-  console.error('DATABASE_URL não definido')
+  console.error('DATABASE_URL_ADMIN/DATABASE_URL não definido')
   process.exit(1)
 }
 

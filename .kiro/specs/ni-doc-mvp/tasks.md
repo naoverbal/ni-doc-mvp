@@ -360,19 +360,19 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
 
 ### Fase 12 — Deploy e Produção
 
-- [ ] 53. Configurar Nginx na VPS
+- [x] 53. Configurar Nginx na VPS
   - Criar `nginx/ni-doc.conf`
   - Proxy reverso para backend; servir estáticos; TLS com Let's Encrypt; headers de segurança (HSTS, CSP)
   - DoD: HTTPS funciona, backend acessível via domínio
   - _Requirements: RNF-006_
 
-- [ ] 54. Pipeline de deploy
+- [x] 54. Pipeline de deploy
   - Criar `.github/workflows/deploy.yml`
   - Rodar CI; SSH na VPS; `git pull && docker compose -f docker-compose.prod.yml up -d --build`; migrations; health check; rollback automático se falhar
   - DoD: push na `main` faz deploy automático com health check
   - _Requirements: deploy_
 
-- [ ] 55. Job de limpeza de PDFs
+- [x] 55. Job de limpeza de PDFs
   - Criar `backend/src/jobs/limpar-pdfs.ts`
   - Cron diário; remover PDFs com mais de 1 ano (após retenção legal); registrar remoção na auditoria
   - DoD: job roda, PDFs antigos removidos, auditoria registrada
@@ -390,7 +390,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
 > transversal, independente das fases de feature, e pode ser executada assim que a
 > infraestrutura de dados (Fase 2) e de auth/tenant (Fase 3) estiver pronta.
 
-- [ ] 56. Ativar RLS por request (conexão por request + `setTenant` + papel sem BYPASSRLS)
+- [x] 56. Ativar RLS por request (conexão por request + `setTenant` + papel sem BYPASSRLS)
   - **Papel de banco:** criar/documentar um papel de aplicação sem `BYPASSRLS` e que não
     seja superusuário/owner das tabelas, usado pelo backend em runtime; reservar o papel
     privilegiado apenas para `migrate`/`seed`. Ajustar `.env.example` (`DATABASE_URL`) e
@@ -416,13 +416,209 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
     aplicacional mantido como redundância; lint/build/testes passam.
   - _Requirements: RF-002_
 
+### Fase 14 — Refinamento de UI (Fluent 2)
+
+> **Motivação:** protótipo de alta fidelidade (Figma Make) definiu uma nova composição
+> para o Editor de Template — canvas A4 central com visualização em tempo real e um painel
+> de controles à direita, cabendo na viewport de desktop sem scroll. O refino traz essa
+> composição para o stack real (Fluent 2 + tokens + marca verde-sálvia, light/dark),
+> substituindo o HTML cru/estilos inline da implementação atual, sem perder as garantias
+> de acessibilidade (posicionamento por teclado como alternativa ao drag & drop).
+
+- [x] 58. Refino de UI do Editor de template (Fluent 2 + layout do protótipo)
+  - Reescrever `frontend/src/pages/TemplateEditor.tsx` com `@fluentui/react-components`
+    (`makeStyles`/`tokens`, `@fluentui/react-icons`), seguindo o padrão da tela de Login
+  - Layout do protótipo: header com ação "Salvar template" e indicador "Alterações salvas";
+    faixa de título "Editor de template"; grid de duas colunas (canvas flexível + painel
+    de ~360px); canvas A4 central com fundo pontilhado e badge "Visualização em tempo real";
+    painel com seções "Elementos" (adicionar texto, desenhar área de itens, adicionar imagem)
+    e "Fundos e fontes" (carregar PDF base, select de fonte, enviar fonte customizada)
+  - Remover a coluna fixa "Elemento selecionado"; preservar edição de conteúdo e
+    posicionamento por teclado numa apresentação contextual (só quando há elemento selecionado)
+  - Corrigir o preview em tempo real: hoje `CanvasA4` não exibe imagens enviadas
+    (desenha só uma caixa cinza, nunca a `<img src>`) nem o PDF de fundo da página
+    (`pagina.fundo` não é passado ao canvas). A tela refeita deve renderizar a imagem
+    (data URL) e o fundo da página; para o PDF de fundo, usar um preview real (ex.:
+    `<iframe>`/`<embed>` ou lib de PDF já disponível) com fallback acessível
+  - Desktop sem scroll (altura travada na viewport, scroll interno no canvas se necessário);
+    abaixo do breakpoint de desktop, exibir aviso de que o editor requer tela maior
+  - Acessibilidade (WCAG AA): manter alternativa por teclado ao drag & drop; uploads com
+    `<label>`/nome acessível; não transmitir informação só por cor; foco visível; `aria-live`
+    para "Alterações salvas"/erros; `eslint-plugin-jsx-a11y` sem avisos
+  - DoD: tela reconstruída em Fluent respeitando o layout do protótipo; funcionalidade
+    preservada (adicionar elementos, uploads, salvar versão, posicionar por teclado);
+    testes de `TemplateEditor` verdes; lint/build limpos
+  - _Requirements: RF-014_
+
+- [x] 59. Refino de UI do Dashboard (mesmo padrão)
+  - Aplicar o mesmo padrão de refinamento visual à tela de Dashboard (sessão futura)
+  - _Requirements: RF-023_
+
+### Fase 15 — Refino do Editor de Orçamento (Fluent 2 + campos do protótipo)
+
+> **Motivação:** protótipo de alta fidelidade em Fluent 2 (arquivo de referência
+> `designorçamentoscreen/src/App.tsx` + `index.css`, fornecido pelo usuário) definiu uma
+> nova composição para a tela de criar/editar orçamento: app shell com sidebar e header,
+> barra de ação sticky (Voltar · nº ORC + badges versão/status · Salvar rascunho · Enviar),
+> e o formulário em cards — **Dados do Orçamento**, **Itens do Orçamento** (tabela com
+> unidade e total por linha), **Condições de Pagamento** (lista estruturada com validação
+> "soma dos percentuais = 100%") e **Resumo Financeiro** (subtotal, desconto global, total).
+> O refino traz essa composição para o `OrcamentoEditor` real (hoje em HTML cru) e adiciona
+> os campos do protótipo que ainda faltam no domínio. Diferente da Fase 14 (puramente de UI),
+> esta fase atravessa backend → frontend, por isso é dividida em três tarefas atômicas.
+>
+> **Decisões de modelagem (confirmadas com o usuário):**
+> - **Condições de pagamento = tabela-filha estruturada** `orcamento_condicoes_pagamento`
+>   (não o campo texto `condicoes_pagamento` atual, que fica obsoleto/descontinuado), com
+>   RLS via `EXISTS` em `orcamentos`, análoga a `orcamento_itens`.
+> - **Prazo de entrega** = nova coluna `prazo_entrega_dias` em `orcamentos`.
+> - Reaproveitar o que o backend já tem: `numero`, `data_emissao`, `validade_dias` e
+>   `unidade` por item já existem; o refino apenas os expõe na UI.
+> - Imutabilidade: condições de pagamento e prazo entram no snapshot da versão, como os
+>   itens — uma versão enviada preserva o estado do momento do envio.
+
+- [x] 60. Backend — condições de pagamento estruturadas e prazo de entrega
+  - **Migration:** criar `backend/src/db/migrations/004_condicoes_pagamento.sql` (idempotente,
+    `DROP ... IF EXISTS` antes de `CREATE`): adicionar `prazo_entrega_dias INT NULL` em
+    `orcamentos`; criar a tabela `orcamento_condicoes_pagamento` (`id`, `orcamento_id` FK
+    ON DELETE CASCADE, `ordem INT`, `descricao TEXT`, `percentual NUMERIC`, `marco TEXT NULL`,
+    `forma_pagamento TEXT`, `criado_em`); habilitar RLS e criar policy de isolamento via
+    `EXISTS` contra `orcamentos` (espelhando `002_rls_policies.sql` para `orcamento_itens`)
+  - **Tipos:** adicionar `OrcamentoCondicaoPagamentoTable` em `backend/src/types/database.ts`,
+    registrar em `Database` (`orcamento_condicoes_pagamento`) e incluir `prazo_entrega_dias`
+    em `OrcamentoTable`
+  - **Schema Zod** (`backend/src/schemas/orcamento.schema.ts`): adicionar
+    `prazoEntregaDias: z.number().int().positive().optional()` e um `condicoesPagamento`
+    estruturado — array de `{ descricao, percentual (0–100), marco?, formaPagamento }` — em
+    `criarOrcamentoSchema` e `atualizarOrcamentoSchema`; descontinuar o antigo
+    `condicoesPagamento: string` (remoção ou renome documentado). Validar no backend que, se
+    houver condições, a **soma dos percentuais = 100** (mensagem pt-BR); permitir lista vazia
+  - **Repositório** (`orcamento.repository.ts`): persistir/substituir as condições de pagamento
+    dentro da mesma transação de `criar`/`atualizar` (como os itens, com `ordem`); mapear
+    `snake_case ↔ camelCase` via `mapRow*`; `buscarPorId`/`listar` retornam as condições e o
+    `prazoEntregaDias`
+  - **Serviço** (`orcamento.service.ts`): incluir condições/prazo em criar/atualizar; manter a
+    regra "só edita rascunho" e a auditoria (estado anterior/novo cobrindo os novos campos)
+  - **TDD:** testes de repositório (persistência transacional, substituição no update, mapeamento),
+    de serviço (validação soma=100, só-rascunho, auditoria) e de schema (aceita/rejeita payloads);
+    testes existentes de orçamento continuam verdes
+  - DoD: migration aplica com `npm run migrate`; RLS cobre a nova tabela via `EXISTS`; soma dos
+    percentuais validada; `prazo_entrega_dias` persistido; cobertura de repo/serviço ≥ 80%;
+    lint/build/testes limpos
+  - _Requirements: RF-005, RF-006, RF-007_
+
+- [x] 61. Frontend — reescrever o Editor de Orçamento em Fluent 2 (layout do protótipo)
+  - Reescrever `frontend/src/pages/OrcamentoEditor.tsx` com `@fluentui/react-components`
+    (`Card`, `Field`, `Input`, `Textarea`, `Dropdown`, `Table`, `Button`, `Badge`, `Divider`,
+    `Switch`, `Tooltip`) e `@fluentui/react-icons`, seguindo o layout do arquivo de referência
+    `/Users/nilson/Downloads/designorçamentoscreen/src/App.tsx` (+ `index.css`)
+  - **Reusar o tema do projeto** (`frontend/src/theme/ni-doc-theme.ts` + `<FluentProvider>` já
+    na raiz) — NÃO duplicar `createLightTheme`/`BrandVariants` como no arquivo de referência.
+    **Converter o CSS Tailwind → tokens Fluent** (`makeStyles`/`tokens` ou CSS com `--color*`,
+    sem `@import "tailwindcss"`), conforme as regras de ouro de `.kiro/steering/ui.md`
+  - **Layout:** barra de ação sticky (Voltar · `numero` + badge versão + badge de status ·
+    Salvar rascunho `outline` · Enviar `primary`), repetida como ações finais com Cancelar;
+    card **Dados do Orçamento** colapsável (Cliente autocomplete, Título, Descrição, Data de
+    emissão, Validade (dias), Prazo de entrega (dias)); card **Itens** (tabela com Nome, Qtd,
+    Un via `Dropdown`, Valor unitário, Total por linha e menu de ações; subtotal/desconto no
+    rodapé); card **Condições de Pagamento** (lista estruturada numerada com Descrição,
+    Percentual, Marco, Forma de pagamento + badge "Soma dos percentuais: X%" em success/warning
+    + "Adicionar condição"); card **Resumo Financeiro** (Subtotal, Desconto global tipo+valor,
+    TOTAL em destaque)
+  - **Ligar à lógica real** (não usar estado fake/`defaultValue` do protótipo): manter os hooks
+    TanStack Query (`useOrcamentos`), a validação Zod, o cálculo de totais em tempo real
+    (`@/lib/orcamento-calculo`), o fluxo de salvar/enviar e o `ModalConfirmacao`/link público
+    existentes; ligar os novos campos (prazo, condições de pagamento estruturadas) aos
+    schemas/endpoints da tarefa 60; reaproveitar/ajustar `components/ItemOrcamentoRow.tsx`
+    e `components/Autocomplete.tsx`
+  - **Acessibilidade (WCAG AA):** `<label>`/`Field` em todo campo; erros Zod via
+    `aria-describedby` + `aria-invalid`; total e "soma dos percentuais" anunciados via
+    `aria-live="polite"`; status/erros de envio anunciados; botões ícone-only com `aria-label`;
+    status do orçamento com rótulo textual (não só cor); foco visível; operável por teclado;
+    `eslint-plugin-jsx-a11y` sem avisos
+  - **TDD:** atualizar `pages/__tests__/OrcamentoEditor.test.tsx` para a nova árvore (cards,
+    tabela, condições, resumo) cobrindo: cálculo em tempo real, validação, adicionar/remover
+    item e condição, badge de soma=100, salvar e enviar
+  - DoD: tela reconstruída fiel ao protótipo em Fluent reusando o tema do projeto; sem Tailwind;
+    criar/editar/salvar/enviar funcionam com os campos novos; testes de `OrcamentoEditor` verdes;
+    `eslint-plugin-jsx-a11y` sem avisos; fluxo verificado por teclado; lint/build limpos
+  - _Requirements: RF-005, RF-006, RF-007, RF-008_
+
+- [x] 62. Fiação de dados — condições/prazo no envio, snapshot, PDF e página pública
+  - **Snapshot/versionamento** (`services/snapshot.service.ts`, `versionamento.service.ts`):
+    incluir condições de pagamento (lista estruturada) e `prazoEntregaDias` no snapshot JSONB
+    da versão, por valor (cópia imutável, não referência), como já é feito com itens/cliente
+  - **HTML/PDF** (`services/html-renderer.service.ts` + CSS do template): renderizar as
+    condições de pagamento e o prazo de entrega no documento; manter a diretriz de documentos
+    renderizados (estrutura de títulos coerente, não distinguir só por cor)
+  - **Página pública** (`frontend/src/pages/PublicoOrcamento.tsx` e o GET de snapshot público):
+    exibir condições de pagamento e prazo quando presentes no snapshot, de forma acessível
+  - **TDD:** testes de snapshot (imutabilidade — alterar o orçamento depois não muda a versão;
+    condições/prazo presentes e por valor), do renderer (saída HTML contém as condições e o
+    prazo) e, se aplicável, do consumo público
+  - DoD: versões enviadas preservam condições de pagamento e prazo; PDF e página pública os
+    exibem; testes de snapshot/renderer verdes; lint/build limpos
+  - _Requirements: RF-008, RF-015, RF-016, RF-019_
+
+### Fase 16 — Sidebar Colapsável (App Shell em Fluent 2)
+
+> **Motivação:** protótipo de alta fidelidade (ver imagem fornecida pelo usuário) define o
+> app shell da área logada com **sidebar de navegação à esquerda** — marca "ni-doc / Gestão
+> comercial" no topo, lista de itens com ícone + rótulo, rodapé com o tenant — e um header
+> superior. Hoje `LayoutApp`/`NavPrincipal` ainda são HTML cru com navegação horizontal no
+> header (classes `app-shell`/`app-header`/`app-nav` em `styles/global.css`), divergindo da
+> seção 4 do `.kiro/steering/ui.md` ("App shell: sidebar + header sticky + conteúdo"). Esta
+> fase traz o shell para Fluent 2, com a sidebar colapsável especificada no steering, sem
+> perder o skip link nem as garantias de acessibilidade já existentes. É um refino de UI
+> transversal sobre o frontend já entregue (Fase 10), independente das Fases 14/15.
+
+- [x] 63. Frontend — sidebar colapsável e app shell em Fluent 2 (layout do protótipo)
+  - Reescrever `frontend/src/components/LayoutApp.tsx` e `components/NavPrincipal.tsx` com
+    `@fluentui/react-components` (`makeStyles`/`tokens`, `@fluentui/react-icons`) como app shell
+    Fluent, seguindo a seção 4 de `.kiro/steering/ui.md` e o layout do protótipo; mover os novos
+    componentes para `components/layout/` (`AppShell`/`Sidebar`/`Header`) conforme a estrutura de
+    pastas do steering. Remover as classes cruas correspondentes (`app-shell`/`app-header`/
+    `app-nav`) de `styles/global.css`, preservando o `.skip-link`
+  - **Sidebar:** 240px expandida / 64px colapsada (só ícones + `Tooltip` com o rótulo); topo com
+    a marca "ni-doc" + legenda "Gestão comercial"; itens de navegação com ícone (`@fluentui/
+    react-icons`) + rótulo via `NavLink` (mantendo `aria-current="page"` e reforço não-cromático);
+    rodapé com o tenant/conta. **Itens do protótipo:** Dashboard, Orçamentos, Clientes, Empresas,
+    Responsáveis Técnicos, Template, Auditoria, Configurações — os itens **sem rota ainda** (Clientes,
+    Empresas, Responsáveis Técnicos, Auditoria, Configurações) aparecem **desabilitados**
+    (`aria-disabled`, não focáveis como link ativo, com indicação textual "em breve"), e Template
+    permanece restrito a admin como hoje
+  - **Colapso:** botão de alternância (hambúrguer/chevron) com `aria-expanded` e `aria-label`;
+    persistir o estado num store Zustand novo (`stores/layout.store.ts`, padrão de `theme.store.ts`);
+    **responsivo** conforme o steering — colapsa automaticamente em tablet (< 1024px) e vira
+    `Drawer` (overlay) acionado por hambúrguer no header em mobile (< 640px), fechando com `Esc`,
+    com foco preso e devolvido ao gatilho; respeitar `prefers-reduced-motion` na animação
+  - **Header (56px, sticky):** nome do usuário + tenant, **toggle de tema claro/escuro** ligado ao
+    `theme.store.ts` existente (`Switch` com `aria-label` e rótulo textual, não só ícone/cor) e o
+    botão **Sair** (preservando o logout resiliente atual de `LayoutApp`). Em mobile, exibir o
+    hambúrguer que abre o `Drawer` da sidebar
+  - **Acessibilidade (WCAG AA):** manter o skip link "Pular para o conteúdo" e o `<main id="conteudo">`
+    das páginas (o shell continua **não** renderizando `<main>`); `<nav aria-label="Principal">`;
+    item ativo não só por cor; ícones-only com `aria-label`/`Tooltip`; foco visível (focus ring de
+    marca); ordem de foco lógica; `Drawer` com `aria-modal` e gestão de foco; `eslint-plugin-jsx-a11y`
+    sem avisos
+  - **TDD:** atualizar `components/__tests__/LayoutApp.test.tsx` (e cobrir `NavPrincipal`/sidebar)
+    para a nova árvore: renderiza itens de navegação e marca o ativo; itens sem rota desabilitados;
+    alterna colapso e persiste no store; abre/fecha o `Drawer` no breakpoint mobile; toggle de tema
+    chama o `theme.store`; logout resiliente preservado; skip link presente
+  - DoD: shell reconstruído em Fluent fiel ao protótipo reusando o tema do projeto; sidebar
+    colapsável (240↔64) com tooltip no modo ícone, responsiva (auto-colapso em tablet, drawer em
+    mobile) e estado persistido; toggle de tema e logout funcionam; skip link e landmarks preservados;
+    testes de `LayoutApp`/sidebar verdes; `eslint-plugin-jsx-a11y` sem avisos; fluxo verificado por
+    teclado; lint/build limpos
+  - _Requirements: RF-023, RNF-003_
+
 ## Notes
 
 - Ciclo TDD obrigatório: testes antes da implementação; tarefa concluída só com testes passando e lint sem erros.
 - Cobertura: `lib/` exige 100%; serviços e repositórios 80%+.
 - Multi-tenancy: a partir da Fase 3, todo acesso a dados respeita isolamento por `tenant_id`. O isolamento no banco via RLS (`SET LOCAL app.current_tenant`) só passa a ser efetivamente ativo após a Fase 13 (tarefa 56); até lá o isolamento é garantido apenas pelo filtro aplicacional `WHERE tenant_id` nos repositórios.
 - Imutabilidade: snapshots e PDFs emitidos são imutáveis; alterações posteriores em entidades de referência não afetam versões já emitidas.
-- Acessibilidade: as tarefas de UI (45–50) e do HTML renderizado (tarefa 57) seguem WCAG 2.1 AA no que é verificável em código — HTML semântico, operação por teclado, rótulos/`aria-*` e contraste. Rodar `eslint-plugin-jsx-a11y` e verificar o fluxo por teclado antes de concluir cada tarefa; a conformidade total ainda exige teste manual com tecnologia assistiva.
+- Acessibilidade: as tarefas de UI (45–50, 58–59, 61, 63) e do HTML renderizado (tarefas 57, 62) seguem WCAG 2.1 AA no que é verificável em código — HTML semântico, operação por teclado, rótulos/`aria-*` e contraste. Rodar `eslint-plugin-jsx-a11y` e verificar o fluxo por teclado antes de concluir cada tarefa; a conformidade total ainda exige teste manual com tecnologia assistiva.
 - Dependências cruzadas: a tarefa 33 (rota de envio) retorna versão sem PDF; `pdf_path` só é preenchido pela tarefa 40 (integração envio → PDF), que depende das tarefas 36–39. A tarefa 41 (aceite) reutiliza a geração de PDF da Fase 8. As telas de frontend dependem das rotas de backend correspondentes.
 
 ## Task Dependency Graph
@@ -445,11 +641,19 @@ graph TD
     F11["Fase 11 — Notificações (51–52)"]
     F12["Fase 12 — Deploy (53–55)"]
     F13["Fase 13 — Ativação do RLS (56)"]
+    F14["Fase 14 — Refino de UI (58–59)"]
+    F15["Fase 15 — Refino do Editor de Orçamento (60–62)"]
+    F16["Fase 16 — Sidebar Colapsável (63)"]
     F0 --> F1 --> F2 --> F3 --> F4 --> F5 --> F6 --> F7 --> F8 --> F9 --> F10 --> F11 --> F12
     F3 --> F13
+    F10 --> F14
+    F10 --> F15
+    F10 --> F16
 ```
 
 A Fase 13 (ativação do RLS) é uma correção de segurança transversal: depende apenas da infraestrutura de banco (Fase 2) e de auth/tenant (Fase 3), não das fases de feature. Pode ser priorizada e executada de forma independente.
+
+As Fases 14, 15 e 16 são refinos de UI/produto sobre o frontend já entregue (Fase 10). A Fase 16 (sidebar colapsável/app shell) é independente das Fases 14 e 15 e também depende apenas da Fase 10. Na Fase 15, a tarefa 60 (backend) precede a 61 (frontend) e a 62 (fiação envio/snapshot/PDF/público); a 61 e a 62 dependem da 60 e podem seguir em paralelo entre si.
 
 ```json
 {
@@ -467,7 +671,10 @@ A Fase 13 (ativação do RLS) é uma correção de segurança transversal: depen
     { "wave": 10, "name": "Frontend", "tasks": ["44", "45", "46", "47", "48", "49", "50", "57"], "dependsOn": [9] },
     { "wave": 11, "name": "Notificações", "tasks": ["51", "52"], "dependsOn": [10] },
     { "wave": 12, "name": "Deploy e Produção", "tasks": ["53", "54", "55"], "dependsOn": [11] },
-    { "wave": 13, "name": "Ativação do RLS por Request", "tasks": ["56"], "dependsOn": [3] }
+    { "wave": 13, "name": "Ativação do RLS por Request", "tasks": ["56"], "dependsOn": [3] },
+    { "wave": 14, "name": "Refinamento de UI (Fluent 2)", "tasks": ["58", "59"], "dependsOn": [10] },
+    { "wave": 15, "name": "Refino do Editor de Orçamento", "tasks": ["60", "61", "62"], "dependsOn": [10] },
+    { "wave": 16, "name": "Sidebar Colapsável (App Shell)", "tasks": ["63"], "dependsOn": [10] }
   ]
 }
 ```

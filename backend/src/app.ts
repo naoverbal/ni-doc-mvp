@@ -40,7 +40,7 @@ import { criarTemplateRepository } from './repositories/template.repository.js'
 import { criarAuditoriaRepository } from './repositories/auditoria.repository.js'
 import { criarAuditoriaService } from './services/auditoria.service.js'
 import { criarEmail, criarTransporteSmtp, type Email } from './lib/email.js'
-import { db } from './config/database.js'
+import { db, executarComTenant } from './config/database.js'
 
 export function criarApp(): express.Express {
   const app = express()
@@ -69,7 +69,12 @@ export function criarApp(): express.Express {
   const auditoriaService = criarAuditoriaService(auditoriaRepo)
   const usuarioRepo = criarUsuarioRepository(db)
   const sessaoRepo = criarSessaoRepository(db)
-  const authService = criarAuthService({ usuarioRepo, sessaoRepo, auditoriaService })
+  const authService = criarAuthService({
+    usuarioRepo,
+    sessaoRepo,
+    auditoriaService,
+    escopoTenant: executarComTenant,
+  })
   app.use('/api/auth', criarAuthRouter(authService))
 
   // Cliente routes
@@ -143,6 +148,9 @@ export function criarApp(): express.Express {
     usuarioRepo,
     clienteRepo,
     email,
+    // Escopo de tenant por request (RLS). Nas rotas públicas o GUC é ativado
+    // após resolver o token; nas rotas de domínio é reentrante.
+    escopoTenant: executarComTenant,
   })
 
   // Orçamento routes (dependem do aceiteService para o aceite manual).

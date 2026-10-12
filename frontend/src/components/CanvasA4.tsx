@@ -1,5 +1,5 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react'
-import type { ElementoTemplate } from '@/types/api'
+import type { ElementoImagem, ElementoTemplate } from '@/types/api'
 
 // Dimensões do canvas A4 em milímetros (RF-014.1).
 export const LARGURA_A4_MM = 210
@@ -21,6 +21,9 @@ export interface CanvasA4Props {
   aoSelecionar: (id: string | null) => void
   // Reposiciona um elemento (x/y em mm, já limitados ao canvas pelo pai).
   aoMover: (id: string, x: number, y: number) => void
+  // Fundo da página (data URL de PDF ou imagem), renderizado atrás dos
+  // elementos como preview em tempo real. Decorativo (aria-hidden). Opcional.
+  fundo?: string | null
 }
 
 // Rótulo acessível legível de um elemento, usado em aria-label e no texto
@@ -31,9 +34,48 @@ function rotuloElemento(el: ElementoTemplate): string {
   return 'Área de itens'
 }
 
+// Mapeia o ajuste do elemento de imagem para o object-fit do <img>.
+function objectFit(ajuste: ElementoImagem['ajuste']): 'contain' | 'cover' | 'fill' {
+  if (ajuste === 'fill') return 'fill'
+  if (ajuste === 'cover') return 'cover'
+  return 'contain'
+}
+
 // Limita um valor ao intervalo [min, max].
 function limitar(valor: number, min: number, max: number): number {
   return Math.min(Math.max(valor, min), max)
+}
+
+// Renderiza o fundo da página (preview decorativo) a partir do data URL. Como o
+// <img> não renderiza PDF, PDFs em data URL caem para <embed> (preview da 1a
+// página pelo visualizador nativo do navegador); imagens usam <img>. Em ambos
+// os casos é puramente visual: aria-hidden, pointer-events:none, atrás dos
+// elementos, com alternativa textual acessível.
+function FundoPagina({ fundo }: { fundo: string }): ReactElement {
+  const estiloBase = {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    pointerEvents: 'none',
+    border: 'none',
+  } as const
+
+  if (fundo.startsWith('data:application/pdf')) {
+    return (
+      <embed
+        src={fundo}
+        type="application/pdf"
+        aria-hidden="true"
+        title="Pré-visualização do PDF de fundo"
+        style={estiloBase}
+      />
+    )
+  }
+
+  return (
+    <img src={fundo} alt="" aria-hidden="true" style={{ ...estiloBase, objectFit: 'contain' }} />
+  )
 }
 
 /**
@@ -47,12 +89,15 @@ function limitar(valor: number, min: number, max: number): number {
  *
  * Cada elemento é um botão focável com nome acessível próprio; o estado de
  * seleção é transmitido por `aria-pressed` e por rótulo textual (não só cor).
+ * O fundo da página (`fundo`), quando presente, é renderizado atrás dos
+ * elementos como preview em tempo real (decorativo).
  */
 export function CanvasA4({
   elementos,
   selecionadoId,
   aoSelecionar,
   aoMover,
+  fundo,
 }: CanvasA4Props): ReactElement {
   const canvasRef = useRef<HTMLDivElement>(null)
   // Estado do arraste em andamento (null quando não há arraste).
@@ -135,6 +180,9 @@ export function CanvasA4({
         background: '#fff',
       }}
     >
+      {/* Fundo decorativo (PDF/imagem em data URL), atrás dos elementos. */}
+      {fundo && <FundoPagina fundo={fundo} />}
+
       {elementos.map((el) => {
         const selecionado = el.id === selecionadoId
         const rotulo = rotuloElemento(el)
@@ -161,18 +209,35 @@ export function CanvasA4({
               // Seleção sinalizada por borda contínua vs. tracejada E texto no
               // aria-label (não só por cor), conforme WCAG 1.4.1.
               border: selecionado ? '2px solid #1a4480' : '1px dashed #767676',
-              background: el.tipo === 'imagem' ? '#f0f0f0' : 'transparent',
+              background: el.tipo === 'imagem' && !el.src ? '#f0f0f0' : 'transparent',
+              padding: 0,
               textAlign: 'left',
               overflow: 'hidden',
               cursor: 'move',
               font: 'inherit',
             }}
           >
-            <span aria-hidden="true" style={{ fontSize: 12, color: '#1a1a1a' }}>
-              {el.tipo === 'texto' && el.conteudo}
-              {el.tipo === 'imagem' && (el.descricao || 'Imagem')}
-              {el.tipo === 'area-itens' && 'Área de itens'}
-            </span>
+            {/* Imagem: renderiza o <img> real a partir do data URL (preview em
+                tempo real). O alt vem da descrição; vazio = decorativa. O <img>
+                não captura o ponteiro para não roubar o arraste do botão. */}
+            {el.tipo === 'imagem' && el.src && (
+              <img
+                src={el.src}
+                alt={el.descricao || ''}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: objectFit(el.ajuste),
+                  pointerEvents: 'none',
+                }}
+              />
+            )}
+            {el.tipo !== 'imagem' && (
+              <span aria-hidden="true" style={{ fontSize: 12, color: '#1a1a1a' }}>
+                {el.tipo === 'texto' && el.conteudo}
+                {el.tipo === 'area-itens' && 'Área de itens'}
+              </span>
+            )}
           </button>
         )
       })}

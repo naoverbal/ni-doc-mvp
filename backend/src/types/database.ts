@@ -143,8 +143,23 @@ export interface OrcamentoTable {
   versao_atual: Generated<number>
   observacoes: string | null
   condicoes_pagamento: string | null
+  prazo_entrega_dias: number | null
   criado_em: GeneratedDate
   atualizado_em: GeneratedDate
+}
+
+// ---------------------------------------------------------------------------
+// CONDIÇÕES DE PAGAMENTO (lista estruturada por orçamento)
+// ---------------------------------------------------------------------------
+export interface OrcamentoCondicaoPagamentoTable {
+  id: Generated<string>
+  orcamento_id: string
+  ordem: number
+  descricao: string
+  percentual: string // NUMERIC returns string from pg driver
+  marco: string | null
+  forma_pagamento: string
+  criado_em: GeneratedDate
 }
 
 // ---------------------------------------------------------------------------
@@ -228,6 +243,7 @@ export interface Database {
   tenants_template_ativo: TenantTemplateAtivoTable
   orcamentos: OrcamentoTable
   orcamento_itens: OrcamentoItemTable
+  orcamento_condicoes_pagamento: OrcamentoCondicaoPagamentoTable
   orcamento_versoes: OrcamentoVersaoTable
   orcamento_aceites: OrcamentoAceiteTable
   eventos_auditoria: EventoAuditoriaTable

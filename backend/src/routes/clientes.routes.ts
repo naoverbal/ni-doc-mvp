@@ -15,6 +15,7 @@ import {
 } from '../schemas/cliente.schema.js'
 import { validate } from '../middlewares/validate.js'
 import { criarMiddlewareAuth } from '../middlewares/auth.js'
+import { setTenant } from '../middlewares/tenant.js'
 
 export function criarClientesRouter(
   clienteService: ClienteService,
@@ -23,8 +24,10 @@ export function criarClientesRouter(
   const router = Router()
   const autenticar = criarMiddlewareAuth(authService)
 
-  // Todas as rotas de cliente exigem autenticação.
+  // Todas as rotas de cliente exigem autenticação e isolamento por tenant (RLS).
+  // O `setTenant` vem logo após `autenticar` pois depende de `req.usuario`.
   router.use(autenticar)
+  router.use(setTenant())
 
   function construirContexto(req: Request): ClienteContexto {
     return {
