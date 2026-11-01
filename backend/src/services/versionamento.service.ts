@@ -15,6 +15,7 @@ import type { LayoutTemplate, TemplateRepository } from '../repositories/templat
 import type { Email } from '../lib/email.js'
 import { montarEmailOrcamentoEnviado } from '../lib/email-templates.js'
 import { gerarQrCodeDataUrl } from '../lib/qrcode.js'
+import { calcularExpiraEm, dataCivilDeColunaDate, estaExpirado } from '../lib/validade.js'
 
 // -----------------------------------------------------------------------------
 // Serviço de versionamento (RF-008, RF-009, RF-016). Transforma um orçamento
@@ -68,6 +69,8 @@ interface VersionamentoServiceDeps {
   // OPCIONAL: serviço de e-mail (RF-022). Ausente quando o SMTP não está
   // configurado — nesse caso o envio é simplesmente ignorado, sem erro.
   email?: Email
+  // Fonte de tempo injetável (default: relógio do sistema).
+  relogio?: () => Date
 }
 
 export function criarVersionamentoService(deps: VersionamentoServiceDeps): VersionamentoService {
@@ -83,6 +86,7 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
     htmlRenderer,
     templateRepo,
     email,
+    relogio = () => new Date(),
   } = deps
 
   return {
@@ -100,6 +104,19 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
         throw new AppError(400, 'Orçamento deve ter ao menos um item')
       }
 
+      // Validade (RF-009.5): `data_emissao + validade_dias`, vale o dia inteiro e
+      // expira às 00:00 do dia seguinte (America/Sao_Paulo). Validade já vencida
+      // não pode ser enviada (400) — nada é persistido.
+      const expiraEm = calcularExpiraEm(
+        dataCivilDeColunaDate(orcamento.dataEmissao),
+        orcamento.validadeDias,
+      )
+      if (estaExpirado(expiraEm, relogio())) {
+        throw new AppError(
+          400,
+          'A validade do orçamento já venceu; ajuste a validade antes de enviar',
+        )
+      }
       // Dados vivos exigidos pelo snapshot imutável.
       const cliente = await clienteRepo.buscarPorId(ctx.tenantId, orcamento.clienteId)
       if (!cliente) {
@@ -151,7 +168,7 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
         orcamentoId,
         numero: orcamento.numero,
         snapshot,
-        expiraEm: null,
+        expiraEm,
         // Geração do PDF dentro da transação do repositório: renderiza o HTML
         // (com o QR Code da URL pública embutido) e delega ao pdfService. Uma
         // falha aqui propaga e a transação reverte o envio inteiro (RF-016).

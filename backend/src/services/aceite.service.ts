@@ -9,7 +9,11 @@ import type {
   VersaoPorToken,
   VersaoSnapshotPorToken,
 } from '../repositories/orcamento-versao.repository.js'
-import type { OrcamentoRepository } from '../repositories/orcamento.repository.js'
+import type {
+  OrcamentoRepository,
+  OrcamentoStatus,
+} from '../repositories/orcamento.repository.js'
+import { estaExpirado } from '../lib/validade.js'
 import type { UsuarioRepository } from '../repositories/usuario.repository.js'
 import type { ClienteRepository } from '../repositories/cliente.repository.js'
 import type { AuditoriaService } from './auditoria.service.js'
@@ -340,19 +344,33 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
   // Distingue "não encontrado" (token inexistente ou HMAC inválido → 404) de
   // "expirado" (expira_em no passado → 410), conforme decidido para as rotas
   // públicas (tarefa 42). Genérica para os três fluxos públicos.
-  function validarToken<T extends { versaoId: string; expiraEm: Date | null }>(
-    token: string,
-    versao: T | null,
-  ): T {
+  function validarToken<
+    T extends { versaoId: string; expiraEm: Date | null; statusOrcamento: OrcamentoStatus },
+  >(token: string, versao: T | null): T {
     if (!versao || !validarTokenPublico(token, versao.versaoId)) {
       throw new AppError(404, 'Orçamento não encontrado')
     }
-    if (versao.expiraEm !== null && versao.expiraEm.getTime() < relogio().getTime()) {
+    // Validade checada NO MOMENTO da decisão (sem depender do job). Só vale para
+    // orçamentos ainda em aberto: aprovado/reprovado preservam o link legível.
+    if (validadeEncerrada(versao)) {
       throw new AppError(410, 'Link de aprovação expirado')
     }
     return versao
   }
-
+  // Orçamento `expirado` (pelo job) ou `enviado` com a validade já atingida.
+  function validadeEncerrada(versao: {
+    expiraEm: Date | null
+    statusOrcamento: OrcamentoStatus
+  }): boolean {
+    if (versao.statusOrcamento === 'expirado') {
+      return true
+    }
+    return (
+      versao.statusOrcamento === 'enviado' &&
+      versao.expiraEm !== null &&
+      estaExpirado(versao.expiraEm, relogio())
+    )
+  }
   return {
     async aprovarViaCliente(input: AprovarViaClienteInput): Promise<AceiteRegistrado> {
       const versao = validarToken(input.token, await orcamentoVersaoRepo.buscarPorToken(input.token))
@@ -460,6 +478,10 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
       }
       if (orcamento.status === 'reprovado') {
         throw new AppError(409, 'Orçamento já decidido')
+      }
+      // Expirado (pelo job) ou validade já atingida: não aceita decisão (410).
+      if (validadeEncerrada({ expiraEm: versao.expiraEm, statusOrcamento: orcamento.status })) {
+        throw new AppError(410, 'Orçamento expirado')
       }
       if (versao.pdfHash === null) {
         throw new AppError(409, 'Documento sem hash de integridade')

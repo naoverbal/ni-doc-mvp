@@ -4,6 +4,7 @@ import type { Database } from '../types/database.js'
 import { AppError } from '../errors/app-error.js'
 import { calcularSubtotal, calcularTotal, calcularTotalItem } from '../lib/orcamento-calculo.js'
 import { calcularHashConteudo } from '../lib/orcamento-hash.js'
+import { dataCivilNoFuso } from '../lib/validade.js'
 
 // -----------------------------------------------------------------------------
 // Tipos de status do orçamento (espelha o CHECK da migration 001).
@@ -548,6 +549,9 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
               titulo: input.titulo,
               descricao: input.descricao ?? null,
               status: 'rascunho',
+              // Data civil de emissão no fuso de negócio (não o CURRENT_DATE do
+              // banco, que segue o fuso da sessão): base da validade (tarefa 66).
+              data_emissao: sql<Date>`${dataCivilNoFuso(new Date())}::date`,
               validade_dias: input.validadeDias ?? 30,
               desconto_global_tipo: input.descontoGlobalTipo ?? null,
               desconto_global_valor:

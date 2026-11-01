@@ -52,7 +52,7 @@ function orcamentoMock(overrides: Partial<OrcamentoComItens> = {}): OrcamentoCom
     titulo: 'Projeto X',
     descricao: null,
     status: 'rascunho' as OrcamentoStatus,
-    dataEmissao: new Date('2026-01-01'),
+    dataEmissao: new Date(2026, 0, 1), // meia-noite local, como o driver pg entrega DATE
     validadeDias: 30,
     prazoEntregaDias: null,
     descontoGlobalTipo: null,
@@ -253,6 +253,8 @@ function makeDeps(overrides?: {
     pdfService,
     htmlRenderer,
     templateRepo,
+    // Relógio fixo: dentro da validade do orçamento padrão (emissão 2026-01-01 + 30 dias).
+    relogio: () => new Date('2026-01-15T12:00:00Z'),
     // `email` é OPCIONAL: só entra nos deps quando o teste o fornece, de modo que
     // os cenários "sem e-mail configurado" exercitem o caminho sem envio.
     ...(overrides?.email ? { email: overrides.email } : {}),
@@ -286,6 +288,24 @@ describe('VersionamentoService', () => {
     expect(versao.tokenPublico).toBe('uuid.hmac')
   })
 
+  it('grava expiraEm como 00:00 (America/Sao_Paulo) do dia seguinte ao vencimento', async () => {
+    const deps = makeDeps()
+    const service = criarVersionamentoService(deps)
+    await service.enviar(ctx, 'orcamento-1')
+    // Emissão 2026-01-01 + 30 dias = vencimento 31/01; expira 01/02 00:00 (UTC-3).
+    expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).toHaveBeenCalledWith(
+      expect.objectContaining({ expiraEm: new Date('2026-02-01T03:00:00.000Z') }),
+    )
+  })
+  it('lança AppError(400) e não persiste quando a validade já venceu', async () => {
+    const deps = makeDeps()
+    const service = criarVersionamentoService({
+      ...deps,
+      relogio: () => new Date('2026-02-01T03:00:00.000Z'),
+    })
+    await expect(service.enviar(ctx, 'orcamento-1')).rejects.toMatchObject({ statusCode: 400 })
+    expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).not.toHaveBeenCalled()
+  })
   it('gera o PDF no envio e persiste pdf_path e pdf_hash na versão', async () => {
     const deps = makeDeps()
     const service = criarVersionamentoService(deps)

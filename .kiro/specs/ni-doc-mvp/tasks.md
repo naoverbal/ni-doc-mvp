@@ -674,7 +674,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
     migrations idempotentes; lint/build/testes verdes
   - _Requirements: RF-002, RF-005, RF-010, RF-011, RF-012_
 
-- [ ] 66. Backend — validade e expiração automática
+- [x] 66. Backend — validade e expiração automática
   - **Validade no envio:** a validade do orçamento é `data_emissao + validade_dias`. Enviar com
     validade já vencida (anterior à data do envio) é recusado e nada é persistido. No envio, gravar
     `orcamento_versoes.expira_em` com a data de validade (hoje sempre `NULL`)

@@ -138,6 +138,10 @@ export function criarOrcamentoAceiteRepository(deps: {
       if (status === null) {
         throw new AppError(409, 'Versão do orçamento não encontrada para aceite')
       }
+      // Expirado pelo job entre a checagem do serviço e esta transação (410).
+      if (status === 'expirado') {
+        throw new AppError(410, 'Orçamento expirado')
+      }
       // Já decidido: orçamento aprovado ou reprovado não aceita nova decisão
       // (RF-019.6). `reprovado` é final: evita violar UNIQUE (versao_id).
       if (STATUS_DECIDIDO.includes(status as never)) {
