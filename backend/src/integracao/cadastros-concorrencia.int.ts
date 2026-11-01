@@ -3,8 +3,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { db, executarComTenant } from '../config/database.js'
 import { criarAuditoriaRepository } from '../repositories/auditoria.repository.js'
 import { criarClienteRepository } from '../repositories/cliente.repository.js'
+import { criarEmpresaRepository } from '../repositories/empresa.repository.js'
 import { criarAuditoriaService } from '../services/auditoria.service.js'
 import { criarClienteService } from '../services/cliente.service.js'
+import { criarEmpresaService } from '../services/empresa.service.js'
 import { adminPool, criarCenario, encerrarConexoes, limparDados, type Cenario } from './helpers.js'
 
 // Cadastros únicos sob requisições simultâneas: só uma tem efeito; a outra
@@ -104,5 +106,61 @@ describe('cliente com o mesmo documento', () => {
 
     expect([a.status, b.status].sort()).toEqual([201, 409])
     expect(await contarClientes('Cliente Corrida')).toBe(1)
+  })
+})
+
+async function contarEmpresas(razaoSocial: string): Promise<number> {
+  const { rows } = await adminPool.query<{ n: string }>(
+    'SELECT COUNT(*)::text AS n FROM empresas WHERE tenant_id = $1 AND razao_social = $2',
+    [c.tenant.id, razaoSocial],
+  )
+  return Number(rows[0]?.n ?? 0)
+}
+
+describe('empresa com o mesmo CNPJ', () => {
+  it('quando dois cadastros com o mesmo CNPJ passam juntos pela checagem, então um cria (201), o outro recebe 409 e só uma empresa existe', async () => {
+    const repoReal = criarEmpresaRepository(db)
+    const esperarTodos = criarBarreira(2)
+    const empresaRepo = {
+      ...repoReal,
+      async buscarPorCnpjHash(tenantId: string, hash: string) {
+        const achada = await repoReal.buscarPorCnpjHash(tenantId, hash)
+        await esperarTodos()
+        return achada
+      },
+    }
+    const servico = criarEmpresaService({
+      empresaRepo,
+      auditoriaService: criarAuditoriaService(criarAuditoriaRepository(db)),
+    })
+    const dados = {
+      tipo: 'cliente_pj' as const,
+      razaoSocial: 'Empresa Barreira Ltda',
+      cnpj: '11.222.333/0001-81',
+    }
+    const criar = () =>
+      statusDe(
+        executarComTenant(c.tenant.id, () =>
+          servico.criar({ tenantId: c.tenant.id, usuarioId: c.operador.id }, dados),
+        ),
+      )
+
+    const status = await Promise.all([criar(), criar()])
+
+    expect(status.sort()).toEqual([201, 409])
+    expect(await contarEmpresas('Empresa Barreira Ltda')).toBe(1)
+  })
+
+  it('quando duas empresas sem CNPJ são criadas ao mesmo tempo, então ambas respondem 201', async () => {
+    const criar = () =>
+      request(c.app)
+        .post('/api/empresas')
+        .set('Cookie', c.cookieOperador)
+        .send({ tipo: 'cliente_pj', razaoSocial: 'Empresa Sem CNPJ Ltda' })
+
+    const [a, b] = await Promise.all([criar(), criar()])
+
+    expect([a.status, b.status]).toEqual([201, 201])
+    expect(await contarEmpresas('Empresa Sem CNPJ Ltda')).toBe(2)
   })
 })
