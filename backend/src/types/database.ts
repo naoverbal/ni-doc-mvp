@@ -144,6 +144,8 @@ export interface OrcamentoTable {
   observacoes: string | null
   condicoes_pagamento: string | null
   prazo_entrega_dias: number | null
+  // SHA-256 do conteúdo (cliente + título + itens); NULL em orçamentos legados.
+  conteudo_hash: string | null
   criado_em: GeneratedDate
   atualizado_em: GeneratedDate
 }

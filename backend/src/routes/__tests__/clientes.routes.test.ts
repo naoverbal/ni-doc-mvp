@@ -39,7 +39,7 @@ const sessaoMock: SessaoAtiva = {
 }
 
 const clientePublicoMock: ClientePublico = {
-  id: 'cliente-1',
+  id: '00000000-0000-4000-8000-000000000002',
   tenantId: 'tenant-1',
   tipoPessoa: 'PF',
   nome: 'João da Silva',
@@ -98,7 +98,7 @@ describe('GET /api/clientes', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toHaveLength(1)
-    expect(res.body[0].id).toBe('cliente-1')
+    expect(res.body[0].id).toBe('00000000-0000-4000-8000-000000000002')
     expect(clienteService.buscar).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
       'ana',
@@ -146,7 +146,7 @@ describe('POST /api/clientes', () => {
     })
 
     expect(res.status).toBe(201)
-    expect(res.body.id).toBe('cliente-1')
+    expect(res.body.id).toBe('00000000-0000-4000-8000-000000000002')
     expect(clienteService.criar).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
       {
@@ -252,15 +252,15 @@ describe('PUT /api/clientes/:id', () => {
     const app = makeApp(clienteService, authService)
 
     const res = await request(app)
-      .put('/api/clientes/cliente-1')
+      .put('/api/clientes/00000000-0000-4000-8000-000000000002')
       .set('Cookie', 'session=sessao-id-1')
       .send({ nome: 'João Atualizado' })
 
     expect(res.status).toBe(200)
-    expect(res.body.id).toBe('cliente-1')
+    expect(res.body.id).toBe('00000000-0000-4000-8000-000000000002')
     expect(clienteService.atualizar).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
-      'cliente-1',
+      '00000000-0000-4000-8000-000000000002',
       { nome: 'João Atualizado' },
     )
   })
@@ -273,7 +273,7 @@ describe('PUT /api/clientes/:id', () => {
     const app = makeApp(clienteService, authService)
 
     const res = await request(app)
-      .put('/api/clientes/inexistente')
+      .put('/api/clientes/00000000-0000-4000-8000-0000000000ff')
       .set('Cookie', 'session=sessao-id-1')
       .send({ nome: 'João' })
 
@@ -285,7 +285,9 @@ describe('PUT /api/clientes/:id', () => {
     const authService = makeAuthService()
     const app = makeApp(clienteService, authService)
 
-    const res = await request(app).put('/api/clientes/cliente-1').send({ nome: 'João' })
+    const res = await request(app)
+      .put('/api/clientes/00000000-0000-4000-8000-000000000002')
+      .send({ nome: 'João' })
 
     expect(res.status).toBe(401)
   })
@@ -302,14 +304,14 @@ describe('GET /api/clientes/:id', () => {
     const app = makeApp(clienteService, authService)
 
     const res = await request(app)
-      .get('/api/clientes/cliente-1')
+      .get('/api/clientes/00000000-0000-4000-8000-000000000002')
       .set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(200)
-    expect(res.body.id).toBe('cliente-1')
+    expect(res.body.id).toBe('00000000-0000-4000-8000-000000000002')
     expect(clienteService.buscarPorId).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
-      'cliente-1',
+      '00000000-0000-4000-8000-000000000002',
     )
   })
 
@@ -321,7 +323,7 @@ describe('GET /api/clientes/:id', () => {
     const app = makeApp(clienteService, authService)
 
     const res = await request(app)
-      .get('/api/clientes/inexistente')
+      .get('/api/clientes/00000000-0000-4000-8000-0000000000ff')
       .set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(404)
@@ -332,7 +334,7 @@ describe('GET /api/clientes/:id', () => {
     const authService = makeAuthService()
     const app = makeApp(clienteService, authService)
 
-    const res = await request(app).get('/api/clientes/cliente-1')
+    const res = await request(app).get('/api/clientes/00000000-0000-4000-8000-000000000002')
 
     expect(res.status).toBe(401)
   })

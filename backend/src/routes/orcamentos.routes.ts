@@ -25,6 +25,7 @@ import {
 import { validate } from '../middlewares/validate.js'
 import { criarMiddlewareAuth } from '../middlewares/auth.js'
 import { setTenant } from '../middlewares/tenant.js'
+import { validarIdParam } from '../middlewares/validar-id.js'
 import { AppError } from '../errors/app-error.js'
 
 export function criarOrcamentosRouter(
@@ -39,6 +40,8 @@ export function criarOrcamentosRouter(
   // Todas as rotas de orçamento exigem autenticação e isolamento por tenant (RLS).
   router.use(autenticar)
   router.use(setTenant())
+  // Rotas /:id só aceitam UUID (400 em vez de erro cru do Postgres).
+  router.param('id', validarIdParam)
 
   function construirContexto(req: Request): OrcamentoContexto {
     return {
@@ -143,27 +146,23 @@ export function criarOrcamentosRouter(
   // POST /api/orcamentos/:id/aceite-manual — registra aceite manual pelo operador
   // (RF-020). Exige justificativa (Zod), registra o operador (req.usuario) como
   // responsável e muda o status para `aprovado`. 400/404/409 vêm do service.
-  router.post(
-    '/:id/aceite-manual',
-    validate(aceiteManualSchema),
-    async (req, res, next) => {
-      try {
-        const { justificativa } = req.body as AceiteManualPayload
-        const id = req.params['id'] as string
-        const aceite = await aceiteService.aceiteManual({
-          tenantId: req.usuario.tenantId,
-          orcamentoId: id,
-          usuarioId: req.usuario.id,
-          justificativa,
-          ip: req.ip ?? undefined,
-          userAgent: req.headers['user-agent'] ?? undefined,
-        })
-        res.status(201).json(aceite)
-      } catch (err) {
-        next(err)
-      }
-    },
-  )
+  router.post('/:id/aceite-manual', validate(aceiteManualSchema), async (req, res, next) => {
+    try {
+      const { justificativa } = req.body as AceiteManualPayload
+      const id = req.params['id'] as string
+      const aceite = await aceiteService.aceiteManual({
+        tenantId: req.usuario.tenantId,
+        orcamentoId: id,
+        usuarioId: req.usuario.id,
+        justificativa,
+        ip: req.ip ?? undefined,
+        userAgent: req.headers['user-agent'] ?? undefined,
+      })
+      res.status(201).json(aceite)
+    } catch (err) {
+      next(err)
+    }
+  })
 
   // GET /api/orcamentos/:id — busca por id (com itens).
   router.get('/:id', async (req, res, next) => {

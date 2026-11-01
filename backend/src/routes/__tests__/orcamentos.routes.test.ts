@@ -43,7 +43,7 @@ const sessaoMock: SessaoAtiva = {
 }
 
 const orcamentoComItensMock: OrcamentoComItens = {
-  id: 'orcamento-1',
+  id: '00000000-0000-4000-8000-000000000001',
   tenantId: 'tenant-1',
   numero: 'ORC-2024-0001',
   clienteId: CLIENTE_ID,
@@ -85,7 +85,7 @@ const orcamentoComItensMock: OrcamentoComItens = {
 const listaOrcamentosMock: ListaOrcamentos = {
   itens: [
     {
-      id: 'orcamento-1',
+      id: '00000000-0000-4000-8000-000000000001',
       numero: 'ORC-2024-0001',
       titulo: 'Projeto X',
       status: 'rascunho',
@@ -104,7 +104,7 @@ const listaOrcamentosMock: ListaOrcamentos = {
 
 const versaoEnviadaMock: VersaoEnviada = {
   id: 'versao-1',
-  orcamentoId: 'orcamento-1',
+  orcamentoId: '00000000-0000-4000-8000-000000000001',
   versao: 1,
   tokenPublico: 'token-publico-1',
   templateId: 'template-1',
@@ -150,7 +150,7 @@ function makeVersionamentoService(overrides?: Partial<VersionamentoService>): Ve
 const aceiteRegistradoMock: AceiteRegistrado = {
   id: 'aceite-1',
   versaoId: 'versao-1',
-  orcamentoId: 'orcamento-1',
+  orcamentoId: '00000000-0000-4000-8000-000000000001',
   metodo: 'operador',
   hashDocumento: 'a'.repeat(64),
   comprovantePdfPath: '/pdfs/ORC-2024-0001-aceite-v1.pdf',
@@ -201,7 +201,7 @@ describe('POST /api/orcamentos', () => {
       .send(bodyValido)
 
     expect(res.status).toBe(201)
-    expect(res.body.id).toBe('orcamento-1')
+    expect(res.body.id).toBe('00000000-0000-4000-8000-000000000001')
     expect(res.body.itens).toHaveLength(1)
     expect(orcamentoService.criar).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
@@ -368,15 +368,15 @@ describe('GET /api/orcamentos/:id', () => {
     const app = makeApp(orcamentoService, authService)
 
     const res = await request(app)
-      .get('/api/orcamentos/orcamento-1')
+      .get('/api/orcamentos/00000000-0000-4000-8000-000000000001')
       .set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(200)
-    expect(res.body.id).toBe('orcamento-1')
+    expect(res.body.id).toBe('00000000-0000-4000-8000-000000000001')
     expect(res.body.itens).toHaveLength(1)
     expect(orcamentoService.buscarPorId).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
-      'orcamento-1',
+      '00000000-0000-4000-8000-000000000001',
     )
   })
 
@@ -388,7 +388,7 @@ describe('GET /api/orcamentos/:id', () => {
     const app = makeApp(orcamentoService, authService)
 
     const res = await request(app)
-      .get('/api/orcamentos/inexistente')
+      .get('/api/orcamentos/00000000-0000-4000-8000-0000000000ff')
       .set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(404)
@@ -399,7 +399,7 @@ describe('GET /api/orcamentos/:id', () => {
     const authService = makeAuthService()
     const app = makeApp(orcamentoService, authService)
 
-    const res = await request(app).get('/api/orcamentos/orcamento-1')
+    const res = await request(app).get('/api/orcamentos/00000000-0000-4000-8000-000000000001')
 
     expect(res.status).toBe(401)
   })
@@ -421,15 +421,15 @@ describe('PUT /api/orcamentos/:id', () => {
     }
 
     const res = await request(app)
-      .put('/api/orcamentos/orcamento-1')
+      .put('/api/orcamentos/00000000-0000-4000-8000-000000000001')
       .set('Cookie', 'session=sessao-id-1')
       .send(body)
 
     expect(res.status).toBe(200)
-    expect(res.body.id).toBe('orcamento-1')
+    expect(res.body.id).toBe('00000000-0000-4000-8000-000000000001')
     expect(orcamentoService.atualizar).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
-      'orcamento-1',
+      '00000000-0000-4000-8000-000000000001',
       body,
     )
   })
@@ -440,7 +440,7 @@ describe('PUT /api/orcamentos/:id', () => {
     const app = makeApp(orcamentoService, authService)
 
     const res = await request(app)
-      .put('/api/orcamentos/orcamento-1')
+      .put('/api/orcamentos/00000000-0000-4000-8000-000000000001')
       .set('Cookie', 'session=sessao-id-1')
       .send({ titulo: 'Projeto', itens: [] })
 
@@ -458,7 +458,7 @@ describe('PUT /api/orcamentos/:id', () => {
     const app = makeApp(orcamentoService, authService)
 
     const res = await request(app)
-      .put('/api/orcamentos/orcamento-1')
+      .put('/api/orcamentos/00000000-0000-4000-8000-000000000001')
       .set('Cookie', 'session=sessao-id-1')
       .send({ itens: [{ nome: 'A', quantidade: 1, valorUnitario: 10 }] })
 
@@ -473,7 +473,7 @@ describe('PUT /api/orcamentos/:id', () => {
     const app = makeApp(orcamentoService, authService)
 
     const res = await request(app)
-      .put('/api/orcamentos/inexistente')
+      .put('/api/orcamentos/00000000-0000-4000-8000-0000000000ff')
       .set('Cookie', 'session=sessao-id-1')
       .send({ itens: [{ nome: 'A', quantidade: 1, valorUnitario: 10 }] })
 
@@ -486,7 +486,7 @@ describe('PUT /api/orcamentos/:id', () => {
     const app = makeApp(orcamentoService, authService)
 
     const res = await request(app)
-      .put('/api/orcamentos/orcamento-1')
+      .put('/api/orcamentos/00000000-0000-4000-8000-000000000001')
       .send({ itens: [{ nome: 'A', quantidade: 1, valorUnitario: 10 }] })
 
     expect(res.status).toBe(401)
@@ -504,14 +504,14 @@ describe('DELETE /api/orcamentos/:id', () => {
     const app = makeApp(orcamentoService, authService)
 
     const res = await request(app)
-      .delete('/api/orcamentos/orcamento-1')
+      .delete('/api/orcamentos/00000000-0000-4000-8000-000000000001')
       .set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(204)
     expect(res.body).toEqual({})
     expect(orcamentoService.deletar).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
-      'orcamento-1',
+      '00000000-0000-4000-8000-000000000001',
     )
   })
 
@@ -525,7 +525,7 @@ describe('DELETE /api/orcamentos/:id', () => {
     const app = makeApp(orcamentoService, authService)
 
     const res = await request(app)
-      .delete('/api/orcamentos/orcamento-1')
+      .delete('/api/orcamentos/00000000-0000-4000-8000-000000000001')
       .set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(409)
@@ -539,7 +539,7 @@ describe('DELETE /api/orcamentos/:id', () => {
     const app = makeApp(orcamentoService, authService)
 
     const res = await request(app)
-      .delete('/api/orcamentos/inexistente')
+      .delete('/api/orcamentos/00000000-0000-4000-8000-0000000000ff')
       .set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(404)
@@ -550,7 +550,7 @@ describe('DELETE /api/orcamentos/:id', () => {
     const authService = makeAuthService()
     const app = makeApp(orcamentoService, authService)
 
-    const res = await request(app).delete('/api/orcamentos/orcamento-1')
+    const res = await request(app).delete('/api/orcamentos/00000000-0000-4000-8000-000000000001')
 
     expect(res.status).toBe(401)
   })
@@ -568,7 +568,7 @@ describe('POST /api/orcamentos/:id/enviar', () => {
     const app = makeApp(orcamentoService, authService, versionamentoService)
 
     const res = await request(app)
-      .post('/api/orcamentos/orcamento-1/enviar')
+      .post('/api/orcamentos/00000000-0000-4000-8000-000000000001/enviar')
       .set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(201)
@@ -578,7 +578,7 @@ describe('POST /api/orcamentos/:id/enviar', () => {
     expect(res.body.pdfPath).toBeNull()
     expect(versionamentoService.enviar).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
-      'orcamento-1',
+      '00000000-0000-4000-8000-000000000001',
     )
   })
 
@@ -591,7 +591,7 @@ describe('POST /api/orcamentos/:id/enviar', () => {
     const app = makeApp(orcamentoService, authService, versionamentoService)
 
     const res = await request(app)
-      .post('/api/orcamentos/orcamento-1/enviar')
+      .post('/api/orcamentos/00000000-0000-4000-8000-000000000001/enviar')
       .set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(400)
@@ -608,7 +608,7 @@ describe('POST /api/orcamentos/:id/enviar', () => {
     const app = makeApp(orcamentoService, authService, versionamentoService)
 
     const res = await request(app)
-      .post('/api/orcamentos/orcamento-1/enviar')
+      .post('/api/orcamentos/00000000-0000-4000-8000-000000000001/enviar')
       .set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(409)
@@ -623,7 +623,7 @@ describe('POST /api/orcamentos/:id/enviar', () => {
     const app = makeApp(orcamentoService, authService, versionamentoService)
 
     const res = await request(app)
-      .post('/api/orcamentos/inexistente/enviar')
+      .post('/api/orcamentos/00000000-0000-4000-8000-0000000000ff/enviar')
       .set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(404)
@@ -635,7 +635,9 @@ describe('POST /api/orcamentos/:id/enviar', () => {
     const versionamentoService = makeVersionamentoService()
     const app = makeApp(orcamentoService, authService, versionamentoService)
 
-    const res = await request(app).post('/api/orcamentos/orcamento-1/enviar')
+    const res = await request(app).post(
+      '/api/orcamentos/00000000-0000-4000-8000-000000000001/enviar',
+    )
 
     expect(res.status).toBe(401)
     expect(versionamentoService.enviar).not.toHaveBeenCalled()
@@ -655,7 +657,7 @@ describe('POST /api/orcamentos/:id/aceite-manual', () => {
     const app = makeApp(orcamentoService, authService, versionamentoService, aceiteService)
 
     const res = await request(app)
-      .post('/api/orcamentos/orcamento-1/aceite-manual')
+      .post('/api/orcamentos/00000000-0000-4000-8000-000000000001/aceite-manual')
       .set('Cookie', 'session=sessao-id-1')
       .send({ justificativa: 'Cliente aprovou por telefone' })
 
@@ -665,7 +667,7 @@ describe('POST /api/orcamentos/:id/aceite-manual', () => {
     expect(aceiteService.aceiteManual).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId: 'tenant-1',
-        orcamentoId: 'orcamento-1',
+        orcamentoId: '00000000-0000-4000-8000-000000000001',
         usuarioId: 'user-1',
         justificativa: 'Cliente aprovou por telefone',
       }),
@@ -680,7 +682,7 @@ describe('POST /api/orcamentos/:id/aceite-manual', () => {
     const app = makeApp(orcamentoService, authService, versionamentoService, aceiteService)
 
     const res = await request(app)
-      .post('/api/orcamentos/orcamento-1/aceite-manual')
+      .post('/api/orcamentos/00000000-0000-4000-8000-000000000001/aceite-manual')
       .set('Cookie', 'session=sessao-id-1')
       .send({})
 
@@ -696,7 +698,7 @@ describe('POST /api/orcamentos/:id/aceite-manual', () => {
     const app = makeApp(orcamentoService, authService, versionamentoService, aceiteService)
 
     const res = await request(app)
-      .post('/api/orcamentos/orcamento-1/aceite-manual')
+      .post('/api/orcamentos/00000000-0000-4000-8000-000000000001/aceite-manual')
       .set('Cookie', 'session=sessao-id-1')
       .send({ justificativa: '   ' })
 
@@ -714,7 +716,7 @@ describe('POST /api/orcamentos/:id/aceite-manual', () => {
     const app = makeApp(orcamentoService, authService, versionamentoService, aceiteService)
 
     const res = await request(app)
-      .post('/api/orcamentos/inexistente/aceite-manual')
+      .post('/api/orcamentos/00000000-0000-4000-8000-0000000000ff/aceite-manual')
       .set('Cookie', 'session=sessao-id-1')
       .send({ justificativa: 'Cliente aprovou por telefone' })
 
@@ -731,7 +733,7 @@ describe('POST /api/orcamentos/:id/aceite-manual', () => {
     const app = makeApp(orcamentoService, authService, versionamentoService, aceiteService)
 
     const res = await request(app)
-      .post('/api/orcamentos/orcamento-1/aceite-manual')
+      .post('/api/orcamentos/00000000-0000-4000-8000-000000000001/aceite-manual')
       .set('Cookie', 'session=sessao-id-1')
       .send({ justificativa: 'Cliente aprovou por telefone' })
 
@@ -746,7 +748,7 @@ describe('POST /api/orcamentos/:id/aceite-manual', () => {
     const app = makeApp(orcamentoService, authService, versionamentoService, aceiteService)
 
     const res = await request(app)
-      .post('/api/orcamentos/orcamento-1/aceite-manual')
+      .post('/api/orcamentos/00000000-0000-4000-8000-000000000001/aceite-manual')
       .send({ justificativa: 'Cliente aprovou por telefone' })
 
     expect(res.status).toBe(401)

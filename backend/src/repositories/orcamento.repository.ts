@@ -3,6 +3,7 @@ import { sql } from 'kysely'
 import type { Database } from '../types/database.js'
 import { AppError } from '../errors/app-error.js'
 import { calcularSubtotal, calcularTotal, calcularTotalItem } from '../lib/orcamento-calculo.js'
+import { calcularHashConteudo } from '../lib/orcamento-hash.js'
 
 // -----------------------------------------------------------------------------
 // Tipos de status do orçamento (espelha o CHECK da migration 001).
@@ -362,6 +363,20 @@ function descontoGlobal(
   return { tipo, valor }
 }
 
+// Índice único parcial (migration 007) que impede o mesmo usuário de criar o
+// mesmo orçamento (cliente + título + itens) duas vezes.
+const INDICE_CONTEUDO_DUPLICADO = 'uq_orcamentos_conteudo'
+
+function ehConteudoDuplicado(erro: unknown): boolean {
+  if (typeof erro !== 'object' || erro === null) return false
+  const { code, constraint } = erro as { code?: string; constraint?: string }
+  return code === '23505' && constraint === INDICE_CONTEUDO_DUPLICADO
+}
+
+function erroConteudoDuplicado(): AppError {
+  return new AppError(409, 'Já existe um orçamento seu com o mesmo cliente, título e itens')
+}
+
 // Gera a próxima sequência do número ORC-{ANO}-{SEQ} dentro da transação.
 //
 // Numeração sequencial por tenant+ano SEM race condition (RF-005):
@@ -512,39 +527,51 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
       // Ano derivado no app (data_emissao usa o default CURRENT_DATE do banco).
       const ano = new Date().getFullYear()
 
-      return db.transaction().execute(async (trx) => {
-        const numero = await gerarNumero(trx, input.tenantId, ano)
-
-        const orcamentoRow = await trx
-          .insertInto('orcamentos')
-          .values({
-            tenant_id: input.tenantId,
-            numero,
-            cliente_id: input.clienteId,
-            empresa_cliente_id: input.empresaClienteId ?? null,
-            usuario_id: input.usuarioId,
-            titulo: input.titulo,
-            descricao: input.descricao ?? null,
-            status: 'rascunho',
-            validade_dias: input.validadeDias ?? 30,
-            desconto_global_tipo: input.descontoGlobalTipo ?? null,
-            desconto_global_valor:
-              input.descontoGlobalValor !== undefined ? String(input.descontoGlobalValor) : null,
-            subtotal: String(subtotal),
-            total: String(total),
-            observacoes: input.observacoes ?? null,
-            condicoes_pagamento: input.condicoesPagamentoTexto ?? null,
-            prazo_entrega_dias: input.prazoEntregaDias ?? null,
-          })
-          .returning(COLUNAS_ORCAMENTO)
-          .executeTakeFirstOrThrow()
-
-        const orcamentoId = (orcamentoRow as OrcamentoRow).id
-        const itens = await inserirItens(trx, orcamentoId, input.itens)
-        const condicoes = await inserirCondicoes(trx, orcamentoId, input.condicoesPagamento ?? [])
-
-        return mapRowOrcamento(orcamentoRow as OrcamentoRow, itens, condicoes)
+      const conteudoHash = calcularHashConteudo({
+        clienteId: input.clienteId,
+        titulo: input.titulo,
+        itens: input.itens,
       })
+
+      try {
+        return await db.transaction().execute(async (trx) => {
+          const numero = await gerarNumero(trx, input.tenantId, ano)
+
+          const orcamentoRow = await trx
+            .insertInto('orcamentos')
+            .values({
+              tenant_id: input.tenantId,
+              numero,
+              cliente_id: input.clienteId,
+              empresa_cliente_id: input.empresaClienteId ?? null,
+              usuario_id: input.usuarioId,
+              titulo: input.titulo,
+              descricao: input.descricao ?? null,
+              status: 'rascunho',
+              validade_dias: input.validadeDias ?? 30,
+              desconto_global_tipo: input.descontoGlobalTipo ?? null,
+              desconto_global_valor:
+                input.descontoGlobalValor !== undefined ? String(input.descontoGlobalValor) : null,
+              subtotal: String(subtotal),
+              total: String(total),
+              observacoes: input.observacoes ?? null,
+              condicoes_pagamento: input.condicoesPagamentoTexto ?? null,
+              prazo_entrega_dias: input.prazoEntregaDias ?? null,
+              conteudo_hash: conteudoHash,
+            })
+            .returning(COLUNAS_ORCAMENTO)
+            .executeTakeFirstOrThrow()
+
+          const orcamentoId = (orcamentoRow as OrcamentoRow).id
+          const itens = await inserirItens(trx, orcamentoId, input.itens)
+          const condicoes = await inserirCondicoes(trx, orcamentoId, input.condicoesPagamento ?? [])
+
+          return mapRowOrcamento(orcamentoRow as OrcamentoRow, itens, condicoes)
+        })
+      } catch (erro) {
+        if (ehConteudoDuplicado(erro)) throw erroConteudoDuplicado()
+        throw erro
+      }
     },
 
     async buscarPorId(tenantId: string, id: string): Promise<OrcamentoComItens | null> {
@@ -580,63 +607,70 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
         descontoGlobal(dados.descontoGlobalTipo, dados.descontoGlobalValor),
       )
 
-      return db.transaction().execute(async (trx) => {
-        const set: Record<string, unknown> = {
-          atualizado_em: new Date(),
-          subtotal: String(subtotal),
-          total: String(total),
-        }
+      try {
+        return await db.transaction().execute(async (trx) => {
+          const set: Record<string, unknown> = {
+            atualizado_em: new Date(),
+            subtotal: String(subtotal),
+            total: String(total),
+          }
 
-        if (dados.clienteId !== undefined) set['cliente_id'] = dados.clienteId
-        if (dados.empresaClienteId !== undefined) set['empresa_cliente_id'] = dados.empresaClienteId
-        if (dados.titulo !== undefined) set['titulo'] = dados.titulo
-        if (dados.descricao !== undefined) set['descricao'] = dados.descricao
-        if (dados.validadeDias !== undefined) set['validade_dias'] = dados.validadeDias
-        if (dados.prazoEntregaDias !== undefined) set['prazo_entrega_dias'] = dados.prazoEntregaDias
-        if (dados.descontoGlobalTipo !== undefined)
-          set['desconto_global_tipo'] = dados.descontoGlobalTipo
-        if (dados.descontoGlobalValor !== undefined)
-          set['desconto_global_valor'] = String(dados.descontoGlobalValor)
-        if (dados.observacoes !== undefined) set['observacoes'] = dados.observacoes
-        if (dados.condicoesPagamentoTexto !== undefined)
-          set['condicoes_pagamento'] = dados.condicoesPagamentoTexto
+          if (dados.clienteId !== undefined) set['cliente_id'] = dados.clienteId
+          if (dados.empresaClienteId !== undefined)
+            set['empresa_cliente_id'] = dados.empresaClienteId
+          if (dados.titulo !== undefined) set['titulo'] = dados.titulo
+          if (dados.descricao !== undefined) set['descricao'] = dados.descricao
+          if (dados.validadeDias !== undefined) set['validade_dias'] = dados.validadeDias
+          if (dados.prazoEntregaDias !== undefined)
+            set['prazo_entrega_dias'] = dados.prazoEntregaDias
+          if (dados.descontoGlobalTipo !== undefined)
+            set['desconto_global_tipo'] = dados.descontoGlobalTipo
+          if (dados.descontoGlobalValor !== undefined)
+            set['desconto_global_valor'] = String(dados.descontoGlobalValor)
+          if (dados.observacoes !== undefined) set['observacoes'] = dados.observacoes
+          if (dados.condicoesPagamentoTexto !== undefined)
+            set['condicoes_pagamento'] = dados.condicoesPagamentoTexto
 
-        const orcamentoRow = await trx
-          .updateTable('orcamentos')
-          .set(set)
-          .where('tenant_id', '=', tenantId)
-          .where('id', '=', id)
-          .returning(COLUNAS_ORCAMENTO)
-          .executeTakeFirst()
+          const orcamentoRow = await trx
+            .updateTable('orcamentos')
+            .set(set)
+            .where('tenant_id', '=', tenantId)
+            .where('id', '=', id)
+            .returning(COLUNAS_ORCAMENTO)
+            .executeTakeFirst()
 
-        if (!orcamentoRow) return null
+          if (!orcamentoRow) return null
 
-        // SUBSTITUI os itens: apaga os antigos e reinsere os novos.
-        await trx.deleteFrom('orcamento_itens').where('orcamento_id', '=', id).execute()
+          // SUBSTITUI os itens: apaga os antigos e reinsere os novos.
+          await trx.deleteFrom('orcamento_itens').where('orcamento_id', '=', id).execute()
 
-        const itens = await inserirItens(trx, id, dados.itens)
+          const itens = await inserirItens(trx, id, dados.itens)
 
-        // SUBSTITUI as condições apenas quando informadas; `undefined` mantém as
-        // atuais (relê do banco para preservar o retorno completo).
-        let condicoes: OrcamentoCondicaoPagamentoPublico[]
-        if (dados.condicoesPagamento !== undefined) {
-          await trx
-            .deleteFrom('orcamento_condicoes_pagamento')
-            .where('orcamento_id', '=', id)
-            .execute()
-          condicoes = await inserirCondicoes(trx, id, dados.condicoesPagamento)
-        } else {
-          const rows = await trx
-            .selectFrom('orcamento_condicoes_pagamento')
-            .select(COLUNAS_CONDICAO)
-            .where('orcamento_id', '=', id)
-            .orderBy('ordem', 'asc')
-            .execute()
-          condicoes = (rows as OrcamentoCondicaoPagamentoRow[]).map(mapRowCondicaoPagamento)
-        }
+          // SUBSTITUI as condições apenas quando informadas; `undefined` mantém as
+          // atuais (relê do banco para preservar o retorno completo).
+          let condicoes: OrcamentoCondicaoPagamentoPublico[]
+          if (dados.condicoesPagamento !== undefined) {
+            await trx
+              .deleteFrom('orcamento_condicoes_pagamento')
+              .where('orcamento_id', '=', id)
+              .execute()
+            condicoes = await inserirCondicoes(trx, id, dados.condicoesPagamento)
+          } else {
+            const rows = await trx
+              .selectFrom('orcamento_condicoes_pagamento')
+              .select(COLUNAS_CONDICAO)
+              .where('orcamento_id', '=', id)
+              .orderBy('ordem', 'asc')
+              .execute()
+            condicoes = (rows as OrcamentoCondicaoPagamentoRow[]).map(mapRowCondicaoPagamento)
+          }
 
-        return mapRowOrcamento(orcamentoRow as OrcamentoRow, itens, condicoes)
-      })
+          return mapRowOrcamento(orcamentoRow as OrcamentoRow, itens, condicoes)
+        })
+      } catch (erro) {
+        if (ehConteudoDuplicado(erro)) throw erroConteudoDuplicado()
+        throw erro
+      }
     },
 
     async listarPorTenant(

@@ -649,7 +649,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
     verdes; lint/build limpos
   - _Requirements: RF-008, RF-009, RF-019, RF-020_
 
-- [ ] 65. Backend — integridade de entrada (tenant, id, duplicidade, login)
+- [x] 65. Backend — integridade de entrada (tenant, id, duplicidade, login)
   - **Referência entre tenants (vazamento de dados):** `POST/PUT /api/orcamentos` aceitam
     `clienteId`, `empresaClienteId` e `responsavelId` (itens) de **outro tenant** e gravam a
     referência, porque a FK do Postgres ignora o RLS. Validar no service/repositório que cada

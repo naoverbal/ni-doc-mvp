@@ -16,6 +16,7 @@ import {
 import { validate } from '../middlewares/validate.js'
 import { criarMiddlewareAuth } from '../middlewares/auth.js'
 import { setTenant } from '../middlewares/tenant.js'
+import { validarIdParam } from '../middlewares/validar-id.js'
 import { AppError } from '../errors/app-error.js'
 
 const TIPOS_EMPRESA = ['tenant', 'cliente_pj'] as const
@@ -31,6 +32,8 @@ export function criarEmpresasRouter(
   // Todas as rotas de empresa exigem autenticação e isolamento por tenant (RLS).
   router.use(autenticar)
   router.use(setTenant())
+  // Rotas /:id só aceitam UUID (400 em vez de erro cru do Postgres).
+  router.param('id', validarIdParam)
 
   function construirContexto(req: Request): EmpresaContexto {
     return {

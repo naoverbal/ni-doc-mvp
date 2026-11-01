@@ -113,7 +113,13 @@ export function criarApp(): express.Express {
 
   // Orçamento routes
   const orcamentoRepo = criarOrcamentoRepository({ db })
-  const orcamentoService = criarOrcamentoService({ orcamentoRepo, auditoriaService })
+  const orcamentoService = criarOrcamentoService({
+    orcamentoRepo,
+    clienteRepo,
+    empresaRepo,
+    responsavelRepo,
+    auditoriaService,
+  })
   const orcamentoVersaoRepo = criarOrcamentoVersaoRepository({ db })
   const snapshotService = criarSnapshotService()
   const htmlRenderer = criarHtmlRendererService()
