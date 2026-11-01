@@ -851,15 +851,32 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
           if (dados.condicoesPagamentoTexto !== undefined)
             set['condicoes_pagamento'] = dados.condicoesPagamentoTexto
 
+          // UPDATE condicional (atômico): só grava se o orçamento AINDA for
+          // rascunho. A checagem de status do serviço é anterior e sem lock; um
+          // envio/cancelamento concorrente pode ter mudado o status nesse meio.
           const orcamentoRow = await trx
             .updateTable('orcamentos')
             .set(set)
             .where('tenant_id', '=', tenantId)
             .where('id', '=', id)
+            .where('status', '=', 'rascunho')
             .returning(COLUNAS_ORCAMENTO)
             .executeTakeFirst()
 
-          if (!orcamentoRow) return null
+          if (!orcamentoRow) {
+            // Nenhuma linha afetada: inexistente (404, via null) ou não é mais
+            // rascunho (409).
+            const existente = await trx
+              .selectFrom('orcamentos')
+              .select('status')
+              .where('tenant_id', '=', tenantId)
+              .where('id', '=', id)
+              .executeTakeFirst()
+            if (existente) {
+              throw new AppError(409, 'Só é possível editar orçamentos em rascunho')
+            }
+            return null
+          }
 
           // SUBSTITUI os itens: apaga os antigos e reinsere os novos.
           await trx.deleteFrom('orcamento_itens').where('orcamento_id', '=', id).execute()

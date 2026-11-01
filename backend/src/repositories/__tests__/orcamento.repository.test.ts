@@ -502,7 +502,9 @@ describe('OrcamentoRepository', () => {
     it('retorna null quando o orçamento não existe para o tenant', async () => {
       const updateOrcamento = makeUpdateBuilder(undefined)
       const deleteItens = makeDeleteBuilder()
-      const trx = makeTrx({ updateOrcamento, deleteItens })
+      // Releitura após o UPDATE sem linhas afetadas: o orçamento não existe.
+      const selectCondicoes = makeSelectBuilder(undefined)
+      const trx = makeTrx({ updateOrcamento, deleteItens, selectCondicoes })
       const db = makeDbComTransacao(trx)
 
       const repo = criarOrcamentoRepository({ db })
@@ -513,6 +515,24 @@ describe('OrcamentoRepository', () => {
       const result = await repo.atualizar('tenant-1', 'inexistente', dados)
 
       expect(result).toBeNull()
+    })
+
+    it('só grava rascunho e lança 409 quando o orçamento existe mas não é mais rascunho', async () => {
+      const updateOrcamento = makeUpdateBuilder(undefined)
+      const deleteItens = makeDeleteBuilder()
+      const selectCondicoes = makeSelectBuilder({ status: 'enviado' })
+      const trx = makeTrx({ updateOrcamento, deleteItens, selectCondicoes })
+      const db = makeDbComTransacao(trx)
+
+      const repo = criarOrcamentoRepository({ db })
+      await expect(
+        repo.atualizar('tenant-1', 'orc-1', {
+          titulo: 'Novo',
+          itens: [{ nome: 'A', quantidade: 1, valorUnitario: 10 }],
+        }),
+      ).rejects.toMatchObject({ statusCode: 409 })
+      expect(updateOrcamento.where).toHaveBeenCalledWith('status', '=', 'rascunho')
+      expect(trx.deleteFrom).not.toHaveBeenCalled()
     })
 
     it('ocorre em transação, substitui itens e atualiza campos do orçamento', async () => {
