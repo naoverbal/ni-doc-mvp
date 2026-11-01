@@ -543,6 +543,94 @@ describe('AceiteService', () => {
     })
   })
 
+  describe('obterPdfPorToken() e obterComprovantePorToken()', () => {
+    const bytes = Buffer.from('%PDF-1.4 fake')
+
+    it('lê o PDF da versão pelo número e versão, sem usar o caminho de disco', async () => {
+      const buscarPdf = vi.fn().mockResolvedValue(bytes)
+      const service = criarAceiteService(makeDeps({ pdfService: { buscarPdf } }))
+
+      const resultado = await service.obterPdfPorToken(tokenValido)
+
+      expect(resultado).toBe(bytes)
+      expect(buscarPdf).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        numero: 'ORC-2026-0001',
+        versao: 1,
+      })
+    })
+
+    it('lança AppError(404) no PDF quando o token não existe ou o HMAC é inválido', async () => {
+      const inexistente = makeDeps({
+        orcamentoVersaoRepo: { buscarSnapshotPorToken: vi.fn().mockResolvedValue(null) },
+      })
+      await expect(criarAceiteService(inexistente).obterPdfPorToken(tokenValido)).rejects.toMatchObject(
+        { statusCode: 404 },
+      )
+      const adulterado = makeDeps()
+      await expect(
+        criarAceiteService(adulterado).obterPdfPorToken('abc.deadbeef'),
+      ).rejects.toMatchObject({ statusCode: 404 })
+    })
+
+    it('lança AppError(410) no PDF quando a validade do link expirou', async () => {
+      const deps = makeDeps({
+        orcamentoVersaoRepo: {
+          buscarSnapshotPorToken: vi
+            .fn()
+            .mockResolvedValue(versaoSnapshot({ expiraEm: new Date('2020-01-01') })),
+        },
+      })
+      await expect(criarAceiteService(deps).obterPdfPorToken(tokenValido)).rejects.toMatchObject({
+        statusCode: 410,
+      })
+    })
+
+    it('lança AppError(404) no PDF quando a versão não tem pdf_path', async () => {
+      const buscarPdf = vi.fn()
+      const deps = makeDeps({
+        orcamentoVersaoRepo: {
+          buscarSnapshotPorToken: vi.fn().mockResolvedValue(versaoSnapshot({ pdfPath: null })),
+        },
+        pdfService: { buscarPdf },
+      })
+      await expect(criarAceiteService(deps).obterPdfPorToken(tokenValido)).rejects.toMatchObject({
+        statusCode: 404,
+      })
+      expect(buscarPdf).not.toHaveBeenCalled()
+    })
+
+    it('lê o comprovante com o sufixo -aceite quando o orçamento está aprovado', async () => {
+      const buscarPdf = vi.fn().mockResolvedValue(bytes)
+      const deps = makeDeps({
+        orcamentoVersaoRepo: {
+          buscarSnapshotPorToken: vi
+            .fn()
+            .mockResolvedValue(versaoSnapshot({ statusOrcamento: 'aprovado' })),
+        },
+        pdfService: { buscarPdf },
+      })
+
+      const resultado = await criarAceiteService(deps).obterComprovantePorToken(tokenValido)
+
+      expect(resultado).toBe(bytes)
+      expect(buscarPdf).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        numero: 'ORC-2026-0001-aceite',
+        versao: 1,
+      })
+    })
+
+    it('lança AppError(404) no comprovante enquanto o orçamento não está aprovado', async () => {
+      const buscarPdf = vi.fn()
+      const deps = makeDeps({ pdfService: { buscarPdf } })
+      await expect(
+        criarAceiteService(deps).obterComprovantePorToken(tokenValido),
+      ).rejects.toMatchObject({ statusCode: 404 })
+      expect(buscarPdf).not.toHaveBeenCalled()
+    })
+  })
+
   describe('reprovarViaCliente()', () => {
     it('valida o token e registra a reprovação com metodo=cliente, IP, UA e hash', async () => {
       const deps = makeDeps()

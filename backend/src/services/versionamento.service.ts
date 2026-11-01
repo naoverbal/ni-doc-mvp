@@ -199,7 +199,7 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
             // alternativa equivalente ao QR Code (acessibilidade — RF-018).
             urlPublica,
           })
-          const pdf = await pdfService.gerarPdf({ html, numero, versao })
+          const pdf = await pdfService.gerarPdf({ tenantId: ctx.tenantId, html, numero, versao })
           return { pdfPath: pdf.caminho, pdfHash: pdf.hash }
         },
       })

@@ -89,7 +89,7 @@ const ACEITE: AceiteRegistradoPublico = {
   orcamentoId: 'orc-1',
   metodo: 'cliente',
   hashDocumento: 'a'.repeat(64),
-  comprovantePdfPath: '/pdfs/ORC-2026-0001-aceite-v1.pdf',
+  comprovanteUrl: '/api/publico/orcamento/token-valido/comprovante',
   comprovantePdfHash: 'comprovante-hash',
   criadoEm: '2026-02-01T12:00:00.000Z',
 }
@@ -240,7 +240,10 @@ describe('PublicoOrcamento', () => {
 
   it('reprova o orçamento e anuncia o resultado', async () => {
     vi.mocked(api.get).mockResolvedValue(VISUALIZACAO)
-    vi.mocked(api.post).mockResolvedValueOnce({ ...ACEITE, comprovantePdfPath: null })
+    vi.mocked(api.post).mockResolvedValueOnce({
+      ...ACEITE,
+      comprovanteUrl: null,
+    })
     const usuario = userEvent.setup()
     render(renderPagina())
 

@@ -7,7 +7,7 @@ import type {
   CriarOrcamentoDados,
 } from '../services/orcamento.service.js'
 import type { VersionamentoService } from '../services/versionamento.service.js'
-import type { AceiteService } from '../services/aceite.service.js'
+import { aceiteParaResposta, type AceiteService } from '../services/aceite.service.js'
 import type { CancelamentoService } from '../services/cancelamento.service.js'
 import type { ReaberturaService } from '../services/reabertura.service.js'
 import {
@@ -176,7 +176,7 @@ export function criarOrcamentosRouter(
         ip: req.ip ?? undefined,
         userAgent: req.headers['user-agent'] ?? undefined,
       })
-      res.status(201).json(aceite)
+      res.status(201).json(aceiteParaResposta(aceite))
     } catch (err) {
       next(err)
     }

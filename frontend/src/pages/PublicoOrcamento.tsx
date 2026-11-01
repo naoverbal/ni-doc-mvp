@@ -262,9 +262,9 @@ export function PublicoOrcamento(): ReactElement {
               ? 'Orçamento aprovado com sucesso. Obrigado!'
               : 'Orçamento reprovado. Sua resposta foi registrada.'}
           </p>
-          {foiAprovado && decisao?.comprovantePdfPath && (
+          {foiAprovado && decisao?.comprovanteUrl && (
             <p>
-              <a href={decisao.comprovantePdfPath} target="_blank" rel="noopener noreferrer">
+              <a href={decisao.comprovanteUrl} target="_blank" rel="noopener noreferrer">
                 Baixar o comprovante de aceite em PDF
               </a>
             </p>

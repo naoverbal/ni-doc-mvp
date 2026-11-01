@@ -22,8 +22,11 @@ import { AppError } from '../errors/app-error.js'
 //    nem acesso ao `PDFS_DIR` real.
 //  - Assinaturas alinhadas ao `html-renderer.service.ts`: `gerarPdf` recebe o
 //    HTML já montado mais `numero`/`versao` (que não vivem no snapshot), de modo
-//    que a integração envio→PDF (Tarefa 40) seja natural. O nome do arquivo é
-//    estável e único: `{numero}-v{versao}.pdf` (RF-016.7).
+//    que a integração envio→PDF (Tarefa 40) seja natural. O arquivo é estável e
+//    único POR TENANT: `{tenantId}/{numero}-v{versao}.pdf` (RF-016.7). O tenant
+//    precisa estar no caminho: a numeração dos orçamentos é por tenant, então
+//    `ORC-2026-0001-v1.pdf` existe em vários tenants e, sem o diretório do tenant,
+//    o `gerarPdf` reaproveitaria o PDF de outro tenant (auditoria B-11).
 //  - Meta de performance < 2s (RF-016.2) é responsabilidade do Puppeteer com
 //    Chromium real, validada em integração/manual (Tarefa 40), não aqui.
 // -----------------------------------------------------------------------------
@@ -38,6 +41,8 @@ export interface PdfFileSystem {
 }
 
 export interface GerarPdfInput {
+  // Tenant dono do documento — define o diretório do arquivo (UUID).
+  tenantId: string
   // HTML já montado pelo `html-renderer.service.ts`.
   html: string
   // Número do orçamento (ex.: 'ORC-2026-0001') — compõe o nome do arquivo.
@@ -55,6 +60,7 @@ export interface GerarPdfResultado {
 }
 
 export interface BuscarPdfInput {
+  tenantId: string
   numero: string
   versao: number
 }
@@ -84,6 +90,10 @@ const fsPadrao: PdfFileSystem = {
 }
 
 // Nome de arquivo estável e único por orçamento+versão (RF-016.7).
+// O `tenantId` vira nome de diretório: só UUID é aceito, para que um valor
+// inesperado nunca altere o caminho (ex.: `..`, separadores).
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function nomeArquivo(numero: string, versao: number): string {
   return `${numero}-v${versao}.pdf`
 }
@@ -93,8 +103,15 @@ export function criarPdfService(deps: PdfServiceDeps): PdfService {
   const fs = deps.fs ?? fsPadrao
   const hash = deps.hash ?? sha256Hex
 
-  function resolverCaminho(numero: string, versao: number): string {
-    return join(deps.pdfsDir, nomeArquivo(numero, versao))
+  function diretorioDoTenant(tenantId: string): string {
+    if (!UUID.test(tenantId)) {
+      throw new Error('tenantId inválido para o caminho do PDF')
+    }
+    return join(deps.pdfsDir, tenantId)
+  }
+
+  function resolverCaminho(tenantId: string, numero: string, versao: number): string {
+    return join(diretorioDoTenant(tenantId), nomeArquivo(numero, versao))
   }
 
   // Resolve se o arquivo já existe sem lançar (true/false).
@@ -109,7 +126,7 @@ export function criarPdfService(deps: PdfServiceDeps): PdfService {
 
   return {
     async gerarPdf(input: GerarPdfInput): Promise<GerarPdfResultado> {
-      const caminho = resolverCaminho(input.numero, input.versao)
+      const caminho = resolverCaminho(input.tenantId, input.numero, input.versao)
 
       // Imutabilidade: se já existe, não regenera nem sobrescreve — reusa os
       // bytes já gravados e apenas recomputa o hash.
@@ -118,14 +135,14 @@ export function criarPdfService(deps: PdfServiceDeps): PdfService {
         return { buffer, caminho, hash: hash(buffer) }
       }
 
-      await fs.mkdir(deps.pdfsDir, { recursive: true })
+      await fs.mkdir(diretorioDoTenant(input.tenantId), { recursive: true })
       const buffer = await renderizar(input.html)
       await fs.writeFile(caminho, buffer)
       return { buffer, caminho, hash: hash(buffer) }
     },
 
     async buscarPdf(input: BuscarPdfInput): Promise<Buffer> {
-      const caminho = resolverCaminho(input.numero, input.versao)
+      const caminho = resolverCaminho(input.tenantId, input.numero, input.versao)
       try {
         return await fs.readFile(caminho)
       } catch {

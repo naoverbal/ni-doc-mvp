@@ -166,6 +166,8 @@ function makeAceiteService(overrides?: Partial<AceiteService>): AceiteService {
     reprovarViaCliente: vi.fn().mockResolvedValue(aceiteRegistradoMock),
     visualizarPorToken: vi.fn().mockResolvedValue(undefined),
     aceiteManual: vi.fn().mockResolvedValue(aceiteRegistradoMock),
+    obterPdfPorToken: vi.fn().mockResolvedValue(Buffer.from('%PDF-1.4 mock')),
+    obterComprovantePorToken: vi.fn().mockResolvedValue(Buffer.from('%PDF-1.4 mock')),
     ...overrides,
   }
 }
@@ -699,6 +701,9 @@ describe('POST /api/orcamentos/:id/aceite-manual', () => {
     expect(res.status).toBe(201)
     expect(res.body.id).toBe('aceite-1')
     expect(res.body.metodo).toBe('operador')
+    // O caminho de disco do comprovante nunca sai na resposta HTTP.
+    expect(res.body.comprovantePdfPath).toBeUndefined()
+    expect(res.body.comprovantePdfHash).toBe('b'.repeat(64))
     expect(aceiteService.aceiteManual).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId: 'tenant-1',

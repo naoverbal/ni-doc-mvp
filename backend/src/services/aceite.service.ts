@@ -78,6 +78,24 @@ export interface AceiteRegistrado {
   criadoEm: Date
 }
 
+// Contrato HTTP do aceite: o caminho de disco do comprovante é detalhe interno do
+// servidor e nunca sai nas respostas (a rota pública expõe `comprovanteUrl`).
+// Lista explícita de campos (allowlist), para que um campo novo no serviço não
+// vaze por acidente.
+export type AceiteResposta = Omit<AceiteRegistrado, 'comprovantePdfPath'>
+
+export function aceiteParaResposta(aceite: AceiteRegistrado): AceiteResposta {
+  return {
+    id: aceite.id,
+    versaoId: aceite.versaoId,
+    orcamentoId: aceite.orcamentoId,
+    metodo: aceite.metodo,
+    hashDocumento: aceite.hashDocumento,
+    comprovantePdfHash: aceite.comprovantePdfHash,
+    criadoEm: aceite.criadoEm,
+  }
+}
+
 // Visualização pública do orçamento (rota GET /publico/orcamento/:token): o
 // snapshot imutável, a flag de integridade (há pdf_hash emitido?) e a URL do PDF.
 export interface VisualizacaoPublica {
@@ -95,6 +113,12 @@ export interface AceiteService {
   aprovarViaCliente(input: AprovarViaClienteInput): Promise<AceiteRegistrado>
   reprovarViaCliente(input: ReprovarViaClienteInput): Promise<AceiteRegistrado>
   visualizarPorToken(token: string): Promise<VisualizacaoPublica>
+  // Bytes do PDF oficial da versão (rota pública /pdf). Mesmas regras de token da
+  // visualização (404 desconhecido/adulterado, 410 expirado); 404 sem PDF emitido.
+  obterPdfPorToken(token: string): Promise<Buffer>
+  // Bytes do comprovante de aceite (rota pública /comprovante). 404 enquanto o
+  // orçamento não estiver aprovado ou se o comprovante não existir.
+  obterComprovantePorToken(token: string): Promise<Buffer>
   aceiteManual(input: AceiteManualInput): Promise<AceiteRegistrado>
 }
 
@@ -300,6 +324,7 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
         userAgent: args.userAgent,
       })
       const comprovante = await pdfService.gerarPdf({
+        tenantId: versao.tenantId,
         html,
         numero: `${versao.numero}-aceite`,
         versao: versao.versao,
@@ -466,6 +491,37 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
       }
     },
 
+    async obterPdfPorToken(token: string): Promise<Buffer> {
+      const versao: VersaoSnapshotPorToken = validarToken(
+        token,
+        await orcamentoVersaoRepo.buscarSnapshotPorToken(token),
+      )
+      // Sem PDF emitido (ou removido pelo job de limpeza) não há o que servir. O
+      // caminho de disco nunca sai do servidor: a leitura usa número e versão.
+      if (versao.pdfPath === null) {
+        throw new AppError(404, 'PDF não encontrado')
+      }
+      return pdfService.buscarPdf({
+        tenantId: versao.tenantId,
+        numero: versao.numero,
+        versao: versao.versao,
+      })
+    },
+    async obterComprovantePorToken(token: string): Promise<Buffer> {
+      const versao: VersaoSnapshotPorToken = validarToken(
+        token,
+        await orcamentoVersaoRepo.buscarSnapshotPorToken(token),
+      )
+      if (versao.statusOrcamento !== 'aprovado') {
+        throw new AppError(404, 'Comprovante não encontrado')
+      }
+      // Mesmo nome usado na geração (`persistirDecisao`): `{numero}-aceite`.
+      return pdfService.buscarPdf({
+        tenantId: versao.tenantId,
+        numero: `${versao.numero}-aceite`,
+        versao: versao.versao,
+      })
+    },
     async aceiteManual(input: AceiteManualInput): Promise<AceiteRegistrado> {
       // Justificativa obrigatória (RF-020.1): rejeita vazia ou só espaços.
       if (input.justificativa.trim().length === 0) {

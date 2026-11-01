@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { access } from 'node:fs/promises'
+import { join } from 'node:path'
 import request from 'supertest'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { PDFS_DIR_TESTE } from './config-banco.js'
 import { emailsEnviados, estadoSmtp } from './espioes.js'
 import {
   adminPool,
@@ -67,6 +69,12 @@ async function prepararEnviado(): Promise<{ cenario: Cenario } & Enviado> {
   return { cenario, ...enviado }
 }
 
+// Comprovante de aceite gravado em disco: pdfs/{tenant}/{numero}-aceite-v{versao}.pdf.
+// O caminho de disco nunca vem na resposta HTTP; o teste confere o arquivo direto.
+function arquivoDoComprovante(tenantId: string, numero: string, versao = 1): string {
+  return join(PDFS_DIR_TESTE, tenantId, `${numero}-aceite-v${versao}.pdf`)
+}
+
 async function acaoAuditada(entidadeId: string, acao: string): Promise<number> {
   const { rowCount } = await adminPool.query(
     'SELECT 1 FROM eventos_auditoria WHERE entidade_id = $1 AND acao = $2',
@@ -118,14 +126,15 @@ describe('visualização pública (GET /api/publico/orcamento/:token)', () => {
 
 describe('aprovação pelo cliente (POST /api/publico/orcamento/:token/aprovar)', () => {
   it('quando o token é válido e o orçamento está enviado, então responde 201, grava o aceite com as evidências e gera o comprovante', async () => {
-    const { versao, orcamento } = await prepararEnviado()
+    const { cenario, versao, orcamento } = await prepararEnviado()
 
     const resposta = await publico.aprovar(versao.tokenPublico)
 
     expect(resposta.status).toBe(201)
     expect(resposta.body.metodo).toBe('cliente')
     expect(await statusNoBanco(orcamento.id)).toBe('aprovado')
-    await access(resposta.body.comprovantePdfPath)
+    await access(arquivoDoComprovante(cenario.tenant.id, orcamento.numero))
+    expect(resposta.body.comprovantePdfPath).toBeUndefined()
     expect(resposta.body.comprovantePdfHash).toMatch(/^[0-9a-f]{64}$/)
 
     const { rows } = await adminPool.query(
@@ -233,7 +242,8 @@ describe('reprovação pelo cliente (POST /api/publico/orcamento/:token/reprovar
     const resposta = await publico.reprovar(versao.tokenPublico, { justificativa: 'Preço alto' })
 
     expect(resposta.status).toBe(201)
-    expect(resposta.body.comprovantePdfPath).toBeNull()
+    expect(resposta.body.comprovantePdfPath).toBeUndefined()
+    expect(resposta.body.comprovanteUrl).toBeNull()
     expect(resposta.body.comprovantePdfHash).toBeNull()
     expect(await statusNoBanco(orcamento.id)).toBe('reprovado')
     const { rows } = await adminPool.query(
@@ -314,7 +324,8 @@ describe('aceite manual pelo operador (POST /api/orcamentos/:id/aceite-manual)',
     expect(resposta.status).toBe(201)
     expect(resposta.body.metodo).toBe('operador')
     expect(await statusNoBanco(orcamento.id)).toBe('aprovado')
-    await access(resposta.body.comprovantePdfPath)
+    await access(arquivoDoComprovante(cenario.tenant.id, orcamento.numero))
+    expect(resposta.body.comprovantePdfPath).toBeUndefined()
     const { rows } = await adminPool.query(
       'SELECT usuario_id, justificativa, metodo FROM orcamento_aceites WHERE versao_id = $1',
       [versao.id],

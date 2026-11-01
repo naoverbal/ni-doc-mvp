@@ -41,6 +41,8 @@ function makeAceiteService(overrides?: Partial<AceiteService>): AceiteService {
     aceiteManual: vi.fn().mockResolvedValue(aceiteRegistradoMock),
     visualizarPorToken: vi.fn().mockResolvedValue(visualizacaoMock),
     reprovarViaCliente: vi.fn().mockResolvedValue(aceiteRegistradoMock),
+    obterPdfPorToken: vi.fn().mockResolvedValue(Buffer.from('%PDF-1.4 mock')),
+    obterComprovantePorToken: vi.fn().mockResolvedValue(Buffer.from('%PDF-1.4 mock')),
     ...overrides,
   }
 }
@@ -199,5 +201,69 @@ describe('POST /api/publico/orcamento/:token/reprovar', () => {
     const res = await request(app).post(`/api/publico/orcamento/${TOKEN}/reprovar`).send({})
 
     expect(res.status).toBe(409)
+  })
+})
+
+describe('GET /api/publico/orcamento/:token/pdf e /comprovante', () => {
+  it('retorna 200 com application/pdf, Cache-Control private, no-store e os bytes do serviço', async () => {
+    const aceiteService = makeAceiteService()
+    const res = await request(makeApp(aceiteService))
+      .get('/api/publico/orcamento/token-x/pdf')
+      .responseType('blob')
+
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/^application\/pdf/)
+    expect(res.headers['cache-control']).toBe('private, no-store')
+    expect(res.headers['content-disposition']).toBe('inline; filename="orcamento.pdf"')
+    expect(Buffer.from(res.body as Buffer).toString()).toBe('%PDF-1.4 mock')
+    expect(aceiteService.obterPdfPorToken).toHaveBeenCalledWith('token-x')
+  })
+
+  it('retorna 200 no comprovante com o nome de arquivo próprio', async () => {
+    const aceiteService = makeAceiteService()
+    const res = await request(makeApp(aceiteService))
+      .get('/api/publico/orcamento/token-x/comprovante')
+      .responseType('blob')
+
+    expect(res.status).toBe(200)
+    expect(res.headers['content-disposition']).toBe('inline; filename="comprovante-aceite.pdf"')
+    expect(aceiteService.obterComprovantePorToken).toHaveBeenCalledWith('token-x')
+  })
+
+  it.each([
+    ['pdf', 404, 'obterPdfPorToken'],
+    ['pdf', 410, 'obterPdfPorToken'],
+    ['comprovante', 404, 'obterComprovantePorToken'],
+  ] as const)('propaga o erro %s %i do serviço', async (rota, status, metodo) => {
+    const aceiteService = makeAceiteService({
+      [metodo]: vi.fn().mockRejectedValue(new AppError(status, 'erro do serviço')),
+    })
+    const res = await request(makeApp(aceiteService)).get(`/api/publico/orcamento/token-x/${rota}`)
+
+    expect(res.status).toBe(status)
+  })
+
+  it('inclui comprovanteUrl na aprovação e nulo quando não há comprovante', async () => {
+    const comComprovante = await request(makeApp(makeAceiteService())).post(
+      '/api/publico/orcamento/token-x/aprovar',
+    )
+    expect(comComprovante.status).toBe(201)
+    expect(comComprovante.body.comprovanteUrl).toBe('/api/publico/orcamento/token-x/comprovante')
+    // O caminho de disco do servidor nunca sai na resposta pública.
+    expect(comComprovante.body.comprovantePdfPath).toBeUndefined()
+    expect(JSON.stringify(comComprovante.body)).not.toContain('/pdfs/')
+
+    const semComprovante = await request(
+      makeApp(
+        makeAceiteService({
+          reprovarViaCliente: vi
+            .fn()
+            .mockResolvedValue({ ...aceiteRegistradoMock, comprovantePdfPath: null }),
+        }),
+      ),
+    )
+      .post('/api/publico/orcamento/token-x/reprovar')
+      .send({})
+    expect(semComprovante.body.comprovanteUrl).toBeNull()
   })
 })
