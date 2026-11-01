@@ -360,6 +360,9 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
       if (versao.statusOrcamento === 'aprovado') {
         throw new AppError(409, 'Orçamento já aprovado')
       }
+      if (versao.statusOrcamento === 'reprovado') {
+        throw new AppError(409, 'Orçamento já decidido')
+      }
       // Integridade: sem hash do PDF emitido não há como registrar o aceite.
       if (versao.pdfHash === null) {
         throw new AppError(409, 'Documento sem hash de integridade')
@@ -454,6 +457,9 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
       )
       if (!versao) {
         throw new AppError(409, 'Orçamento sem versão enviada')
+      }
+      if (orcamento.status === 'reprovado') {
+        throw new AppError(409, 'Orçamento já decidido')
       }
       if (versao.pdfHash === null) {
         throw new AppError(409, 'Documento sem hash de integridade')

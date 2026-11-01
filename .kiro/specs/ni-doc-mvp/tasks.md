@@ -632,7 +632,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
 > 64 e 65 já têm testes escritos e **falhando** na suíte: a tarefa é fazê-los passar **sem
 > alterá-los, pulá-los ou afrouxá-los**.
 
-- [ ] 64. Backend — envio atômico e finalidade de `reprovado`
+- [x] 64. Backend — envio atômico e finalidade de `reprovado`
   - **Envio concorrente:** dois `POST /api/orcamentos/:id/enviar` simultâneos no mesmo rascunho
     criam hoje duas versões (v1 e v2, cada uma com token público). Serializar o envio por
     orçamento (lock de linha `SELECT ... FOR UPDATE` do orçamento dentro da transação de

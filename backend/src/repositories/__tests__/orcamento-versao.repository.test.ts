@@ -71,6 +71,20 @@ function makeUpdateBuilder() {
   return builder
 }
 
+function makeLockBuilder(statusLock: string | null | undefined) {
+  const status = statusLock === undefined ? 'rascunho' : statusLock
+  const builder = {
+    select: vi.fn(),
+    where: vi.fn(),
+    forUpdate: vi.fn(),
+    executeTakeFirst: vi.fn().mockResolvedValue(status === null ? undefined : { status }),
+  }
+  builder.select.mockReturnValue(builder)
+  builder.where.mockReturnValue(builder)
+  builder.forUpdate.mockReturnValue(builder)
+  return builder
+}
+
 function makeDeleteBuilder() {
   const builder = {
     where: vi.fn(),
@@ -115,6 +129,8 @@ function makeTrx(options: {
   deleteAceites: ReturnType<typeof makeDeleteBuilder>
   maxVersao?: number | null
   templateId?: string | null
+  // Status relido após o lock; `null` = orçamento inexistente. Padrão: rascunho.
+  statusLock?: string | null
 }) {
   const sqlExecutado: string[] = []
 
@@ -147,6 +163,8 @@ function makeTrx(options: {
     insertInto: vi.fn().mockReturnValue(options.insertVersao),
     updateTable: vi.fn().mockReturnValue(options.updateOrcamento),
     deleteFrom: vi.fn().mockReturnValue(options.deleteAceites),
+    // Lock de linha do orçamento (SELECT ... FOR UPDATE) antes de versionar.
+    selectFrom: vi.fn().mockReturnValue(makeLockBuilder(options.statusLock)),
   }
   return trx
 }
@@ -185,6 +203,23 @@ describe('OrcamentoVersaoRepository', () => {
       expect.objectContaining({ status: 'enviado', versao_atual: 1 }),
     )
     expect(versao.versao).toBe(1)
+  })
+
+  it('trava o orçamento e responde 409 sem versionar se o status relido não é rascunho', async () => {
+    const insertVersao = makeInsertBuilder(versaoRowBase())
+    const updateOrcamento = makeUpdateBuilder()
+    const deleteAceites = makeDeleteBuilder()
+    const trx = makeTrx({
+      insertVersao,
+      updateOrcamento,
+      deleteAceites,
+      statusLock: 'enviado',
+    })
+    const repo = criarOrcamentoVersaoRepository({ db: makeDbComTransacao(trx) })
+
+    await expect(repo.criarVersaoEnviar(inputBase)).rejects.toMatchObject({ statusCode: 409 })
+    expect(trx.selectFrom).toHaveBeenCalledWith('orcamentos')
+    expect(insertVersao.values).not.toHaveBeenCalled()
   })
 
   it('cria a versão N+1 em envios subsequentes (MAX 3 => versao 4)', async () => {

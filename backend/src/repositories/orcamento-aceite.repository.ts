@@ -139,12 +139,9 @@ export function criarOrcamentoAceiteRepository(deps: {
         throw new AppError(409, 'Versão do orçamento não encontrada para aceite')
       }
       // Já decidido: orçamento aprovado ou reprovado não aceita nova decisão
-      // (RF-019.6). O aceite da aprovação só conflita com `aprovado`; a
-      // reprovação conflita com qualquer status terminal.
-      const conflita =
-        novoStatus === 'aprovado' ? status === 'aprovado' : STATUS_DECIDIDO.includes(status as never)
-      if (conflita) {
-        throw new AppError(409, mensagemConflito)
+      // (RF-019.6). `reprovado` é final: evita violar UNIQUE (versao_id).
+      if (STATUS_DECIDIDO.includes(status as never)) {
+        throw new AppError(409, status === 'aprovado' ? mensagemConflito : 'Orçamento já decidido')
       }
 
       const row = await trx

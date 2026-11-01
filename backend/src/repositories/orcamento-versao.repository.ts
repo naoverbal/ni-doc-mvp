@@ -239,6 +239,23 @@ export function criarOrcamentoVersaoRepository(deps: {
   return {
     async criarVersaoEnviar(input: CriarVersaoEnviarInput): Promise<OrcamentoVersaoPublica> {
       return db.transaction().execute(async (trx) => {
+        // Serializa o envio por orçamento: lock de linha e releitura do status
+        // depois do lock. Um envio concorrente espera e, ao obter o lock, vê o
+        // orçamento já `enviado` e responde 409 (RF-008).
+        const bloqueado = await trx
+          .selectFrom('orcamentos')
+          .select('status')
+          .where('tenant_id', '=', input.tenantId)
+          .where('id', '=', input.orcamentoId)
+          .forUpdate()
+          .executeTakeFirst()
+        if (!bloqueado) {
+          throw new AppError(404, 'Orçamento não encontrado')
+        }
+        if (bloqueado.status !== 'rascunho') {
+          throw new AppError(409, 'Só é possível enviar orçamentos em rascunho')
+        }
+
         const versao = await proximaVersaoSequencial(trx, input.orcamentoId)
         const templateId = await templateAtivo(trx, input.tenantId)
 
