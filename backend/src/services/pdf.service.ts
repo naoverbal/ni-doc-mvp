@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import * as fsPromises from 'node:fs/promises'
 import { join } from 'node:path'
 import { renderizarPdf as renderizarPdfPadrao } from '../lib/pdf.js'
@@ -38,6 +38,10 @@ export interface PdfFileSystem {
   readFile(caminho: string): Promise<Buffer>
   access(caminho: string): Promise<void>
   mkdir(caminho: string, opts: { recursive: true }): Promise<string | undefined>
+  // Publicação atômica sem sobrescrever: falha com EEXIST se o destino existe.
+  link(origem: string, destino: string): Promise<void>
+  // Remove o arquivo; não falha se ele não existir.
+  rm(caminho: string): Promise<void>
 }
 
 export interface GerarPdfInput {
@@ -87,6 +91,12 @@ const fsPadrao: PdfFileSystem = {
   readFile: (caminho) => fsPromises.readFile(caminho),
   access: (caminho) => fsPromises.access(caminho),
   mkdir: (caminho, opts) => fsPromises.mkdir(caminho, opts),
+  link: (origem, destino) => fsPromises.link(origem, destino),
+  rm: (caminho) => fsPromises.rm(caminho, { force: true }),
+}
+
+function ehArquivoExistente(erro: unknown): boolean {
+  return (erro as { code?: unknown } | null)?.code === 'EEXIST'
 }
 
 // Nome de arquivo estável e único por orçamento+versão (RF-016.7).
@@ -137,7 +147,26 @@ export function criarPdfService(deps: PdfServiceDeps): PdfService {
 
       await fs.mkdir(diretorioDoTenant(input.tenantId), { recursive: true })
       const buffer = await renderizar(input.html)
-      await fs.writeFile(caminho, buffer)
+
+      // Escrita atômica: grava num temporário do MESMO diretório e só então o
+      // publica no caminho final com `link`, que é atômico e falha (EEXIST) em
+      // vez de sobrescrever. Uma falha no meio da escrita nunca deixa um PDF
+      // parcial no caminho final (que seria reaproveitado como "já existente"),
+      // e uma geração concorrente do mesmo arquivo não substitui a que venceu.
+      const temporario = `${caminho}.${randomUUID()}.tmp`
+      try {
+        await fs.writeFile(temporario, buffer)
+        try {
+          await fs.link(temporario, caminho)
+        } catch (erro) {
+          if (!ehArquivoExistente(erro)) throw erro
+          // Outra geração publicou primeiro: o documento oficial é o dela.
+          const existente = await fs.readFile(caminho)
+          return { buffer: existente, caminho, hash: hash(existente) }
+        }
+      } finally {
+        await fs.rm(temporario).catch(() => undefined)
+      }
       return { buffer, caminho, hash: hash(buffer) }
     },
 

@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtemp, rm, readFile, access } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, access, writeFile, mkdir, link, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { criarPdfService } from '../pdf.service.js'
-import type { PdfService } from '../pdf.service.js'
+import type { PdfFileSystem, PdfService } from '../pdf.service.js'
 import { AppError } from '../../errors/app-error.js'
 
 // -----------------------------------------------------------------------------
@@ -81,6 +81,48 @@ describe('pdf.service', () => {
       expect(segundo.buffer.equals(primeiro.buffer)).toBe(true)
       expect(segundo.hash).toBe(primeiro.hash)
       expect(segundo.caminho).toBe(primeiro.caminho)
+    })
+  })
+
+  describe('escrita atômica', () => {
+    it('quando a gravação do PDF falha no meio, então o arquivo final não existe e uma nova chamada gera o PDF de novo', async () => {
+      // Filesystem real, exceto pela PRIMEIRA escrita: grava só metade dos bytes
+      // e lança, como numa queda do processo ou disco cheio no meio da escrita.
+      let escritas = 0
+      const fsComFalha: PdfFileSystem = {
+        writeFile: async (caminho, dados) => {
+          escritas += 1
+          if (escritas === 1) {
+            await writeFile(caminho, dados.subarray(0, Math.floor(dados.length / 2)))
+            throw new Error('falha simulada no meio da escrita')
+          }
+          await writeFile(caminho, dados)
+        },
+        readFile: (caminho) => readFile(caminho),
+        access: (caminho) => access(caminho),
+        mkdir: (caminho, opts) => mkdir(caminho, opts),
+        link: (origem, destino) => link(origem, destino),
+        rm: (caminho) => rm(caminho, { force: true }),
+      }
+      const servico = criarPdfService({ pdfsDir, renderizarPdf, fs: fsComFalha })
+      const input = {
+        tenantId: TENANT_A,
+        html: '<html></html>',
+        numero: 'ORC-2026-0001',
+        versao: 1,
+      }
+      const caminhoFinal = join(pdfsDir, TENANT_A, 'ORC-2026-0001-v1.pdf')
+
+      await expect(servico.gerarPdf(input)).rejects.toThrow('falha simulada')
+      await expect(access(caminhoFinal)).rejects.toMatchObject({ code: 'ENOENT' })
+
+      const segunda = await servico.gerarPdf(input)
+
+      expect(renderizarPdf).toHaveBeenCalledTimes(2)
+      expect(segunda.buffer.equals(PDF_FAKE)).toBe(true)
+      expect((await readFile(caminhoFinal)).equals(PDF_FAKE)).toBe(true)
+      // Nenhum temporário fica para trás no diretório do tenant.
+      expect(await readdir(join(pdfsDir, TENANT_A))).toEqual(['ORC-2026-0001-v1.pdf'])
     })
   })
 
