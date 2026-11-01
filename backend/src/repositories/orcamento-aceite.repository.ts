@@ -100,18 +100,18 @@ async function lerStatusOrcamento(
   trx: Transaction<Database>,
   tenantId: string,
   versaoId: string,
-): Promise<string | null> {
+): Promise<{ status: string; vigente: boolean } | null> {
   await sql`SELECT pg_advisory_xact_lock(hashtext(${versaoId}))`.execute(trx)
 
-  const resultado = await sql<{ status: string }>`
-      SELECT o.status AS status
+  const resultado = await sql<{ status: string; vigente: boolean }>`
+      SELECT o.status AS status, (v.versao = o.versao_atual) AS vigente
       FROM orcamento_versoes v
       JOIN orcamentos o ON o.id = v.orcamento_id
       WHERE v.id = ${versaoId} AND o.tenant_id = ${tenantId}
       FOR UPDATE OF o
     `.execute(trx)
 
-  return resultado.rows[0]?.status ?? null
+  return resultado.rows[0] ?? null
 }
 
 // Status terminais: um orçamento já decidido (aprovado ou reprovado) não aceita
@@ -134,11 +134,12 @@ export function criarOrcamentoAceiteRepository(deps: {
     mensagemConflito: string,
   ): Promise<AceitePublico> {
     return db.transaction().execute(async (trx) => {
-      const status = await lerStatusOrcamento(trx, input.tenantId, input.versaoId)
+      const lido = await lerStatusOrcamento(trx, input.tenantId, input.versaoId)
 
-      if (status === null) {
+      if (lido === null) {
         throw new AppError(409, 'Versão do orçamento não encontrada para aceite')
       }
+      const { status } = lido
       // Expirado pelo job entre a checagem do serviço e esta transação (410).
       if (status === 'expirado') {
         throw new AppError(410, 'Orçamento expirado')
@@ -151,6 +152,16 @@ export function criarOrcamentoAceiteRepository(deps: {
       // (RF-019.6). `reprovado` é final: evita violar UNIQUE (versao_id).
       if (STATUS_DECIDIDO.includes(status as never)) {
         throw new AppError(409, status === 'aprovado' ? mensagemConflito : 'Orçamento já decidido')
+      }
+
+      // Só um orçamento `enviado` aceita decisão: um rascunho reaberto aguarda
+      // novo envio. E só a versão VIGENTE decide: o link de uma versão anterior
+      // (substituída por um reenvio) não permite mais aprovar nem reprovar.
+      if (status !== 'enviado') {
+        throw new AppError(409, 'Orçamento não está aguardando decisão')
+      }
+      if (!lido.vigente) {
+        throw new AppError(409, 'Esta versão foi substituída por uma mais recente')
       }
 
       const row = await trx

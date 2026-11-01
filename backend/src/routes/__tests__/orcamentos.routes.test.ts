@@ -10,6 +10,7 @@ import type { OrcamentoService } from '../../services/orcamento.service.js'
 import type { VersionamentoService, VersaoEnviada } from '../../services/versionamento.service.js'
 import type { AceiteService, AceiteRegistrado } from '../../services/aceite.service.js'
 import type { CancelamentoService } from '../../services/cancelamento.service.js'
+import type { ReaberturaService } from '../../services/reabertura.service.js'
 import type { OrcamentoComItens, ListaOrcamentos } from '../../repositories/orcamento.repository.js'
 import type { UsuarioPublico } from '../../repositories/usuario.repository.js'
 import type { SessaoAtiva } from '../../repositories/sessao.repository.js'
@@ -136,7 +137,7 @@ function makeOrcamentoService(overrides?: Partial<OrcamentoService>): OrcamentoS
     buscarPorId: vi.fn().mockResolvedValue(orcamentoComItensMock),
     listar: vi.fn().mockResolvedValue(listaOrcamentosMock),
     atualizar: vi.fn().mockResolvedValue(orcamentoComItensMock),
-    deletar: vi.fn().mockResolvedValue(undefined),
+    deletar: vi.fn().mockResolvedValue(null),
     ...overrides,
   }
 }
@@ -176,12 +177,19 @@ function makeCancelamentoService(overrides?: Partial<CancelamentoService>): Canc
   }
 }
 
+function makeReaberturaService(overrides?: Partial<ReaberturaService>): ReaberturaService {
+  return {
+    reabrir: vi.fn().mockResolvedValue(orcamentoComItensMock),
+    ...overrides,
+  }
+}
 function makeApp(
   orcamentoService: OrcamentoService,
   authService: AuthService,
   versionamentoService: VersionamentoService = makeVersionamentoService(),
   aceiteService: AceiteService = makeAceiteService(),
   cancelamentoService: CancelamentoService = makeCancelamentoService(),
+  reaberturaService: ReaberturaService = makeReaberturaService(),
 ) {
   const app = express()
   app.use(express.json())
@@ -194,6 +202,7 @@ function makeApp(
       aceiteService,
       authService,
       cancelamentoService,
+      reaberturaService,
     ),
   )
   app.use(errorHandler)
@@ -530,6 +539,17 @@ describe('DELETE /api/orcamentos/:id', () => {
     )
   })
 
+  it('retorna 200 com o orçamento restaurado quando o rascunho era reaberto', async () => {
+    const orcamentoService = makeOrcamentoService({
+      deletar: vi.fn().mockResolvedValue({ ...orcamentoComItensMock, status: 'reprovado' }),
+    })
+    const app = makeApp(orcamentoService, makeAuthService())
+    const res = await request(app)
+      .delete('/api/orcamentos/00000000-0000-4000-8000-000000000001')
+      .set('Cookie', 'session=sessao-id-1')
+    expect(res.status).toBe(200)
+    expect(res.body.status).toBe('reprovado')
+  })
   it('retorna 409 quando o orçamento não é rascunho (service lança)', async () => {
     const orcamentoService = makeOrcamentoService({
       deletar: vi

@@ -75,6 +75,10 @@ export interface SnapshotDescontoGlobal {
 }
 
 export interface OrcamentoSnapshot {
+  // Título e descrição do orçamento no envio. Permitem restaurar o conteúdo ao
+  // excluir um rascunho reaberto (tarefa 68); ausentes em snapshots anteriores.
+  titulo: string
+  descricao: string | null
   cliente: SnapshotCliente
   empresa_cliente: SnapshotEmpresa | null
   itens: SnapshotItem[]
@@ -201,6 +205,8 @@ export function criarSnapshotService(): SnapshotService {
       const { orcamento, cliente, empresaCliente, responsaveisPorId } = input
 
       return {
+        titulo: orcamento.titulo,
+        descricao: orcamento.descricao,
         cliente: montarCliente(cliente),
         empresa_cliente: montarEmpresa(empresaCliente),
         itens: orcamento.itens.map((item) => montarItem(item, responsaveisPorId)),

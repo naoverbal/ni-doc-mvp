@@ -110,3 +110,9 @@ export const cancelarOrcamentoSchema = z
   .strict()
 
 export type CancelarOrcamentoPayload = z.infer<typeof cancelarOrcamentoSchema>
+
+// Reabertura (RF-008/RF-009): mesmo contrato do cancelamento — senha do usuário
+// logado + justificativa obrigatória, sem campos extras.
+export const reabrirOrcamentoSchema = cancelarOrcamentoSchema
+
+export type ReabrirOrcamentoPayload = z.infer<typeof reabrirOrcamentoSchema>

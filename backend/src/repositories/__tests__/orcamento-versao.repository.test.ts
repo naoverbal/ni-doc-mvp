@@ -296,18 +296,20 @@ describe('OrcamentoVersaoRepository', () => {
     expect(insertVersao.values).not.toHaveBeenCalled()
   })
 
-  it('invalida o aceite anterior removendo aceites das versões do orçamento', async () => {
+  it('preserva os aceites das versões anteriores e limpa a origem da reabertura ao enviar', async () => {
     const insertVersao = makeInsertBuilder(versaoRowBase())
     const updateOrcamento = makeUpdateBuilder()
     const deleteAceites = makeDeleteBuilder()
     const trx = makeTrx({ insertVersao, updateOrcamento, deleteAceites, maxVersao: 1 })
     const db = makeDbComTransacao(trx)
-
     const repo = criarOrcamentoVersaoRepository({ db })
+
     await repo.criarVersaoEnviar(inputBase)
 
-    expect(trx.deleteFrom).toHaveBeenCalledWith('orcamento_aceites')
-    expect(deleteAceites.where).toHaveBeenCalled()
+    expect(trx.deleteFrom).not.toHaveBeenCalled()
+    expect(updateOrcamento.set).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'enviado', versao_atual: 2, status_reaberto_de: null }),
+    )
   })
 
   it('insere pdf_path e pdf_hash nulos quando não há callback de geração de PDF', async () => {

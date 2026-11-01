@@ -7,6 +7,7 @@ import {
   garantirBancoDeTeste,
   nomeDoBanco,
 } from './config-banco.js'
+import { removerTenants } from './limpeza.js'
 
 const { Client } = pg
 
@@ -68,8 +69,7 @@ async function limparResiduos(): Promise<void> {
     )
     const ids = rows.map((r) => r.id)
     if (ids.length > 0) {
-      await admin.query('DELETE FROM orcamentos WHERE tenant_id = ANY($1::uuid[])', [ids])
-      await admin.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [ids])
+      await removerTenants(admin, ids)
     }
   } finally {
     await admin.end()

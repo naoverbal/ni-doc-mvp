@@ -24,7 +24,7 @@ import { calcularExpiraEm, dataCivilDeColunaDate, estaExpirado } from '../lib/va
 // pdf.service) DENTRO da transação de persistência do repositório — se o PDF
 // falhar, o envio inteiro reverte (nenhuma versão/estado parcial persiste). A
 // persistência atômica (próxima versão sequencial, token público único,
-// invalidação do aceite anterior, status → `enviado`, pdf_path/pdf_hash) é
+// status → `enviado`, pdf_path/pdf_hash) é
 // delegada ao repositório; ao final registra auditoria.
 //
 // Imutabilidade (RF-016): o PDF não é regenerado em acessos posteriores — isso é

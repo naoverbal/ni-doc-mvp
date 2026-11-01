@@ -29,6 +29,8 @@ import { criarHtmlRendererService } from './services/html-renderer.service.js'
 import { criarPdfService } from './services/pdf.service.js'
 import { criarAceiteService } from './services/aceite.service.js'
 import { criarCancelamentoService } from './services/cancelamento.service.js'
+import { criarReaberturaService } from './services/reabertura.service.js'
+import { criarConfirmacaoSenha } from './services/confirmacao-senha.js'
 import { criarOrcamentoAceiteRepository } from './repositories/orcamento-aceite.repository.js'
 import { criarUsuarioRepository } from './repositories/usuario.repository.js'
 import { criarSessaoRepository } from './repositories/sessao.repository.js'
@@ -160,12 +162,23 @@ export function criarApp(): express.Express {
     escopoTenant: executarComTenant,
   })
 
+  // Confirmação de senha compartilhada pelas ações sensíveis (cancelar, reabrir).
+  const confirmacaoSenha = criarConfirmacaoSenha({ usuarioRepo, auditoriaService })
+
   // Cancelamento de orçamento (confirmação de senha + justificativa).
   const cancelamentoService = criarCancelamentoService({
     orcamentoRepo,
     usuarioRepo,
     auditoriaService,
+    confirmacaoSenha,
     email,
+  })
+
+  // Reabertura de orçamento (confirmação de senha + justificativa).
+  const reaberturaService = criarReaberturaService({
+    orcamentoRepo,
+    auditoriaService,
+    confirmacaoSenha,
   })
 
   // Orçamento routes (dependem do aceiteService para o aceite manual).
@@ -177,6 +190,7 @@ export function criarApp(): express.Express {
       aceiteService,
       authService,
       cancelamentoService,
+      reaberturaService,
     ),
   )
 

@@ -9,7 +9,7 @@ import type { OrcamentoStatus } from './orcamento.repository.js'
 // -----------------------------------------------------------------------------
 // Repositório das versões imutáveis do orçamento (tabela orcamento_versoes).
 // Dono do SQL do envio: calcula a próxima versão sequencial, resolve o template
-// ativo do tenant, invalida o aceite anterior, insere a versão com token público
+// ativo do tenant, insere a versão com token público
 // único e marca o orçamento como `enviado` — tudo em uma transação atômica
 // (RF-008, RF-009). A geração de PDF (RF-016) é orquestrada pelo serviço e
 // executada DENTRO desta transação via o callback opcional `gerarPdfDaVersao`,
@@ -259,17 +259,12 @@ export function criarOrcamentoVersaoRepository(deps: {
         const versao = await proximaVersaoSequencial(trx, input.orcamentoId)
         const templateId = await templateAtivo(trx, input.tenantId)
 
-        // Invalida o aceite anterior: remove aceites ligados a qualquer versão
-        // deste orçamento. No primeiro envio é no-op (ainda não há versões).
-        await trx
-          .deleteFrom('orcamento_aceites')
-          .where('versao_id', 'in', (eb) =>
-            eb
-              .selectFrom('orcamento_versoes')
-              .select('id')
-              .where('orcamento_id', '=', input.orcamentoId),
-          )
-          .execute()
+        // O aceite/reprovação de versões anteriores é HISTÓRICO e fica intacto
+        // (RF-008.3): num reenvio após reabertura (tarefa 68) o aceite antigo não
+        // é apagado. A "invalidação" (RF-008.5) vem da própria nova versão: ela
+        // vira a vigente e os links das anteriores deixam de aceitar decisão (ver
+        // `orcamento-aceite.repository`). Cada versão tem o seu aceite (UNIQUE
+        // por versão), então a nova decisão não colide com a antiga.
 
         // O token é vinculado ao id da versão; geramos o id no app antes do
         // insert para que token e id persistidos sejam coerentes (um único insert).
@@ -310,7 +305,13 @@ export function criarOrcamentoVersaoRepository(deps: {
 
         await trx
           .updateTable('orcamentos')
-          .set({ status: 'enviado', versao_atual: versao, atualizado_em: new Date() })
+          .set({
+            status: 'enviado',
+            versao_atual: versao,
+            // Reenvio de um rascunho reaberto: a origem da reabertura deixa de valer.
+            status_reaberto_de: null,
+            atualizado_em: new Date(),
+          })
           .where('tenant_id', '=', input.tenantId)
           .where('id', '=', input.orcamentoId)
           .execute()

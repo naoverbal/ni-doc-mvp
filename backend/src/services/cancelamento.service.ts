@@ -1,5 +1,4 @@
 import { AppError } from '../errors/app-error.js'
-import { verificarSenha } from '../lib/senha.js'
 import { montarEmailOrcamentoCancelado } from '../lib/email-templates.js'
 import type { Email } from '../lib/email.js'
 import type {
@@ -8,13 +7,14 @@ import type {
 } from '../repositories/orcamento.repository.js'
 import type { UsuarioRepository } from '../repositories/usuario.repository.js'
 import type { AuditoriaService } from './auditoria.service.js'
+import type { ConfirmacaoSenha } from './confirmacao-senha.js'
 import type { OrcamentoContexto } from './orcamento.service.js'
 
 // -----------------------------------------------------------------------------
 // Cancelamento de orçamento (RF-009): `enviado | aprovado → cancelado`.
 //
-// Exige a CONFIRMAÇÃO DA SENHA do usuário logado (verificada com `verificarSenha`,
-// sem criar sessão) e uma justificativa. Senha errada → 403 (nunca 401, para não
+// Exige a CONFIRMAÇÃO DA SENHA do usuário logado (helper compartilhado
+// `confirmacao-senha`, sem criar sessão) e uma justificativa. Senha errada → 403 (nunca 401, para não
 // ser confundido com sessão expirada) e a tentativa é auditada. A senha jamais é
 // logada, auditada nem enviada por e-mail.
 //
@@ -40,12 +40,13 @@ interface CancelamentoServiceDeps {
   orcamentoRepo: OrcamentoRepository
   usuarioRepo: UsuarioRepository
   auditoriaService: AuditoriaService
+  confirmacaoSenha: ConfirmacaoSenha
   // OPCIONAL: ausente quando o SMTP não está configurado (nada é enviado).
   email?: Email
 }
 
 export function criarCancelamentoService(deps: CancelamentoServiceDeps): CancelamentoService {
-  const { orcamentoRepo, usuarioRepo, auditoriaService, email } = deps
+  const { orcamentoRepo, usuarioRepo, auditoriaService, confirmacaoSenha, email } = deps
 
   // Notifica (melhor esforço) o operador responsável pelo orçamento. Não envia se
   // ele mesmo cancelou. `email.enviar` nunca lança.
@@ -92,20 +93,7 @@ export function criarCancelamentoService(deps: CancelamentoServiceDeps): Cancela
         throw new AppError(404, 'Orçamento não encontrado')
       }
 
-      const senhaHash = await usuarioRepo.buscarSenhaHashPorId(ctx.tenantId, ctx.usuarioId)
-      const senhaValida = senhaHash !== null && (await verificarSenha(dados.senha, senhaHash))
-      if (!senhaValida) {
-        await auditoriaService.registrar({
-          tenantId: ctx.tenantId,
-          usuarioId: ctx.usuarioId,
-          acao: 'cancelar_senha_invalida',
-          entidade: 'orcamentos',
-          entidadeId: id,
-          ip: ctx.ip,
-          userAgent: ctx.userAgent,
-        })
-        throw new AppError(403, 'Senha incorreta')
-      }
+      await confirmacaoSenha.exigir(ctx, id, dados.senha, 'cancelar_senha_invalida')
 
       const { statusAnterior } = await orcamentoRepo.cancelar(ctx.tenantId, id)
 

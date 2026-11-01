@@ -161,6 +161,14 @@ export interface ListaOrcamentos {
   tamanhoPagina: number
 }
 
+export const STATUS_REABRIVEL = ['reprovado', 'cancelado', 'expirado'] as const
+
+export type StatusReabrivel = (typeof STATUS_REABRIVEL)[number]
+
+export type ResultadoDeletar =
+  | { resultado: 'removido' }
+  | { resultado: 'restaurado'; statusRestaurado: StatusReabrivel }
+
 export interface OrcamentoRepository {
   criar(input: CriarOrcamentoInput): Promise<OrcamentoComItens>
   buscarPorId(tenantId: string, id: string): Promise<OrcamentoComItens | null>
@@ -170,7 +178,18 @@ export interface OrcamentoRepository {
     dados: AtualizarOrcamentoInput,
   ): Promise<OrcamentoComItens | null>
   listarPorTenant(tenantId: string, filtro?: ListarOrcamentosFiltro): Promise<ListaOrcamentos>
-  deletar(tenantId: string, id: string): Promise<void>
+  // Exclui um rascunho. Rascunho NUNCA enviado é removido de verdade
+  // (`removido`). Rascunho REABERTO (tem versões) nunca apaga o histórico: o
+  // orçamento volta ao status de origem (reprovado | cancelado | expirado) com o
+  // conteúdo da última versão enviada (`restaurado`). Tudo em transação, com lock
+  // de linha: exclusões concorrentes serializam e a perdedora recebe 404/409.
+  deletar(tenantId: string, id: string): Promise<ResultadoDeletar>
+  // Reabre (reprovado | cancelado | expirado → rascunho) em transação, travando a
+  // linha e relendo o status: reaberturas concorrentes serializam e só uma vence.
+  // 404 se não existir no tenant; 409 se o status não permitir. Renova
+  // `data_emissao` para a data civil da reabertura (mantém `validade_dias`) e
+  // guarda o status de origem. Devolve o status anterior.
+  reabrir(tenantId: string, id: string): Promise<{ statusAnterior: StatusReabrivel }>
   // Cancela (enviado | aprovado → cancelado) em transação, travando a linha
   // (`FOR UPDATE`) e relendo o status: cancelamentos concorrentes serializam e só
   // um vence. 404 se não existir no tenant; 409 se o status não permitir. Só o
@@ -414,6 +433,108 @@ async function gerarNumero(
   return `${prefixo}${String(seq).padStart(4, '0')}`
 }
 
+function ehStatusReabrivel(status: string): status is StatusReabrivel {
+  return (STATUS_REABRIVEL as readonly string[]).includes(status)
+}
+
+// Conteúdo editável de um orçamento, lido do snapshot imutável da última versão.
+// `titulo`/`descricao` só existem em snapshots gerados a partir da tarefa 68;
+// versões anteriores não os trazem e esses campos ficam como estão.
+interface ConteudoSnapshot {
+  clienteId: string | null
+  empresaClienteId: string | null
+  titulo: string | null
+  descricao: string | null | undefined
+  itens: CriarOrcamentoItemInput[]
+  responsaveisDosItens: (string | null)[]
+  condicoes: CriarOrcamentoCondicaoPagamentoInput[]
+  descontoGlobal: { tipo: DescontoTipo; valor: number } | null
+  subtotal: number
+  total: number
+  condicoesPagamentoTexto: string | null
+  prazoEntregaDias: number | null
+  observacoes: string | null
+  dataEmissao: string | null
+  validadeDias: number | null
+}
+
+type Json = Record<string, unknown>
+
+function objeto(valor: unknown): Json | null {
+  return typeof valor === 'object' && valor !== null && !Array.isArray(valor)
+    ? (valor as Json)
+    : null
+}
+
+function textoOuNull(valor: unknown): string | null {
+  return typeof valor === 'string' ? valor : null
+}
+
+function numeroOuNull(valor: unknown): number | null {
+  return typeof valor === 'number' ? valor : null
+}
+
+function lerConteudoSnapshot(snapshot: unknown): ConteudoSnapshot {
+  const raiz = objeto(snapshot) ?? {}
+  const itensBrutos = Array.isArray(raiz['itens']) ? raiz['itens'] : []
+  const responsaveisDosItens: (string | null)[] = []
+  const itens: CriarOrcamentoItemInput[] = itensBrutos.map((bruto) => {
+    const item = objeto(bruto) ?? {}
+    const responsavel = objeto(item['responsavel'])
+    responsaveisDosItens.push(textoOuNull(responsavel?.['id']))
+    const descontoTipo = item['desconto_tipo']
+    return {
+      nome: textoOuNull(item['nome']) ?? '',
+      descricao: textoOuNull(item['descricao']) ?? undefined,
+      quantidade: numeroOuNull(item['quantidade']) ?? 0,
+      unidade: textoOuNull(item['unidade']) ?? undefined,
+      valorUnitario: numeroOuNull(item['valor_unitario']) ?? 0,
+      descontoTipo:
+        descontoTipo === 'percentual' || descontoTipo === 'fixo' ? descontoTipo : undefined,
+      descontoValor: numeroOuNull(item['desconto_valor']) ?? undefined,
+    }
+  })
+
+  const condicoesBrutas = Array.isArray(raiz['condicoes_pagamento_lista'])
+    ? raiz['condicoes_pagamento_lista']
+    : []
+  const condicoes: CriarOrcamentoCondicaoPagamentoInput[] = condicoesBrutas.map((bruta) => {
+    const condicao = objeto(bruta) ?? {}
+    return {
+      descricao: textoOuNull(condicao['descricao']) ?? '',
+      percentual: numeroOuNull(condicao['percentual']) ?? 0,
+      marco: textoOuNull(condicao['marco']) ?? undefined,
+      formaPagamento: textoOuNull(condicao['forma_pagamento']) ?? '',
+    }
+  })
+
+  const desconto = objeto(raiz['desconto_global'])
+  const tipoDesconto = desconto?.['tipo']
+  const valorDesconto = numeroOuNull(desconto?.['valor'])
+  let descontoGlobal: { tipo: DescontoTipo; valor: number } | null = null
+  if ((tipoDesconto === 'percentual' || tipoDesconto === 'fixo') && valorDesconto !== null) {
+    descontoGlobal = { tipo: tipoDesconto, valor: valorDesconto }
+  }
+
+  return {
+    clienteId: textoOuNull(objeto(raiz['cliente'])?.['id']),
+    empresaClienteId: textoOuNull(objeto(raiz['empresa_cliente'])?.['id']),
+    titulo: textoOuNull(raiz['titulo']),
+    descricao: 'descricao' in raiz ? textoOuNull(raiz['descricao']) : undefined,
+    itens,
+    responsaveisDosItens,
+    condicoes,
+    descontoGlobal,
+    subtotal: numeroOuNull(raiz['subtotal']) ?? 0,
+    total: numeroOuNull(raiz['total']) ?? 0,
+    condicoesPagamentoTexto: textoOuNull(raiz['condicoes_pagamento']),
+    prazoEntregaDias: numeroOuNull(raiz['prazo_entrega_dias']),
+    observacoes: textoOuNull(raiz['observacoes']),
+    dataEmissao: textoOuNull(raiz['data_emissao']),
+    validadeDias: numeroOuNull(raiz['validade_dias']),
+  }
+}
+
 /**
  * Factory do repositório de orçamentos.
  *
@@ -514,6 +635,95 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
       .execute()
 
     return (rows as OrcamentoCondicaoPagamentoRow[]).map(mapRowCondicaoPagamento)
+  }
+
+  // Devolve um rascunho reaberto ao status de origem, restaurando o conteúdo
+  // editável (itens, condições e campos) a partir do snapshot da ÚLTIMA versão
+  // enviada e descartando as edições do rascunho. Versões, PDFs e aceites não são
+  // tocados. Referências (cliente, empresa, responsável) que não existam mais no
+  // tenant são mantidas como estão no orçamento (ou omitidas, no caso do item),
+  // para respeitar os triggers de integridade entre tenants.
+  async function restaurarUltimaVersao(
+    trx: Transaction<Database>,
+    tenantId: string,
+    id: string,
+    statusOrigem: StatusReabrivel,
+  ): Promise<void> {
+    const ultima = await trx
+      .selectFrom('orcamento_versoes')
+      .select('snapshot')
+      .where('orcamento_id', '=', id)
+      .orderBy('versao', 'desc')
+      .limit(1)
+      .executeTakeFirst()
+    if (!ultima) {
+      throw new AppError(409, 'Rascunho reaberto sem versão enviada para restaurar')
+    }
+
+    const snapshot: unknown =
+      typeof ultima.snapshot === 'string' ? JSON.parse(ultima.snapshot) : ultima.snapshot
+    const conteudo = lerConteudoSnapshot(snapshot)
+
+    const existe = async (
+      tabela: 'clientes' | 'empresas' | 'responsaveis_tecnicos',
+      refId: string | null,
+    ): Promise<boolean> => {
+      if (refId === null) return false
+      const achado = await trx
+        .selectFrom(tabela)
+        .select('id')
+        .where('tenant_id', '=', tenantId)
+        .where('id', '=', refId)
+        .executeTakeFirst()
+      return achado !== undefined
+    }
+
+    const set: Record<string, unknown> = {
+      status: statusOrigem,
+      status_reaberto_de: null,
+      atualizado_em: new Date(),
+      subtotal: String(conteudo.subtotal),
+      total: String(conteudo.total),
+      desconto_global_tipo: conteudo.descontoGlobal?.tipo ?? null,
+      desconto_global_valor:
+        conteudo.descontoGlobal !== null ? String(conteudo.descontoGlobal.valor) : null,
+      condicoes_pagamento: conteudo.condicoesPagamentoTexto,
+      prazo_entrega_dias: conteudo.prazoEntregaDias,
+      observacoes: conteudo.observacoes,
+    }
+    if (conteudo.titulo !== null) set['titulo'] = conteudo.titulo
+    if (conteudo.descricao !== undefined) set['descricao'] = conteudo.descricao
+    if (conteudo.validadeDias !== null) set['validade_dias'] = conteudo.validadeDias
+    if (conteudo.dataEmissao !== null) {
+      set['data_emissao'] = sql<Date>`${conteudo.dataEmissao}::date`
+    }
+    if (await existe('clientes', conteudo.clienteId)) set['cliente_id'] = conteudo.clienteId
+    set['empresa_cliente_id'] = (await existe('empresas', conteudo.empresaClienteId))
+      ? conteudo.empresaClienteId
+      : null
+
+    await trx
+      .updateTable('orcamentos')
+      .set(set)
+      .where('tenant_id', '=', tenantId)
+      .where('id', '=', id)
+      .execute()
+
+    const itens: CriarOrcamentoItemInput[] = []
+    for (const [indice, item] of conteudo.itens.entries()) {
+      const responsavelId = conteudo.responsaveisDosItens[indice] ?? null
+      itens.push(
+        (await existe('responsaveis_tecnicos', responsavelId))
+          ? { ...item, responsavelId: responsavelId as string }
+          : item,
+      )
+    }
+    await trx.deleteFrom('orcamento_itens').where('orcamento_id', '=', id).execute()
+    if (itens.length > 0) {
+      await inserirItens(trx, id, itens)
+    }
+    await trx.deleteFrom('orcamento_condicoes_pagamento').where('orcamento_id', '=', id).execute()
+    await inserirCondicoes(trx, id, conteudo.condicoes)
   }
 
   return {
@@ -723,28 +933,78 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
       }
     },
 
-    async deletar(tenantId: string, id: string): Promise<void> {
-      const row = await db
-        .selectFrom('orcamentos')
-        .select(['status'])
-        .where('tenant_id', '=', tenantId)
-        .where('id', '=', id)
-        .executeTakeFirst()
+    async deletar(tenantId: string, id: string): Promise<ResultadoDeletar> {
+      return db.transaction().execute(async (trx) => {
+        const row = await trx
+          .selectFrom('orcamentos')
+          .select(['status', 'status_reaberto_de'])
+          .where('tenant_id', '=', tenantId)
+          .where('id', '=', id)
+          .forUpdate()
+          .executeTakeFirst()
 
-      if (!row) {
-        throw new AppError(404, 'Orçamento não encontrado')
-      }
+        if (!row) {
+          throw new AppError(404, 'Orçamento não encontrado')
+        }
+        if (row.status !== 'rascunho') {
+          throw new AppError(409, 'Só é possível excluir orçamentos em rascunho')
+        }
 
-      if ((row as { status: OrcamentoStatus }).status !== 'rascunho') {
-        throw new AppError(409, 'Só é possível excluir orçamentos em rascunho')
-      }
+        // Rascunho nunca enviado: exclusão real (itens saem em cascata).
+        if (row.status_reaberto_de === null) {
+          await trx
+            .deleteFrom('orcamentos')
+            .where('tenant_id', '=', tenantId)
+            .where('id', '=', id)
+            .execute()
+          return { resultado: 'removido' }
+        }
 
-      // Os itens são removidos em cascata (ON DELETE CASCADE).
-      await db
-        .deleteFrom('orcamentos')
-        .where('tenant_id', '=', tenantId)
-        .where('id', '=', id)
-        .execute()
+        // Rascunho reaberto: o histórico é preservado e o orçamento volta ao
+        // status de origem, com o conteúdo da última versão enviada.
+        await restaurarUltimaVersao(trx, tenantId, id, row.status_reaberto_de)
+        return { resultado: 'restaurado', statusRestaurado: row.status_reaberto_de }
+      })
+    },
+
+    async reabrir(tenantId: string, id: string): Promise<{ statusAnterior: StatusReabrivel }> {
+      return db.transaction().execute(async (trx) => {
+        const row = await trx
+          .selectFrom('orcamentos')
+          .select(['status'])
+          .where('tenant_id', '=', tenantId)
+          .where('id', '=', id)
+          .forUpdate()
+          .executeTakeFirst()
+
+        if (!row) {
+          throw new AppError(404, 'Orçamento não encontrado')
+        }
+
+        const statusAnterior = row.status
+        if (!ehStatusReabrivel(statusAnterior)) {
+          throw new AppError(
+            409,
+            'Só é possível reabrir orçamentos reprovados, cancelados ou expirados',
+          )
+        }
+
+        await trx
+          .updateTable('orcamentos')
+          .set({
+            status: 'rascunho',
+            status_reaberto_de: statusAnterior,
+            // A validade conta a partir da reabertura; sem isso um `expirado`
+            // voltaria a rascunho com a validade vencida e não poderia ser reenviado.
+            data_emissao: sql<Date>`${dataCivilNoFuso(new Date())}::date`,
+            atualizado_em: new Date(),
+          })
+          .where('tenant_id', '=', tenantId)
+          .where('id', '=', id)
+          .execute()
+
+        return { statusAnterior }
+      })
     },
 
     async cancelar(tenantId: string, id: string): Promise<{ statusAnterior: OrcamentoStatus }> {

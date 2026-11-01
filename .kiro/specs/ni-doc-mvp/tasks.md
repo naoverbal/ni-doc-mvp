@@ -734,7 +734,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
     lint/build/testes verdes
   - _Requirements: RF-009_
 
-- [ ] 68. Backend — reabrir orçamento (nova versão)
+- [x] 68. Backend — reabrir orçamento (nova versão)
   - Nova rota (sugestão: `POST /api/orcamentos/:id/reabrir`, corpo `{ senha, justificativa }`).
     Só para orçamento `reprovado`, `cancelado` ou `expirado`, por usuário do **tenant do
     orçamento** (admin ou operador), com **confirmação de senha** e **justificativa obrigatória**

@@ -146,6 +146,9 @@ export interface OrcamentoTable {
   prazo_entrega_dias: number | null
   // SHA-256 do conteúdo (cliente + título + itens); NULL em orçamentos legados.
   conteudo_hash: string | null
+  // Status de origem de um rascunho REABERTO (reprovado | cancelado | expirado);
+  // NULL nos demais casos (migration 009).
+  status_reaberto_de: 'reprovado' | 'cancelado' | 'expirado' | null
   criado_em: GeneratedDate
   atualizado_em: GeneratedDate
 }

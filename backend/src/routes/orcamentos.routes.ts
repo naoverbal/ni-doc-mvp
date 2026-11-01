@@ -9,6 +9,7 @@ import type {
 import type { VersionamentoService } from '../services/versionamento.service.js'
 import type { AceiteService } from '../services/aceite.service.js'
 import type { CancelamentoService } from '../services/cancelamento.service.js'
+import type { ReaberturaService } from '../services/reabertura.service.js'
 import {
   STATUS_ORCAMENTO,
   type AtualizarOrcamentoInput,
@@ -20,7 +21,9 @@ import {
   atualizarOrcamentoSchema,
   aceiteManualSchema,
   cancelarOrcamentoSchema,
+  reabrirOrcamentoSchema,
   type CancelarOrcamentoPayload,
+  type ReabrirOrcamentoPayload,
   type CriarOrcamentoPayload,
   type AtualizarOrcamentoPayload,
   type AceiteManualPayload,
@@ -38,9 +41,11 @@ export function criarOrcamentosRouter(
   aceiteService: AceiteService,
   authService: AuthService,
   cancelamentoService: CancelamentoService,
+  reaberturaService: ReaberturaService,
 ): Router {
   const router = Router()
-  // Limite de tentativas de senha por usuário na confirmação do cancelamento.
+  // Limite de tentativas de senha por usuário, COMPARTILHADO por cancelar e
+  // reabrir (as duas reconfirmam a senha; separar dobraria a cota de tentativas).
   const limiteConfirmacaoSenha = criarConfirmacaoSenhaRateLimit()
   const autenticar = criarMiddlewareAuth(authService)
 
@@ -126,13 +131,19 @@ export function criarOrcamentosRouter(
     }
   })
 
-  // DELETE /api/orcamentos/:id — deleta orçamento (409 de não-rascunho vem do service).
+  // DELETE /api/orcamentos/:id — exclui o rascunho (409 de não-rascunho vem do service).
+  // 204 se nunca foi enviado; 200 com o orçamento restaurado se era um rascunho reaberto.
   router.delete('/:id', async (req, res, next) => {
     try {
       const ctx = construirContexto(req)
       const id = req.params['id'] as string
-      await orcamentoService.deletar(ctx, id)
-      res.status(204).end()
+      const restaurado = await orcamentoService.deletar(ctx, id)
+      if (restaurado === null) {
+        res.status(204).end()
+        return
+      }
+      // Rascunho reaberto: o orçamento continua existindo (voltou ao último status).
+      res.json(restaurado)
     } catch (err) {
       next(err)
     }
@@ -184,6 +195,26 @@ export function criarOrcamentosRouter(
         const id = req.params['id'] as string
         const ctx = construirContexto(req)
         const orcamento = await cancelamentoService.cancelar(ctx, id, { senha, justificativa })
+        res.json(orcamento)
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
+
+  // POST /api/orcamentos/:id/reabrir — reabre um orçamento reprovado/cancelado/
+  // expirado como rascunho (a versão N+1 nasce no próximo /enviar). Exige senha do
+  // usuário logado (403 se errada; mesmo rate limit do cancelamento) e justificativa.
+  router.post(
+    '/:id/reabrir',
+    validate(reabrirOrcamentoSchema),
+    limiteConfirmacaoSenha,
+    async (req, res, next) => {
+      try {
+        const { senha, justificativa } = req.body as ReabrirOrcamentoPayload
+        const id = req.params['id'] as string
+        const ctx = construirContexto(req)
+        const orcamento = await reaberturaService.reabrir(ctx, id, { senha, justificativa })
         res.json(orcamento)
       } catch (err) {
         next(err)

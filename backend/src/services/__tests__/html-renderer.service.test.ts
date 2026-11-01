@@ -11,6 +11,8 @@ import type { LayoutTemplate } from '../../repositories/template.repository.js'
 // -----------------------------------------------------------------------------
 function snapshotMock(overrides: Partial<OrcamentoSnapshot> = {}): OrcamentoSnapshot {
   return {
+    titulo: 'Projeto X',
+    descricao: null,
     cliente: {
       id: 'cliente-1',
       nome: 'Acme Ltda',

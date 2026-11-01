@@ -46,7 +46,11 @@ export interface OrcamentoService {
     id: string,
     dados: AtualizarOrcamentoInput,
   ): Promise<OrcamentoComItens>
-  deletar(ctx: OrcamentoContexto, id: string): Promise<void>
+  // Exclui um rascunho. Se nunca foi enviado, remove de verdade e devolve `null`
+  // (rota responde 204). Se é um rascunho REABERTO, o histórico é preservado: o
+  // orçamento volta ao último status com o conteúdo da última versão enviada e é
+  // devolvido restaurado (rota responde 200).
+  deletar(ctx: OrcamentoContexto, id: string): Promise<OrcamentoComItens | null>
 }
 
 interface OrcamentoServiceDeps {
@@ -208,7 +212,7 @@ export function criarOrcamentoService(deps: OrcamentoServiceDeps): OrcamentoServ
       return atualizado
     },
 
-    async deletar(ctx: OrcamentoContexto, id: string): Promise<void> {
+    async deletar(ctx: OrcamentoContexto, id: string): Promise<OrcamentoComItens | null> {
       const existente = await orcamentoRepo.buscarPorId(ctx.tenantId, id)
       if (!existente) {
         throw new AppError(404, 'Orçamento não encontrado')
@@ -218,17 +222,39 @@ export function criarOrcamentoService(deps: OrcamentoServiceDeps): OrcamentoServ
         throw new AppError(409, 'Só é possível excluir orçamentos em rascunho')
       }
 
-      await orcamentoRepo.deletar(ctx.tenantId, id)
+      const resultado = await orcamentoRepo.deletar(ctx.tenantId, id)
 
+      if (resultado.resultado === 'removido') {
+        await auditoriaService.registrar({
+          tenantId: ctx.tenantId,
+          usuarioId: ctx.usuarioId,
+          acao: 'deletar',
+          entidade: 'orcamentos',
+          entidadeId: id,
+          ip: ctx.ip,
+          userAgent: ctx.userAgent,
+        })
+        return null
+      }
+
+      // Rascunho reaberto: nada foi apagado; o orçamento voltou ao status de origem.
       await auditoriaService.registrar({
         tenantId: ctx.tenantId,
         usuarioId: ctx.usuarioId,
-        acao: 'deletar',
+        acao: 'descartar_reabertura',
         entidade: 'orcamentos',
         entidadeId: id,
+        estadoAnterior: { status: 'rascunho' },
+        estadoNovo: { status: resultado.statusRestaurado, restauradoDaUltimaVersao: true },
         ip: ctx.ip,
         userAgent: ctx.userAgent,
       })
+
+      const restaurado = await orcamentoRepo.buscarPorId(ctx.tenantId, id)
+      if (!restaurado) {
+        throw new AppError(404, 'Orçamento não encontrado')
+      }
+      return restaurado
     },
   }
 }

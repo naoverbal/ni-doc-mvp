@@ -85,7 +85,8 @@ function makeDeps(overrides?: {
     buscarPorId: vi.fn().mockResolvedValue(orcamentoMock()),
     atualizar: vi.fn().mockResolvedValue(orcamentoMock()),
     listarPorTenant: vi.fn().mockResolvedValue(listaMock),
-    deletar: vi.fn().mockResolvedValue(undefined),
+    deletar: vi.fn().mockResolvedValue({ resultado: 'removido' }),
+    reabrir: vi.fn().mockResolvedValue({ statusAnterior: 'reprovado' }),
     cancelar: vi.fn().mockResolvedValue({ statusAnterior: 'enviado' }),
     ...overrides?.orcamentoRepo,
   }
@@ -356,12 +357,39 @@ describe('OrcamentoService', () => {
   })
 
   describe('deletar()', () => {
+    it('devolve o orçamento restaurado e audita descartar_reabertura quando o rascunho era reaberto', async () => {
+      const restaurado = orcamentoMock('reprovado')
+      const deps = makeDeps({
+        orcamentoRepo: {
+          deletar: vi
+            .fn()
+            .mockResolvedValue({ resultado: 'restaurado', statusRestaurado: 'reprovado' }),
+          buscarPorId: vi
+            .fn()
+            .mockResolvedValueOnce(orcamentoMock('rascunho'))
+            .mockResolvedValueOnce(restaurado),
+        },
+      })
+      const service = criarOrcamentoService(deps)
+
+      const resultado = await service.deletar(ctx, 'orcamento-1')
+
+      expect(resultado).toBe(restaurado)
+      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
+        expect.objectContaining({
+          acao: 'descartar_reabertura',
+          estadoNovo: expect.objectContaining({ status: 'reprovado' }),
+        }),
+      )
+    })
+
     it('deleta quando o status é rascunho e audita', async () => {
       const deps = makeDeps()
       const service = criarOrcamentoService(deps)
 
-      await service.deletar(ctx, 'orcamento-1')
+      const resultado = await service.deletar(ctx, 'orcamento-1')
 
+      expect(resultado).toBeNull()
       expect(deps.orcamentoRepo.deletar).toHaveBeenCalledWith('tenant-1', 'orcamento-1')
       expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
         expect.objectContaining({ acao: 'deletar', entidade: 'orcamentos' }),

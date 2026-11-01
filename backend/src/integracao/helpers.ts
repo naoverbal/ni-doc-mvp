@@ -7,6 +7,7 @@ import { criarApp } from '../app.js'
 import { criptografar, hashDocumento } from '../lib/crypto.js'
 import { hashSenha } from '../lib/senha.js'
 import { URL_ADMIN_TESTE } from './config-banco.js'
+import { removerTenants } from './limpeza.js'
 
 const { Pool } = pg
 
@@ -117,15 +118,7 @@ export async function limparDados(): Promise<void> {
   }
 }
 
-/**
- * Remove tenants de teste. Orçamentos saem primeiro (levam versões, aceites e
- * itens em cascata): `orcamento_versoes.template_id` não tem cascade, então os
- * templates só podem sair depois das versões.
- */
-export async function removerTenants(pool: pg.Pool, ids: string[]): Promise<void> {
-  await pool.query('DELETE FROM orcamentos WHERE tenant_id = ANY($1::uuid[])', [ids])
-  await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [ids])
-}
+export { removerTenants } from './limpeza.js'
 
 export async function encerrarConexoes(): Promise<void> {
   await adminPool.end().catch(() => undefined)
