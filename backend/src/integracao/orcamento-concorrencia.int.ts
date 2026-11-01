@@ -9,11 +9,22 @@ import {
   type OrcamentoRepository,
 } from '../repositories/orcamento.repository.js'
 import { criarResponsavelRepository } from '../repositories/responsavel.repository.js'
+import {
+  criarOrcamentoVersaoRepository,
+  type OrcamentoVersaoRepository,
+} from '../repositories/orcamento-versao.repository.js'
+import { criarTemplateRepository } from '../repositories/template.repository.js'
+import { env } from '../config/env.js'
 import { criarAuditoriaService } from '../services/auditoria.service.js'
+import { criarHtmlRendererService } from '../services/html-renderer.service.js'
 import { criarOrcamentoService } from '../services/orcamento.service.js'
+import { criarPdfService } from '../services/pdf.service.js'
+import { criarSnapshotService } from '../services/snapshot.service.js'
+import { criarVersionamentoService } from '../services/versionamento.service.js'
 import {
   adminPool,
   contarVersoes,
+  corpoOrcamento,
   criarCenario,
   criarRascunho,
   encerrarConexoes,
@@ -137,5 +148,79 @@ describe('editar orçamento concorrente com outra transição', () => {
     expect(await editar(servico, rascunho.id)).toBe(404)
 
     expect(await statusNoBanco(rascunho.id)).toBeUndefined()
+  })
+})
+
+/**
+ * Serviço de envio cujo repositório de versões executa `concorrente` uma única
+ * vez, DEPOIS de o serviço ter lido o orçamento/template e montado o snapshot e
+ * ANTES da transação que grava a versão.
+ */
+function envioComIntervalo(concorrente: () => Promise<void>) {
+  const repoReal = criarOrcamentoVersaoRepository({ db })
+  let executado = false
+  const orcamentoVersaoRepo: OrcamentoVersaoRepository = {
+    ...repoReal,
+    async criarVersaoEnviar(input) {
+      if (!executado) {
+        executado = true
+        await concorrente()
+      }
+      return repoReal.criarVersaoEnviar(input)
+    },
+  }
+  return criarVersionamentoService({
+    orcamentoRepo: criarOrcamentoRepository({ db }),
+    orcamentoVersaoRepo,
+    clienteRepo: criarClienteRepository(db),
+    empresaRepo: criarEmpresaRepository(db),
+    responsavelRepo: criarResponsavelRepository(db),
+    snapshotService: criarSnapshotService(),
+    auditoriaService: criarAuditoriaService(criarAuditoriaRepository(db)),
+    pdfService: criarPdfService({ pdfsDir: env.PDFS_DIR }),
+    htmlRenderer: criarHtmlRendererService(),
+    templateRepo: criarTemplateRepository({ db }),
+  })
+}
+
+function enviar(servico: ReturnType<typeof envioComIntervalo>, id: string) {
+  return statusDe(
+    executarComTenant(c.tenant.id, () =>
+      servico.enviar({ tenantId: c.tenant.id, usuarioId: c.operador.id }, id),
+    ),
+  )
+}
+
+describe('enviar orçamento com dados lidos antes do lock', () => {
+  it('quando o orçamento é editado entre a leitura do envio e a gravação da versão, então o envio responde 409, nenhuma versão é criada e o orçamento continua rascunho', async () => {
+    const rascunho = await criarRascunho(c)
+    const servico = envioComIntervalo(async () => {
+      const edicao = await request(c.app)
+        .put(`/api/orcamentos/${rascunho.id}`)
+        .set('Cookie', c.cookieOperador)
+        .send(corpoOrcamento(c.cliente.id))
+      expect(edicao.status).toBe(200)
+    })
+
+    expect(await enviar(servico, rascunho.id)).toBe(409)
+
+    expect(await contarVersoes(rascunho.id)).toBe(0)
+    expect(await statusNoBanco(rascunho.id)).toBe('rascunho')
+  })
+
+  it('quando o template ativo muda entre a leitura do envio e a gravação da versão, então o envio responde 409 e nenhuma versão é criada', async () => {
+    const rascunho = await criarRascunho(c)
+    const servico = envioComIntervalo(async () => {
+      const troca = await request(c.app)
+        .put('/api/templates/atual')
+        .set('Cookie', c.cookieAdmin)
+        .send({ layoutJson: { formato: 'A4', orientacao: 'paisagem', secoes: [] } })
+      expect(troca.status).toBe(200)
+    })
+
+    expect(await enviar(servico, rascunho.id)).toBe(409)
+
+    expect(await contarVersoes(rascunho.id)).toBe(0)
+    expect(await statusNoBanco(rascunho.id)).toBe('rascunho')
   })
 })

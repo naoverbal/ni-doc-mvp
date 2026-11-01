@@ -416,6 +416,68 @@ describe('OrcamentoVersaoRepository', () => {
     expect(versao.pdfHash).toBeNull()
   })
 
+  describe('controle otimista do que o serviço leu', () => {
+    const atualizadoEmNoBanco = new Date('2026-01-10T12:00:00.123Z')
+
+    function trxComLock(templateId = 'template-1') {
+      const insertVersao = makeInsertBuilder(versaoRowBase())
+      const trx = makeTrx({
+        insertVersao,
+        updateOrcamento: makeUpdateBuilder(),
+        deleteAceites: makeDeleteBuilder(),
+        templateId,
+      })
+      const lock = makeLockBuilder('rascunho')
+      lock.executeTakeFirst.mockResolvedValue({
+        status: 'rascunho',
+        atualizado_em: atualizadoEmNoBanco,
+      })
+      trx.selectFrom.mockReturnValue(lock)
+      return { trx, insertVersao }
+    }
+
+    it('versiona quando atualizado_em e template ativo batem com o que foi lido', async () => {
+      const { trx, insertVersao } = trxComLock()
+      const repo = criarOrcamentoVersaoRepository({ db: makeDbComTransacao(trx) })
+
+      await repo.criarVersaoEnviar({
+        ...inputBase,
+        atualizadoEmLido: new Date(atualizadoEmNoBanco),
+        templateIdLido: 'template-1',
+      })
+
+      expect(insertVersao.values).toHaveBeenCalled()
+    })
+
+    it('responde 409 sem versionar quando o orçamento foi editado depois da leitura', async () => {
+      const { trx, insertVersao } = trxComLock()
+      const gerarPdfDaVersao = vi.fn()
+      const repo = criarOrcamentoVersaoRepository({ db: makeDbComTransacao(trx) })
+
+      await expect(
+        repo.criarVersaoEnviar({
+          ...inputBase,
+          atualizadoEmLido: new Date('2026-01-10T11:59:59.000Z'),
+          gerarPdfDaVersao,
+        }),
+      ).rejects.toMatchObject({ statusCode: 409 })
+      expect(gerarPdfDaVersao).not.toHaveBeenCalled()
+      expect(insertVersao.values).not.toHaveBeenCalled()
+    })
+
+    it('responde 409 sem versionar quando o template ativo mudou depois da leitura', async () => {
+      const { trx, insertVersao } = trxComLock('template-2')
+      const gerarPdfDaVersao = vi.fn()
+      const repo = criarOrcamentoVersaoRepository({ db: makeDbComTransacao(trx) })
+
+      await expect(
+        repo.criarVersaoEnviar({ ...inputBase, templateIdLido: 'template-1', gerarPdfDaVersao }),
+      ).rejects.toMatchObject({ statusCode: 409 })
+      expect(gerarPdfDaVersao).not.toHaveBeenCalled()
+      expect(insertVersao.values).not.toHaveBeenCalled()
+    })
+  })
+
   // `buscarPorToken`/`buscarSnapshotPorToken` usam `sql`...`.execute(db)` sobre a
   // função SECURITY DEFINER `rls_versao_por_token` (lookup público por token,
   // antes de haver tenant). Por isso usam o fake executor (kysely-fake.ts).

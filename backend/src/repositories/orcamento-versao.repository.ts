@@ -40,6 +40,13 @@ export interface CriarVersaoEnviarInput {
   // callback lançar, a transação do Kysely reverte tudo (versão + status), de
   // modo que nenhum estado parcial persiste (RF-016). Ausente → pdf nulo (como antes).
   gerarPdfDaVersao?: (dados: DadosGeracaoPdf) => Promise<{ pdfPath: string; pdfHash: string }>
+  // Controle otimista do que o serviço LEU antes da transação (snapshot e layout
+  // são montados fora dela). Conferidos sob o lock da linha: se o orçamento foi
+  // editado (`atualizado_em` mudou) ou o template ativo trocou nesse meio, o
+  // envio responde 409 em vez de gravar uma versão com dados desatualizados.
+  // Opcionais: ausentes, não há conferência.
+  atualizadoEmLido?: Date
+  templateIdLido?: string
 }
 
 export interface OrcamentoVersaoPublica {
@@ -244,7 +251,7 @@ export function criarOrcamentoVersaoRepository(deps: {
         // orçamento já `enviado` e responde 409 (RF-008).
         const bloqueado = await trx
           .selectFrom('orcamentos')
-          .select('status')
+          .select(['status', 'atualizado_em'])
           .where('tenant_id', '=', input.tenantId)
           .where('id', '=', input.orcamentoId)
           .forUpdate()
@@ -255,9 +262,20 @@ export function criarOrcamentoVersaoRepository(deps: {
         if (bloqueado.status !== 'rascunho') {
           throw new AppError(409, 'Só é possível enviar orçamentos em rascunho')
         }
+        // Precisão: o driver devolve milissegundos nas duas leituras, então a
+        // comparação é coerente; duas edições no mesmo ms não seriam detectadas.
+        if (
+          input.atualizadoEmLido !== undefined &&
+          new Date(bloqueado.atualizado_em).getTime() !== input.atualizadoEmLido.getTime()
+        ) {
+          throw new AppError(409, 'O orçamento foi alterado durante o envio; tente novamente')
+        }
 
         const versao = await proximaVersaoSequencial(trx, input.orcamentoId)
         const templateId = await templateAtivo(trx, input.tenantId)
+        if (input.templateIdLido !== undefined && templateId !== input.templateIdLido) {
+          throw new AppError(409, 'O template foi alterado durante o envio; tente novamente')
+        }
 
         // O aceite/reprovação de versões anteriores é HISTÓRICO e fica intacto
         // (RF-008.3): num reenvio após reabertura (tarefa 68) o aceite antigo não

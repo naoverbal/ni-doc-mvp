@@ -153,11 +153,9 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
 
       // Template ativo do tenant (respeita o isolamento por tenant). A coluna
       // template_id da versão é NOT NULL; sem template ativo o envio não segue.
-      // Nota (MVP): o layout vem desta leitura e o template_id persistido é
-      // relido dentro da transação do repositório (tenants_template_ativo). Com
-      // um único template ativo por tenant no MVP as duas fontes convergem; a
-      // janela de divergência (troca de template entre as leituras) é aceitável
-      // neste escopo e fica para uma futura unificação.
+      // O layout vem desta leitura e o template_id persistido é relido dentro da
+      // transação do repositório (tenants_template_ativo); se divergirem (troca
+      // concorrente do template), o repositório responde 409 (`templateIdLido`).
       const template = await templateRepo.buscarAtivo(ctx.tenantId)
       if (!template) {
         throw new AppError(409, 'Tenant não possui template ativo')
@@ -169,6 +167,10 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
         numero: orcamento.numero,
         snapshot,
         expiraEm,
+        // Snapshot e layout foram montados com estas leituras; o repositório as
+        // confere sob o lock e responde 409 se mudaram (edição/troca concorrente).
+        atualizadoEmLido: orcamento.atualizadoEm,
+        templateIdLido: template.id,
         // Geração do PDF dentro da transação do repositório: renderiza o HTML
         // (com o QR Code da URL pública embutido) e delega ao pdfService. Uma
         // falha aqui propaga e a transação reverte o envio inteiro (RF-016).
