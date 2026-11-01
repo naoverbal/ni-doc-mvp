@@ -8,6 +8,7 @@ import type {
 } from '../services/orcamento.service.js'
 import type { VersionamentoService } from '../services/versionamento.service.js'
 import type { AceiteService } from '../services/aceite.service.js'
+import type { CancelamentoService } from '../services/cancelamento.service.js'
 import {
   STATUS_ORCAMENTO,
   type AtualizarOrcamentoInput,
@@ -18,6 +19,8 @@ import {
   criarOrcamentoSchema,
   atualizarOrcamentoSchema,
   aceiteManualSchema,
+  cancelarOrcamentoSchema,
+  type CancelarOrcamentoPayload,
   type CriarOrcamentoPayload,
   type AtualizarOrcamentoPayload,
   type AceiteManualPayload,
@@ -26,6 +29,7 @@ import { validate } from '../middlewares/validate.js'
 import { criarMiddlewareAuth } from '../middlewares/auth.js'
 import { setTenant } from '../middlewares/tenant.js'
 import { validarIdParam } from '../middlewares/validar-id.js'
+import { criarConfirmacaoSenhaRateLimit } from '../middlewares/rate-limit.js'
 import { AppError } from '../errors/app-error.js'
 
 export function criarOrcamentosRouter(
@@ -33,8 +37,11 @@ export function criarOrcamentosRouter(
   versionamentoService: VersionamentoService,
   aceiteService: AceiteService,
   authService: AuthService,
+  cancelamentoService: CancelamentoService,
 ): Router {
   const router = Router()
+  // Limite de tentativas de senha por usuário na confirmação do cancelamento.
+  const limiteConfirmacaoSenha = criarConfirmacaoSenhaRateLimit()
   const autenticar = criarMiddlewareAuth(authService)
 
   // Todas as rotas de orçamento exigem autenticação e isolamento por tenant (RLS).
@@ -163,6 +170,26 @@ export function criarOrcamentosRouter(
       next(err)
     }
   })
+
+  // POST /api/orcamentos/:id/cancelar — cancela um orçamento enviado/aprovado.
+  // Exige senha do usuário logado (403 se errada; rate limit por usuário) e
+  // justificativa. 400/404/409 vêm do service/repositório.
+  router.post(
+    '/:id/cancelar',
+    validate(cancelarOrcamentoSchema),
+    limiteConfirmacaoSenha,
+    async (req, res, next) => {
+      try {
+        const { senha, justificativa } = req.body as CancelarOrcamentoPayload
+        const id = req.params['id'] as string
+        const ctx = construirContexto(req)
+        const orcamento = await cancelamentoService.cancelar(ctx, id, { senha, justificativa })
+        res.json(orcamento)
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
 
   // GET /api/orcamentos/:id — busca por id (com itens).
   router.get('/:id', async (req, res, next) => {

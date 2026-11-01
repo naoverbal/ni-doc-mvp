@@ -98,3 +98,15 @@ export const aceiteManualSchema = z
   .strict()
 
 export type AceiteManualPayload = z.infer<typeof aceiteManualSchema>
+
+// Cancelamento (RF-009): exige a senha do usuário logado (confirmação, sem criar
+// sessão) e uma justificativa obrigatória. `.strict()` recusa campos extras. A
+// senha nunca é aparada nem logada.
+export const cancelarOrcamentoSchema = z
+  .object({
+    senha: z.string().min(1),
+    justificativa: z.string().trim().min(1).max(2000),
+  })
+  .strict()
+
+export type CancelarOrcamentoPayload = z.infer<typeof cancelarOrcamentoSchema>

@@ -47,6 +47,7 @@ function makeDeps(overrides?: {
     criar: vi.fn(),
     buscarPorEmail: vi.fn().mockResolvedValue(usuarioMock),
     buscarPorId: vi.fn().mockResolvedValue(usuarioPublicoMock),
+    buscarSenhaHashPorId: vi.fn().mockResolvedValue(null),
     ...overrides?.usuarioRepo,
   }
   const sessaoRepo: SessaoRepository = {

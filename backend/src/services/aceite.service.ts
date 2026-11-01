@@ -9,10 +9,7 @@ import type {
   VersaoPorToken,
   VersaoSnapshotPorToken,
 } from '../repositories/orcamento-versao.repository.js'
-import type {
-  OrcamentoRepository,
-  OrcamentoStatus,
-} from '../repositories/orcamento.repository.js'
+import type { OrcamentoRepository, OrcamentoStatus } from '../repositories/orcamento.repository.js'
 import { estaExpirado } from '../lib/validade.js'
 import type { UsuarioRepository } from '../repositories/usuario.repository.js'
 import type { ClienteRepository } from '../repositories/cliente.repository.js'
@@ -373,13 +370,19 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
   }
   return {
     async aprovarViaCliente(input: AprovarViaClienteInput): Promise<AceiteRegistrado> {
-      const versao = validarToken(input.token, await orcamentoVersaoRepo.buscarPorToken(input.token))
+      const versao = validarToken(
+        input.token,
+        await orcamentoVersaoRepo.buscarPorToken(input.token),
+      )
       // Duplicado: orçamento já aprovado não aceita novo aceite (RF-019.6).
       if (versao.statusOrcamento === 'aprovado') {
         throw new AppError(409, 'Orçamento já aprovado')
       }
       if (versao.statusOrcamento === 'reprovado') {
         throw new AppError(409, 'Orçamento já decidido')
+      }
+      if (versao.statusOrcamento === 'cancelado') {
+        throw new AppError(409, 'Orçamento cancelado')
       }
       // Integridade: sem hash do PDF emitido não há como registrar o aceite.
       if (versao.pdfHash === null) {
@@ -406,10 +409,16 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
     },
 
     async reprovarViaCliente(input: ReprovarViaClienteInput): Promise<AceiteRegistrado> {
-      const versao = validarToken(input.token, await orcamentoVersaoRepo.buscarPorToken(input.token))
+      const versao = validarToken(
+        input.token,
+        await orcamentoVersaoRepo.buscarPorToken(input.token),
+      )
       // Já decidido: orçamento aprovado/reprovado não aceita nova decisão.
       if (versao.statusOrcamento === 'aprovado' || versao.statusOrcamento === 'reprovado') {
         throw new AppError(409, 'Orçamento já decidido')
+      }
+      if (versao.statusOrcamento === 'cancelado') {
+        throw new AppError(409, 'Orçamento cancelado')
       }
       if (versao.pdfHash === null) {
         throw new AppError(409, 'Documento sem hash de integridade')
@@ -478,6 +487,9 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
       }
       if (orcamento.status === 'reprovado') {
         throw new AppError(409, 'Orçamento já decidido')
+      }
+      if (orcamento.status === 'cancelado') {
+        throw new AppError(409, 'Orçamento cancelado')
       }
       // Expirado (pelo job) ou validade já atingida: não aceita decisão (410).
       if (validadeEncerrada({ expiraEm: versao.expiraEm, statusOrcamento: orcamento.status })) {

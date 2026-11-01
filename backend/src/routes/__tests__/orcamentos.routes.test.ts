@@ -9,6 +9,7 @@ import type { AuthService } from '../../services/auth.service.js'
 import type { OrcamentoService } from '../../services/orcamento.service.js'
 import type { VersionamentoService, VersaoEnviada } from '../../services/versionamento.service.js'
 import type { AceiteService, AceiteRegistrado } from '../../services/aceite.service.js'
+import type { CancelamentoService } from '../../services/cancelamento.service.js'
 import type { OrcamentoComItens, ListaOrcamentos } from '../../repositories/orcamento.repository.js'
 import type { UsuarioPublico } from '../../repositories/usuario.repository.js'
 import type { SessaoAtiva } from '../../repositories/sessao.repository.js'
@@ -168,18 +169,32 @@ function makeAceiteService(overrides?: Partial<AceiteService>): AceiteService {
   }
 }
 
+function makeCancelamentoService(overrides?: Partial<CancelamentoService>): CancelamentoService {
+  return {
+    cancelar: vi.fn().mockResolvedValue(orcamentoComItensMock),
+    ...overrides,
+  }
+}
+
 function makeApp(
   orcamentoService: OrcamentoService,
   authService: AuthService,
   versionamentoService: VersionamentoService = makeVersionamentoService(),
   aceiteService: AceiteService = makeAceiteService(),
+  cancelamentoService: CancelamentoService = makeCancelamentoService(),
 ) {
   const app = express()
   app.use(express.json())
   app.use(cookieParser())
   app.use(
     '/api/orcamentos',
-    criarOrcamentosRouter(orcamentoService, versionamentoService, aceiteService, authService),
+    criarOrcamentosRouter(
+      orcamentoService,
+      versionamentoService,
+      aceiteService,
+      authService,
+      cancelamentoService,
+    ),
   )
   app.use(errorHandler)
   return app

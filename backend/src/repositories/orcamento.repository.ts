@@ -171,6 +171,12 @@ export interface OrcamentoRepository {
   ): Promise<OrcamentoComItens | null>
   listarPorTenant(tenantId: string, filtro?: ListarOrcamentosFiltro): Promise<ListaOrcamentos>
   deletar(tenantId: string, id: string): Promise<void>
+  // Cancela (enviado | aprovado → cancelado) em transação, travando a linha
+  // (`FOR UPDATE`) e relendo o status: cancelamentos concorrentes serializam e só
+  // um vence. 404 se não existir no tenant; 409 se o status não permitir. Só o
+  // status muda (versões, aceites e comprovantes ficam intactos). Devolve o
+  // status anterior.
+  cancelar(tenantId: string, id: string): Promise<{ statusAnterior: OrcamentoStatus }>
 }
 
 // -----------------------------------------------------------------------------
@@ -739,6 +745,36 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
         .where('tenant_id', '=', tenantId)
         .where('id', '=', id)
         .execute()
+    },
+
+    async cancelar(tenantId: string, id: string): Promise<{ statusAnterior: OrcamentoStatus }> {
+      return db.transaction().execute(async (trx) => {
+        const row = await trx
+          .selectFrom('orcamentos')
+          .select(['status'])
+          .where('tenant_id', '=', tenantId)
+          .where('id', '=', id)
+          .forUpdate()
+          .executeTakeFirst()
+
+        if (!row) {
+          throw new AppError(404, 'Orçamento não encontrado')
+        }
+
+        const statusAnterior = (row as { status: OrcamentoStatus }).status
+        if (statusAnterior !== 'enviado' && statusAnterior !== 'aprovado') {
+          throw new AppError(409, 'Só é possível cancelar orçamentos enviados ou aprovados')
+        }
+
+        await trx
+          .updateTable('orcamentos')
+          .set({ status: 'cancelado', atualizado_em: new Date() })
+          .where('tenant_id', '=', tenantId)
+          .where('id', '=', id)
+          .execute()
+
+        return { statusAnterior }
+      })
     },
   }
 }

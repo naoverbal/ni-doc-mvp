@@ -86,6 +86,7 @@ function makeDeps(overrides?: {
     atualizar: vi.fn().mockResolvedValue(orcamentoMock()),
     listarPorTenant: vi.fn().mockResolvedValue(listaMock),
     deletar: vi.fn().mockResolvedValue(undefined),
+    cancelar: vi.fn().mockResolvedValue({ statusAnterior: 'enviado' }),
     ...overrides?.orcamentoRepo,
   }
   const auditoriaService: AuditoriaService = {

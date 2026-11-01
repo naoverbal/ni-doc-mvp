@@ -703,7 +703,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
     bloqueio verificadas; job idempotente; lint/build/testes verdes
   - _Requirements: RF-008, RF-009, RF-019_
 
-- [ ] 67. Backend — cancelar orçamento (`cancelado`)
+- [x] 67. Backend — cancelar orçamento (`cancelado`)
   - Nova rota (sugestão de contrato: `POST /api/orcamentos/:id/cancelar`, corpo
     `{ senha, justificativa }`). Permite cancelar orçamento `enviado` ou `aprovado`. Exige
     **confirmação com a senha do usuário logado** (verificar com `verificarSenha`, sem criar sessão

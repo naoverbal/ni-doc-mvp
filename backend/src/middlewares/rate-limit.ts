@@ -20,6 +20,28 @@ export function criarLoginRateLimit(): RateLimitRequestHandler {
   })
 }
 
+/**
+ * Cria um rate limiter por USUÁRIO para as rotas que reconfirmam a senha (ex.:
+ * cancelar orçamento), impedindo força bruta de senha por elas.
+ *
+ * Só tentativas com senha errada (403) consomem a cota: respostas de sucesso e
+ * outros erros não contam. Deve ser registrado APÓS a autenticação (usa
+ * `req.usuario.id` como chave). Store em memória; fábrica para que cada router
+ * tenha o seu (sem vazamento de estado entre testes).
+ */
+export function criarConfirmacaoSenhaRateLimit(): RateLimitRequestHandler {
+  return rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 min
+    max: 5,
+    message: { erro: 'Muitas tentativas de confirmação de senha. Tente novamente em 15 minutos.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.usuario.id,
+    skipSuccessfulRequests: true,
+    requestWasSuccessful: (_req, res) => res.statusCode !== 403,
+  })
+}
+
 export const apiRateLimit = rateLimit({
   windowMs: 60 * 1000, // 1 min
   max: 100,

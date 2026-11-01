@@ -28,6 +28,7 @@ import { criarTemplateService } from './services/template.service.js'
 import { criarHtmlRendererService } from './services/html-renderer.service.js'
 import { criarPdfService } from './services/pdf.service.js'
 import { criarAceiteService } from './services/aceite.service.js'
+import { criarCancelamentoService } from './services/cancelamento.service.js'
 import { criarOrcamentoAceiteRepository } from './repositories/orcamento-aceite.repository.js'
 import { criarUsuarioRepository } from './repositories/usuario.repository.js'
 import { criarSessaoRepository } from './repositories/sessao.repository.js'
@@ -159,10 +160,24 @@ export function criarApp(): express.Express {
     escopoTenant: executarComTenant,
   })
 
+  // Cancelamento de orçamento (confirmação de senha + justificativa).
+  const cancelamentoService = criarCancelamentoService({
+    orcamentoRepo,
+    usuarioRepo,
+    auditoriaService,
+    email,
+  })
+
   // Orçamento routes (dependem do aceiteService para o aceite manual).
   app.use(
     '/api/orcamentos',
-    criarOrcamentosRouter(orcamentoService, versionamentoService, aceiteService, authService),
+    criarOrcamentosRouter(
+      orcamentoService,
+      versionamentoService,
+      aceiteService,
+      authService,
+      cancelamentoService,
+    ),
   )
 
   // Rotas públicas (sem auth): visualização e aceite via token público.

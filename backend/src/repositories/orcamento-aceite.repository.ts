@@ -108,6 +108,7 @@ async function lerStatusOrcamento(
       FROM orcamento_versoes v
       JOIN orcamentos o ON o.id = v.orcamento_id
       WHERE v.id = ${versaoId} AND o.tenant_id = ${tenantId}
+      FOR UPDATE OF o
     `.execute(trx)
 
   return resultado.rows[0]?.status ?? null
@@ -141,6 +142,10 @@ export function criarOrcamentoAceiteRepository(deps: {
       // Expirado pelo job entre a checagem do serviço e esta transação (410).
       if (status === 'expirado') {
         throw new AppError(410, 'Orçamento expirado')
+      }
+      // Cancelado entre a checagem do serviço e esta transação: nenhuma decisão.
+      if (status === 'cancelado') {
+        throw new AppError(409, 'Orçamento cancelado')
       }
       // Já decidido: orçamento aprovado ou reprovado não aceita nova decisão
       // (RF-019.6). `reprovado` é final: evita violar UNIQUE (versao_id).
