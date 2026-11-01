@@ -10,7 +10,7 @@ import type { Database } from '../types/database.js'
 export type LayoutTemplate = Record<string, unknown>
 
 // Layout padrão aplicado na versão 1 criada no bootstrap do tenant. Espelha o
-// shape do seed `003_seed_dev.sql` (A4, retrato, margens, seções).
+// shape do seed `seed-dev.sql` (A4, retrato, margens, seções).
 export const LAYOUT_PADRAO: LayoutTemplate = {
   formato: 'A4',
   orientacao: 'retrato',

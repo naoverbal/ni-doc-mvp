@@ -296,8 +296,8 @@ async function runSeed(): Promise<void> {
     //    templates, template ativo) via SQL idempotente.
     const __filename = fileURLToPath(import.meta.url)
     const __dirname = dirname(__filename)
-    const seedSql = await readFile(join(__dirname, 'migrations', '003_seed_dev.sql'), 'utf-8')
-    console.log('[seed] Executando 003_seed_dev.sql...')
+    const seedSql = await readFile(join(__dirname, 'seed-dev.sql'), 'utf-8')
+    console.log('[seed] Executando seed-dev.sql...')
     await client.query(seedSql)
 
     // 2. Dados sensíveis e dependentes (ordem respeita FKs).
