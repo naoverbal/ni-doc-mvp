@@ -47,6 +47,7 @@ function makeDeps(overrides?: {
     criar: vi.fn(),
     buscarPorEmail: vi.fn().mockResolvedValue(usuarioMock),
     buscarPorId: vi.fn().mockResolvedValue(usuarioPublicoMock),
+    buscarSenhaHashPorId: vi.fn().mockResolvedValue(null),
     ...overrides?.usuarioRepo,
   }
   const sessaoRepo: SessaoRepository = {
@@ -113,7 +114,8 @@ describe('AuthService', () => {
       ).rejects.toMatchObject({ statusCode: 401 })
     })
 
-    it('lança AppError(403) se usuário inativo', async () => {
+    it('lança AppError(401) com a mensagem de credencial inválida se usuário inativo', async () => {
+      vi.spyOn(senhaLib, 'verificarSenha').mockResolvedValue(true)
       const deps = makeDeps({
         usuarioRepo: {
           buscarPorEmail: vi.fn().mockResolvedValue({ ...usuarioMock, ativo: false }),
@@ -123,7 +125,8 @@ describe('AuthService', () => {
 
       await expect(
         service.login({ email: 'ana@exemplo.com', senha: 'senha123' }),
-      ).rejects.toMatchObject({ statusCode: 403 })
+      ).rejects.toMatchObject({ statusCode: 401, message: 'Credenciais inválidas' })
+      expect(deps.sessaoRepo.criar).not.toHaveBeenCalled()
     })
 
     it('lança AppError(401) se senha errada', async () => {

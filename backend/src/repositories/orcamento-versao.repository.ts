@@ -9,7 +9,7 @@ import type { OrcamentoStatus } from './orcamento.repository.js'
 // -----------------------------------------------------------------------------
 // Repositório das versões imutáveis do orçamento (tabela orcamento_versoes).
 // Dono do SQL do envio: calcula a próxima versão sequencial, resolve o template
-// ativo do tenant, invalida o aceite anterior, insere a versão com token público
+// ativo do tenant, insere a versão com token público
 // único e marca o orçamento como `enviado` — tudo em uma transação atômica
 // (RF-008, RF-009). A geração de PDF (RF-016) é orquestrada pelo serviço e
 // executada DENTRO desta transação via o callback opcional `gerarPdfDaVersao`,
@@ -40,6 +40,13 @@ export interface CriarVersaoEnviarInput {
   // callback lançar, a transação do Kysely reverte tudo (versão + status), de
   // modo que nenhum estado parcial persiste (RF-016). Ausente → pdf nulo (como antes).
   gerarPdfDaVersao?: (dados: DadosGeracaoPdf) => Promise<{ pdfPath: string; pdfHash: string }>
+  // Controle otimista do que o serviço LEU antes da transação (snapshot e layout
+  // são montados fora dela). Conferidos sob o lock da linha: se o orçamento foi
+  // editado (`atualizado_em` mudou) ou o template ativo trocou nesse meio, o
+  // envio responde 409 em vez de gravar uma versão com dados desatualizados.
+  // Opcionais: ausentes, não há conferência.
+  atualizadoEmLido?: Date
+  templateIdLido?: string
 }
 
 export interface OrcamentoVersaoPublica {
@@ -239,20 +246,43 @@ export function criarOrcamentoVersaoRepository(deps: {
   return {
     async criarVersaoEnviar(input: CriarVersaoEnviarInput): Promise<OrcamentoVersaoPublica> {
       return db.transaction().execute(async (trx) => {
+        // Serializa o envio por orçamento: lock de linha e releitura do status
+        // depois do lock. Um envio concorrente espera e, ao obter o lock, vê o
+        // orçamento já `enviado` e responde 409 (RF-008).
+        const bloqueado = await trx
+          .selectFrom('orcamentos')
+          .select(['status', 'atualizado_em'])
+          .where('tenant_id', '=', input.tenantId)
+          .where('id', '=', input.orcamentoId)
+          .forUpdate()
+          .executeTakeFirst()
+        if (!bloqueado) {
+          throw new AppError(404, 'Orçamento não encontrado')
+        }
+        if (bloqueado.status !== 'rascunho') {
+          throw new AppError(409, 'Só é possível enviar orçamentos em rascunho')
+        }
+        // Precisão: o driver devolve milissegundos nas duas leituras, então a
+        // comparação é coerente; duas edições no mesmo ms não seriam detectadas.
+        if (
+          input.atualizadoEmLido !== undefined &&
+          new Date(bloqueado.atualizado_em).getTime() !== input.atualizadoEmLido.getTime()
+        ) {
+          throw new AppError(409, 'O orçamento foi alterado durante o envio; tente novamente')
+        }
+
         const versao = await proximaVersaoSequencial(trx, input.orcamentoId)
         const templateId = await templateAtivo(trx, input.tenantId)
+        if (input.templateIdLido !== undefined && templateId !== input.templateIdLido) {
+          throw new AppError(409, 'O template foi alterado durante o envio; tente novamente')
+        }
 
-        // Invalida o aceite anterior: remove aceites ligados a qualquer versão
-        // deste orçamento. No primeiro envio é no-op (ainda não há versões).
-        await trx
-          .deleteFrom('orcamento_aceites')
-          .where('versao_id', 'in', (eb) =>
-            eb
-              .selectFrom('orcamento_versoes')
-              .select('id')
-              .where('orcamento_id', '=', input.orcamentoId),
-          )
-          .execute()
+        // O aceite/reprovação de versões anteriores é HISTÓRICO e fica intacto
+        // (RF-008.3): num reenvio após reabertura (tarefa 68) o aceite antigo não
+        // é apagado. A "invalidação" (RF-008.5) vem da própria nova versão: ela
+        // vira a vigente e os links das anteriores deixam de aceitar decisão (ver
+        // `orcamento-aceite.repository`). Cada versão tem o seu aceite (UNIQUE
+        // por versão), então a nova decisão não colide com a antiga.
 
         // O token é vinculado ao id da versão; geramos o id no app antes do
         // insert para que token e id persistidos sejam coerentes (um único insert).
@@ -293,7 +323,13 @@ export function criarOrcamentoVersaoRepository(deps: {
 
         await trx
           .updateTable('orcamentos')
-          .set({ status: 'enviado', versao_atual: versao, atualizado_em: new Date() })
+          .set({
+            status: 'enviado',
+            versao_atual: versao,
+            // Reenvio de um rascunho reaberto: a origem da reabertura deixa de valer.
+            status_reaberto_de: null,
+            atualizado_em: new Date(),
+          })
           .where('tenant_id', '=', input.tenantId)
           .where('id', '=', input.orcamentoId)
           .execute()

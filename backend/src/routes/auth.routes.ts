@@ -26,7 +26,7 @@ export function criarAuthRouter(authService: AuthService): Router {
       res.cookie('session', result.sessaoId, {
         httpOnly: true,
         secure: env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        sameSite: 'strict',
         maxAge,
       })
 

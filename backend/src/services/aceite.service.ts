@@ -9,7 +9,8 @@ import type {
   VersaoPorToken,
   VersaoSnapshotPorToken,
 } from '../repositories/orcamento-versao.repository.js'
-import type { OrcamentoRepository } from '../repositories/orcamento.repository.js'
+import type { OrcamentoRepository, OrcamentoStatus } from '../repositories/orcamento.repository.js'
+import { estaExpirado } from '../lib/validade.js'
 import type { UsuarioRepository } from '../repositories/usuario.repository.js'
 import type { ClienteRepository } from '../repositories/cliente.repository.js'
 import type { AuditoriaService } from './auditoria.service.js'
@@ -77,6 +78,24 @@ export interface AceiteRegistrado {
   criadoEm: Date
 }
 
+// Contrato HTTP do aceite: o caminho de disco do comprovante é detalhe interno do
+// servidor e nunca sai nas respostas (a rota pública expõe `comprovanteUrl`).
+// Lista explícita de campos (allowlist), para que um campo novo no serviço não
+// vaze por acidente.
+export type AceiteResposta = Omit<AceiteRegistrado, 'comprovantePdfPath'>
+
+export function aceiteParaResposta(aceite: AceiteRegistrado): AceiteResposta {
+  return {
+    id: aceite.id,
+    versaoId: aceite.versaoId,
+    orcamentoId: aceite.orcamentoId,
+    metodo: aceite.metodo,
+    hashDocumento: aceite.hashDocumento,
+    comprovantePdfHash: aceite.comprovantePdfHash,
+    criadoEm: aceite.criadoEm,
+  }
+}
+
 // Visualização pública do orçamento (rota GET /publico/orcamento/:token): o
 // snapshot imutável, a flag de integridade (há pdf_hash emitido?) e a URL do PDF.
 export interface VisualizacaoPublica {
@@ -94,6 +113,12 @@ export interface AceiteService {
   aprovarViaCliente(input: AprovarViaClienteInput): Promise<AceiteRegistrado>
   reprovarViaCliente(input: ReprovarViaClienteInput): Promise<AceiteRegistrado>
   visualizarPorToken(token: string): Promise<VisualizacaoPublica>
+  // Bytes do PDF oficial da versão (rota pública /pdf). Mesmas regras de token da
+  // visualização (404 desconhecido/adulterado, 410 expirado); 404 sem PDF emitido.
+  obterPdfPorToken(token: string): Promise<Buffer>
+  // Bytes do comprovante de aceite (rota pública /comprovante). 404 enquanto o
+  // orçamento não estiver aprovado ou se o comprovante não existir.
+  obterComprovantePorToken(token: string): Promise<Buffer>
   aceiteManual(input: AceiteManualInput): Promise<AceiteRegistrado>
 }
 
@@ -299,6 +324,7 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
         userAgent: args.userAgent,
       })
       const comprovante = await pdfService.gerarPdf({
+        tenantId: versao.tenantId,
         html,
         numero: `${versao.numero}-aceite`,
         versao: versao.versao,
@@ -340,25 +366,48 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
   // Distingue "não encontrado" (token inexistente ou HMAC inválido → 404) de
   // "expirado" (expira_em no passado → 410), conforme decidido para as rotas
   // públicas (tarefa 42). Genérica para os três fluxos públicos.
-  function validarToken<T extends { versaoId: string; expiraEm: Date | null }>(
-    token: string,
-    versao: T | null,
-  ): T {
+  function validarToken<
+    T extends { versaoId: string; expiraEm: Date | null; statusOrcamento: OrcamentoStatus },
+  >(token: string, versao: T | null): T {
     if (!versao || !validarTokenPublico(token, versao.versaoId)) {
       throw new AppError(404, 'Orçamento não encontrado')
     }
-    if (versao.expiraEm !== null && versao.expiraEm.getTime() < relogio().getTime()) {
+    // Validade checada NO MOMENTO da decisão (sem depender do job). Só vale para
+    // orçamentos ainda em aberto: aprovado/reprovado preservam o link legível.
+    if (validadeEncerrada(versao)) {
       throw new AppError(410, 'Link de aprovação expirado')
     }
     return versao
   }
-
+  // Orçamento `expirado` (pelo job) ou `enviado` com a validade já atingida.
+  function validadeEncerrada(versao: {
+    expiraEm: Date | null
+    statusOrcamento: OrcamentoStatus
+  }): boolean {
+    if (versao.statusOrcamento === 'expirado') {
+      return true
+    }
+    return (
+      versao.statusOrcamento === 'enviado' &&
+      versao.expiraEm !== null &&
+      estaExpirado(versao.expiraEm, relogio())
+    )
+  }
   return {
     async aprovarViaCliente(input: AprovarViaClienteInput): Promise<AceiteRegistrado> {
-      const versao = validarToken(input.token, await orcamentoVersaoRepo.buscarPorToken(input.token))
+      const versao = validarToken(
+        input.token,
+        await orcamentoVersaoRepo.buscarPorToken(input.token),
+      )
       // Duplicado: orçamento já aprovado não aceita novo aceite (RF-019.6).
       if (versao.statusOrcamento === 'aprovado') {
         throw new AppError(409, 'Orçamento já aprovado')
+      }
+      if (versao.statusOrcamento === 'reprovado') {
+        throw new AppError(409, 'Orçamento já decidido')
+      }
+      if (versao.statusOrcamento === 'cancelado') {
+        throw new AppError(409, 'Orçamento cancelado')
       }
       // Integridade: sem hash do PDF emitido não há como registrar o aceite.
       if (versao.pdfHash === null) {
@@ -385,10 +434,16 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
     },
 
     async reprovarViaCliente(input: ReprovarViaClienteInput): Promise<AceiteRegistrado> {
-      const versao = validarToken(input.token, await orcamentoVersaoRepo.buscarPorToken(input.token))
+      const versao = validarToken(
+        input.token,
+        await orcamentoVersaoRepo.buscarPorToken(input.token),
+      )
       // Já decidido: orçamento aprovado/reprovado não aceita nova decisão.
       if (versao.statusOrcamento === 'aprovado' || versao.statusOrcamento === 'reprovado') {
         throw new AppError(409, 'Orçamento já decidido')
+      }
+      if (versao.statusOrcamento === 'cancelado') {
+        throw new AppError(409, 'Orçamento cancelado')
       }
       if (versao.pdfHash === null) {
         throw new AppError(409, 'Documento sem hash de integridade')
@@ -436,6 +491,37 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
       }
     },
 
+    async obterPdfPorToken(token: string): Promise<Buffer> {
+      const versao: VersaoSnapshotPorToken = validarToken(
+        token,
+        await orcamentoVersaoRepo.buscarSnapshotPorToken(token),
+      )
+      // Sem PDF emitido (ou removido pelo job de limpeza) não há o que servir. O
+      // caminho de disco nunca sai do servidor: a leitura usa número e versão.
+      if (versao.pdfPath === null) {
+        throw new AppError(404, 'PDF não encontrado')
+      }
+      return pdfService.buscarPdf({
+        tenantId: versao.tenantId,
+        numero: versao.numero,
+        versao: versao.versao,
+      })
+    },
+    async obterComprovantePorToken(token: string): Promise<Buffer> {
+      const versao: VersaoSnapshotPorToken = validarToken(
+        token,
+        await orcamentoVersaoRepo.buscarSnapshotPorToken(token),
+      )
+      if (versao.statusOrcamento !== 'aprovado') {
+        throw new AppError(404, 'Comprovante não encontrado')
+      }
+      // Mesmo nome usado na geração (`persistirDecisao`): `{numero}-aceite`.
+      return pdfService.buscarPdf({
+        tenantId: versao.tenantId,
+        numero: `${versao.numero}-aceite`,
+        versao: versao.versao,
+      })
+    },
     async aceiteManual(input: AceiteManualInput): Promise<AceiteRegistrado> {
       // Justificativa obrigatória (RF-020.1): rejeita vazia ou só espaços.
       if (input.justificativa.trim().length === 0) {
@@ -454,6 +540,16 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
       )
       if (!versao) {
         throw new AppError(409, 'Orçamento sem versão enviada')
+      }
+      if (orcamento.status === 'reprovado') {
+        throw new AppError(409, 'Orçamento já decidido')
+      }
+      if (orcamento.status === 'cancelado') {
+        throw new AppError(409, 'Orçamento cancelado')
+      }
+      // Expirado (pelo job) ou validade já atingida: não aceita decisão (410).
+      if (validadeEncerrada({ expiraEm: versao.expiraEm, statusOrcamento: orcamento.status })) {
+        throw new AppError(410, 'Orçamento expirado')
       }
       if (versao.pdfHash === null) {
         throw new AppError(409, 'Documento sem hash de integridade')

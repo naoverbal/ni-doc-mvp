@@ -9,6 +9,9 @@ import type {
   OrcamentoComItens,
   OrcamentoRepository,
 } from '../repositories/orcamento.repository.js'
+import type { ClienteRepository } from '../repositories/cliente.repository.js'
+import type { EmpresaRepository } from '../repositories/empresa.repository.js'
+import type { ResponsavelRepository } from '../repositories/responsavel.repository.js'
 import type { AuditoriaService } from './auditoria.service.js'
 
 export interface OrcamentoContexto {
@@ -43,16 +46,55 @@ export interface OrcamentoService {
     id: string,
     dados: AtualizarOrcamentoInput,
   ): Promise<OrcamentoComItens>
-  deletar(ctx: OrcamentoContexto, id: string): Promise<void>
+  // Exclui um rascunho. Se nunca foi enviado, remove de verdade e devolve `null`
+  // (rota responde 204). Se é um rascunho REABERTO, o histórico é preservado: o
+  // orçamento volta ao último status com o conteúdo da última versão enviada e é
+  // devolvido restaurado (rota responde 200).
+  deletar(ctx: OrcamentoContexto, id: string): Promise<OrcamentoComItens | null>
 }
 
 interface OrcamentoServiceDeps {
   orcamentoRepo: OrcamentoRepository
+  clienteRepo: ClienteRepository
+  empresaRepo: EmpresaRepository
+  responsavelRepo: ResponsavelRepository
   auditoriaService: AuditoriaService
 }
 
 export function criarOrcamentoService(deps: OrcamentoServiceDeps): OrcamentoService {
-  const { orcamentoRepo, auditoriaService } = deps
+  const { orcamentoRepo, clienteRepo, empresaRepo, responsavelRepo, auditoriaService } = deps
+
+  // As FKs do Postgres ignoram o RLS: um id de outro tenant satisfaz a FK. Por
+  // isso cada referência é lida pelos repositórios (filtrados por tenant e sob
+  // RLS) e, se não existir no tenant do usuário, a operação é recusada (409).
+  async function validarReferencias(
+    tenantId: string,
+    refs: {
+      clienteId?: string
+      empresaClienteId?: string
+      itens?: { responsavelId?: string }[]
+    },
+  ): Promise<void> {
+    if (refs.clienteId !== undefined) {
+      if (!(await clienteRepo.buscarPorId(tenantId, refs.clienteId))) {
+        throw new AppError(409, 'Cliente não encontrado')
+      }
+    }
+    if (refs.empresaClienteId !== undefined) {
+      if (!(await empresaRepo.buscarPorId(tenantId, refs.empresaClienteId))) {
+        throw new AppError(409, 'Empresa do cliente não encontrada')
+      }
+    }
+    const responsaveis = new Set<string>()
+    for (const item of refs.itens ?? []) {
+      if (item.responsavelId !== undefined) responsaveis.add(item.responsavelId)
+    }
+    for (const responsavelId of responsaveis) {
+      if (!(await responsavelRepo.buscarPorId(tenantId, responsavelId))) {
+        throw new AppError(409, 'Responsável técnico não encontrado')
+      }
+    }
+  }
 
   return {
     async criar(ctx: OrcamentoContexto, dados: CriarOrcamentoDados): Promise<OrcamentoComItens> {
@@ -67,6 +109,8 @@ export function criarOrcamentoService(deps: OrcamentoServiceDeps): OrcamentoServ
       if (dados.itens.length === 0) {
         throw new AppError(400, 'Orçamento deve ter ao menos um item')
       }
+
+      await validarReferencias(ctx.tenantId, dados)
 
       // O repositório é o dono do cálculo de totais (via orcamento-calculo).
       const orcamento = await orcamentoRepo.criar({
@@ -134,6 +178,8 @@ export function criarOrcamentoService(deps: OrcamentoServiceDeps): OrcamentoServ
         throw new AppError(409, 'Só é possível editar orçamentos em rascunho')
       }
 
+      await validarReferencias(ctx.tenantId, dados)
+
       const atualizado = await orcamentoRepo.atualizar(ctx.tenantId, id, dados)
       if (!atualizado) {
         throw new AppError(404, 'Orçamento não encontrado')
@@ -166,7 +212,7 @@ export function criarOrcamentoService(deps: OrcamentoServiceDeps): OrcamentoServ
       return atualizado
     },
 
-    async deletar(ctx: OrcamentoContexto, id: string): Promise<void> {
+    async deletar(ctx: OrcamentoContexto, id: string): Promise<OrcamentoComItens | null> {
       const existente = await orcamentoRepo.buscarPorId(ctx.tenantId, id)
       if (!existente) {
         throw new AppError(404, 'Orçamento não encontrado')
@@ -176,17 +222,39 @@ export function criarOrcamentoService(deps: OrcamentoServiceDeps): OrcamentoServ
         throw new AppError(409, 'Só é possível excluir orçamentos em rascunho')
       }
 
-      await orcamentoRepo.deletar(ctx.tenantId, id)
+      const resultado = await orcamentoRepo.deletar(ctx.tenantId, id)
 
+      if (resultado.resultado === 'removido') {
+        await auditoriaService.registrar({
+          tenantId: ctx.tenantId,
+          usuarioId: ctx.usuarioId,
+          acao: 'deletar',
+          entidade: 'orcamentos',
+          entidadeId: id,
+          ip: ctx.ip,
+          userAgent: ctx.userAgent,
+        })
+        return null
+      }
+
+      // Rascunho reaberto: nada foi apagado; o orçamento voltou ao status de origem.
       await auditoriaService.registrar({
         tenantId: ctx.tenantId,
         usuarioId: ctx.usuarioId,
-        acao: 'deletar',
+        acao: 'descartar_reabertura',
         entidade: 'orcamentos',
         entidadeId: id,
+        estadoAnterior: { status: 'rascunho' },
+        estadoNovo: { status: resultado.statusRestaurado, restauradoDaUltimaVersao: true },
         ip: ctx.ip,
         userAgent: ctx.userAgent,
       })
+
+      const restaurado = await orcamentoRepo.buscarPorId(ctx.tenantId, id)
+      if (!restaurado) {
+        throw new AppError(404, 'Orçamento não encontrado')
+      }
+      return restaurado
     },
   }
 }

@@ -10,6 +10,7 @@ import { env } from './config/env.js'
 
 const pinoHttp = pinoHttpModule.pinoHttp
 import { errorHandler } from './middlewares/error-handler.js'
+import { criarApiRateLimit } from './middlewares/rate-limit.js'
 import { criarAuthRouter } from './routes/auth.routes.js'
 import { criarClientesRouter } from './routes/clientes.routes.js'
 import { criarEmpresasRouter } from './routes/empresas.routes.js'
@@ -28,6 +29,9 @@ import { criarTemplateService } from './services/template.service.js'
 import { criarHtmlRendererService } from './services/html-renderer.service.js'
 import { criarPdfService } from './services/pdf.service.js'
 import { criarAceiteService } from './services/aceite.service.js'
+import { criarCancelamentoService } from './services/cancelamento.service.js'
+import { criarReaberturaService } from './services/reabertura.service.js'
+import { criarConfirmacaoSenha } from './services/confirmacao-senha.js'
 import { criarOrcamentoAceiteRepository } from './repositories/orcamento-aceite.repository.js'
 import { criarUsuarioRepository } from './repositories/usuario.repository.js'
 import { criarSessaoRepository } from './repositories/sessao.repository.js'
@@ -44,6 +48,10 @@ import { db, executarComTenant } from './config/database.js'
 
 export function criarApp(): express.Express {
   const app = express()
+
+  // IP real do cliente atrás do Nginx (rate limit por IP, evidência de aceite).
+  // Número de proxies confiáveis vem de TRUST_PROXY (0 = não confiar em nenhum).
+  app.set('trust proxy', env.TRUST_PROXY)
 
   app.use(helmet())
   app.use(
@@ -63,6 +71,13 @@ export function criarApp(): express.Express {
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', env: env.NODE_ENV })
   })
+
+  // Limite geral das rotas autenticadas (B-8), antes dos routers de domínio.
+  // /api/auth (limite de login próprio) e /api/publico (limite próprio) ficam fora.
+  app.use(
+    ['/api/clientes', '/api/empresas', '/api/responsaveis', '/api/orcamentos', '/api/templates'],
+    criarApiRateLimit(),
+  )
 
   // Auth routes
   const auditoriaRepo = criarAuditoriaRepository(db)
@@ -113,7 +128,13 @@ export function criarApp(): express.Express {
 
   // Orçamento routes
   const orcamentoRepo = criarOrcamentoRepository({ db })
-  const orcamentoService = criarOrcamentoService({ orcamentoRepo, auditoriaService })
+  const orcamentoService = criarOrcamentoService({
+    orcamentoRepo,
+    clienteRepo,
+    empresaRepo,
+    responsavelRepo,
+    auditoriaService,
+  })
   const orcamentoVersaoRepo = criarOrcamentoVersaoRepository({ db })
   const snapshotService = criarSnapshotService()
   const htmlRenderer = criarHtmlRendererService()
@@ -153,10 +174,36 @@ export function criarApp(): express.Express {
     escopoTenant: executarComTenant,
   })
 
+  // Confirmação de senha compartilhada pelas ações sensíveis (cancelar, reabrir).
+  const confirmacaoSenha = criarConfirmacaoSenha({ usuarioRepo, auditoriaService })
+
+  // Cancelamento de orçamento (confirmação de senha + justificativa).
+  const cancelamentoService = criarCancelamentoService({
+    orcamentoRepo,
+    usuarioRepo,
+    auditoriaService,
+    confirmacaoSenha,
+    email,
+  })
+
+  // Reabertura de orçamento (confirmação de senha + justificativa).
+  const reaberturaService = criarReaberturaService({
+    orcamentoRepo,
+    auditoriaService,
+    confirmacaoSenha,
+  })
+
   // Orçamento routes (dependem do aceiteService para o aceite manual).
   app.use(
     '/api/orcamentos',
-    criarOrcamentosRouter(orcamentoService, versionamentoService, aceiteService, authService),
+    criarOrcamentosRouter(
+      orcamentoService,
+      versionamentoService,
+      aceiteService,
+      authService,
+      cancelamentoService,
+      reaberturaService,
+    ),
   )
 
   // Rotas públicas (sem auth): visualização e aceite via token público.

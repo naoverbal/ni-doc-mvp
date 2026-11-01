@@ -15,6 +15,7 @@ import type { LayoutTemplate, TemplateRepository } from '../repositories/templat
 import type { Email } from '../lib/email.js'
 import { montarEmailOrcamentoEnviado } from '../lib/email-templates.js'
 import { gerarQrCodeDataUrl } from '../lib/qrcode.js'
+import { calcularExpiraEm, dataCivilDeColunaDate, estaExpirado } from '../lib/validade.js'
 
 // -----------------------------------------------------------------------------
 // Serviço de versionamento (RF-008, RF-009, RF-016). Transforma um orçamento
@@ -23,7 +24,7 @@ import { gerarQrCodeDataUrl } from '../lib/qrcode.js'
 // pdf.service) DENTRO da transação de persistência do repositório — se o PDF
 // falhar, o envio inteiro reverte (nenhuma versão/estado parcial persiste). A
 // persistência atômica (próxima versão sequencial, token público único,
-// invalidação do aceite anterior, status → `enviado`, pdf_path/pdf_hash) é
+// status → `enviado`, pdf_path/pdf_hash) é
 // delegada ao repositório; ao final registra auditoria.
 //
 // Imutabilidade (RF-016): o PDF não é regenerado em acessos posteriores — isso é
@@ -68,6 +69,8 @@ interface VersionamentoServiceDeps {
   // OPCIONAL: serviço de e-mail (RF-022). Ausente quando o SMTP não está
   // configurado — nesse caso o envio é simplesmente ignorado, sem erro.
   email?: Email
+  // Fonte de tempo injetável (default: relógio do sistema).
+  relogio?: () => Date
 }
 
 export function criarVersionamentoService(deps: VersionamentoServiceDeps): VersionamentoService {
@@ -83,6 +86,7 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
     htmlRenderer,
     templateRepo,
     email,
+    relogio = () => new Date(),
   } = deps
 
   return {
@@ -100,6 +104,19 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
         throw new AppError(400, 'Orçamento deve ter ao menos um item')
       }
 
+      // Validade (RF-009.5): `data_emissao + validade_dias`, vale o dia inteiro e
+      // expira às 00:00 do dia seguinte (America/Sao_Paulo). Validade já vencida
+      // não pode ser enviada (400) — nada é persistido.
+      const expiraEm = calcularExpiraEm(
+        dataCivilDeColunaDate(orcamento.dataEmissao),
+        orcamento.validadeDias,
+      )
+      if (estaExpirado(expiraEm, relogio())) {
+        throw new AppError(
+          400,
+          'A validade do orçamento já venceu; ajuste a validade antes de enviar',
+        )
+      }
       // Dados vivos exigidos pelo snapshot imutável.
       const cliente = await clienteRepo.buscarPorId(ctx.tenantId, orcamento.clienteId)
       if (!cliente) {
@@ -136,11 +153,9 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
 
       // Template ativo do tenant (respeita o isolamento por tenant). A coluna
       // template_id da versão é NOT NULL; sem template ativo o envio não segue.
-      // Nota (MVP): o layout vem desta leitura e o template_id persistido é
-      // relido dentro da transação do repositório (tenants_template_ativo). Com
-      // um único template ativo por tenant no MVP as duas fontes convergem; a
-      // janela de divergência (troca de template entre as leituras) é aceitável
-      // neste escopo e fica para uma futura unificação.
+      // O layout vem desta leitura e o template_id persistido é relido dentro da
+      // transação do repositório (tenants_template_ativo); se divergirem (troca
+      // concorrente do template), o repositório responde 409 (`templateIdLido`).
       const template = await templateRepo.buscarAtivo(ctx.tenantId)
       if (!template) {
         throw new AppError(409, 'Tenant não possui template ativo')
@@ -151,7 +166,11 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
         orcamentoId,
         numero: orcamento.numero,
         snapshot,
-        expiraEm: null,
+        expiraEm,
+        // Snapshot e layout foram montados com estas leituras; o repositório as
+        // confere sob o lock e responde 409 se mudaram (edição/troca concorrente).
+        atualizadoEmLido: orcamento.atualizadoEm,
+        templateIdLido: template.id,
         // Geração do PDF dentro da transação do repositório: renderiza o HTML
         // (com o QR Code da URL pública embutido) e delega ao pdfService. Uma
         // falha aqui propaga e a transação reverte o envio inteiro (RF-016).
@@ -182,7 +201,7 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
             // alternativa equivalente ao QR Code (acessibilidade — RF-018).
             urlPublica,
           })
-          const pdf = await pdfService.gerarPdf({ html, numero, versao })
+          const pdf = await pdfService.gerarPdf({ tenantId: ctx.tenantId, html, numero, versao })
           return { pdfPath: pdf.caminho, pdfHash: pdf.hash }
         },
       })

@@ -1,6 +1,17 @@
 import type { Kysely } from 'kysely'
 import type { Database } from '../types/database.js'
+import { AppError } from '../errors/app-error.js'
 import { criptografar, descriptografar, hashDocumento } from '../lib/crypto.js'
+
+// Índice único parcial (migration 013): rede de segurança contra dois
+// cadastros simultâneos do mesmo CNPJ (a checagem prévia do serviço não é atômica).
+const INDICE_CNPJ_DUPLICADO = 'uq_empresas_cnpj'
+
+function ehCnpjDuplicado(erro: unknown): boolean {
+  if (typeof erro !== 'object' || erro === null) return false
+  const { code, constraint } = erro as { code?: string; constraint?: string }
+  return code === '23505' && constraint === INDICE_CNPJ_DUPLICADO
+}
 
 export interface CriarEmpresaInput {
   tenantId: string
@@ -106,23 +117,30 @@ export function criarEmpresaRepository(db: Kysely<Database>): EmpresaRepository 
       const cnpjHash = input.cnpj !== undefined ? hashDocumento(input.cnpj) : null
       const cnpjEncrypted = input.cnpj !== undefined ? criptografar(input.cnpj) : null
 
-      const row = await db
-        .insertInto('empresas')
-        .values({
-          tenant_id: input.tenantId,
-          tipo: input.tipo,
-          razao_social: input.razaoSocial,
-          nome_fantasia: input.nomeFantasia ?? null,
-          cnpj_hash: cnpjHash,
-          cnpj_encrypted: cnpjEncrypted,
-          email_encrypted: input.email !== undefined ? criptografar(input.email) : null,
-          telefone_encrypted: input.telefone !== undefined ? criptografar(input.telefone) : null,
-          endereco_encrypted: input.endereco !== undefined ? criptografar(input.endereco) : null,
-        })
-        .returning(COLUNAS_PUBLICAS)
-        .executeTakeFirstOrThrow()
+      try {
+        const row = await db
+          .insertInto('empresas')
+          .values({
+            tenant_id: input.tenantId,
+            tipo: input.tipo,
+            razao_social: input.razaoSocial,
+            nome_fantasia: input.nomeFantasia ?? null,
+            cnpj_hash: cnpjHash,
+            cnpj_encrypted: cnpjEncrypted,
+            email_encrypted: input.email !== undefined ? criptografar(input.email) : null,
+            telefone_encrypted: input.telefone !== undefined ? criptografar(input.telefone) : null,
+            endereco_encrypted: input.endereco !== undefined ? criptografar(input.endereco) : null,
+          })
+          .returning(COLUNAS_PUBLICAS)
+          .executeTakeFirstOrThrow()
 
-      return mapRowToPublico(row as EmpresaRow)
+        return mapRowToPublico(row as EmpresaRow)
+      } catch (erro) {
+        if (ehCnpjDuplicado(erro)) {
+          throw new AppError(409, 'Já existe uma empresa com este CNPJ neste tenant')
+        }
+        throw erro
+      }
     },
 
     async buscarPorCnpjHash(tenantId: string, cnpjHash: string): Promise<EmpresaPublica | null> {

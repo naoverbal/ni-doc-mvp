@@ -173,3 +173,44 @@ export function montarEmailOrcamentoReprovado(dados: DadosEmailOrcamentoReprovad
 
   return { destinatario: dados.destinatario, assunto, texto, html }
 }
+
+/** Dados para o e-mail "orçamento cancelado" (ao operador responsável). */
+export interface DadosEmailOrcamentoCancelado {
+  /** E-mail do operador destinatário. */
+  destinatario: string
+  /** Nome do operador, usado na saudação. */
+  nomeOperador: string
+  /** Número do orçamento. */
+  numero: string
+  /** Nome de quem cancelou. */
+  nomeCancelador: string
+  /** Justificativa informada no cancelamento (obrigatória). */
+  justificativa: string
+}
+
+/**
+ * E-mail "orçamento cancelado" ao operador responsável. Notificação interna, sem
+ * link público. Nunca recebe nem exibe a senha de confirmação.
+ */
+export function montarEmailOrcamentoCancelado(dados: DadosEmailOrcamentoCancelado): MensagemEmail {
+  const assunto = `Orçamento ${dados.numero} cancelado`
+
+  const texto = [
+    `Olá, ${dados.nomeOperador}.`,
+    '',
+    `${dados.nomeCancelador} cancelou o orçamento ${dados.numero}.`,
+    '',
+    `Justificativa: ${dados.justificativa}`,
+  ].join('\n')
+
+  const html = documentoHtml(
+    assunto,
+    [
+      `<p>Olá, ${escaparHtml(dados.nomeOperador)}.</p>`,
+      `<p><strong>${escaparHtml(dados.nomeCancelador)}</strong> cancelou o orçamento <strong>${escaparHtml(dados.numero)}</strong>.</p>`,
+      `<p>Justificativa: ${escaparHtml(dados.justificativa)}</p>`,
+    ].join(''),
+  )
+
+  return { destinatario: dados.destinatario, assunto, texto, html }
+}

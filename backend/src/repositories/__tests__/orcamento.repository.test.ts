@@ -37,6 +37,7 @@ function makeSelectBuilder(result: unknown, many = false) {
     orderBy: vi.fn(),
     limit: vi.fn(),
     offset: vi.fn(),
+    forUpdate: vi.fn(),
     executeTakeFirst: vi.fn().mockResolvedValue(result),
     execute: vi.fn().mockResolvedValue(many ? result : [result]),
   }
@@ -45,6 +46,7 @@ function makeSelectBuilder(result: unknown, many = false) {
   builder.orderBy.mockReturnValue(builder)
   builder.limit.mockReturnValue(builder)
   builder.offset.mockReturnValue(builder)
+  builder.forUpdate.mockReturnValue(builder)
   return builder
 }
 
@@ -500,7 +502,9 @@ describe('OrcamentoRepository', () => {
     it('retorna null quando o orçamento não existe para o tenant', async () => {
       const updateOrcamento = makeUpdateBuilder(undefined)
       const deleteItens = makeDeleteBuilder()
-      const trx = makeTrx({ updateOrcamento, deleteItens })
+      // Releitura após o UPDATE sem linhas afetadas: o orçamento não existe.
+      const selectCondicoes = makeSelectBuilder(undefined)
+      const trx = makeTrx({ updateOrcamento, deleteItens, selectCondicoes })
       const db = makeDbComTransacao(trx)
 
       const repo = criarOrcamentoRepository({ db })
@@ -511,6 +515,24 @@ describe('OrcamentoRepository', () => {
       const result = await repo.atualizar('tenant-1', 'inexistente', dados)
 
       expect(result).toBeNull()
+    })
+
+    it('só grava rascunho e lança 409 quando o orçamento existe mas não é mais rascunho', async () => {
+      const updateOrcamento = makeUpdateBuilder(undefined)
+      const deleteItens = makeDeleteBuilder()
+      const selectCondicoes = makeSelectBuilder({ status: 'enviado' })
+      const trx = makeTrx({ updateOrcamento, deleteItens, selectCondicoes })
+      const db = makeDbComTransacao(trx)
+
+      const repo = criarOrcamentoRepository({ db })
+      await expect(
+        repo.atualizar('tenant-1', 'orc-1', {
+          titulo: 'Novo',
+          itens: [{ nome: 'A', quantidade: 1, valorUnitario: 10 }],
+        }),
+      ).rejects.toMatchObject({ statusCode: 409 })
+      expect(updateOrcamento.where).toHaveBeenCalledWith('status', '=', 'rascunho')
+      expect(trx.deleteFrom).not.toHaveBeenCalled()
     })
 
     it('ocorre em transação, substitui itens e atualiza campos do orçamento', async () => {
@@ -615,46 +637,92 @@ describe('OrcamentoRepository', () => {
   })
 
   describe('deletar()', () => {
-    it('deleta quando status é rascunho, filtrando por tenant+id', async () => {
-      const selectStatus = makeSelectBuilder({ status: 'rascunho' })
+    function dbParaDeletar(row: unknown) {
+      const selectStatus = makeSelectBuilder(row)
       const deleteBuilder = makeDeleteBuilder()
-      const db = {
+      const trx = {
         selectFrom: vi.fn().mockReturnValue(selectStatus),
         deleteFrom: vi.fn().mockReturnValue(deleteBuilder),
-      } as unknown as Kysely<Database>
-
+      }
+      return { db: makeDbComTransacao(trx), trx, deleteBuilder, selectStatus }
+    }
+    it('remove de verdade um rascunho nunca enviado, travando a linha e filtrando por tenant+id', async () => {
+      const { db, trx, deleteBuilder, selectStatus } = dbParaDeletar({
+        status: 'rascunho',
+        status_reaberto_de: null,
+      })
       const repo = criarOrcamentoRepository({ db })
-      await repo.deletar('tenant-1', 'orc-1')
-
-      expect(db.deleteFrom).toHaveBeenCalledWith('orcamentos')
+      const resultado = await repo.deletar('tenant-1', 'orc-1')
+      expect(resultado).toEqual({ resultado: 'removido' })
+      expect(selectStatus.forUpdate).toHaveBeenCalled()
+      expect(trx.deleteFrom).toHaveBeenCalledWith('orcamentos')
       expect(deleteBuilder.where).toHaveBeenCalledWith('tenant_id', '=', 'tenant-1')
       expect(deleteBuilder.where).toHaveBeenCalledWith('id', '=', 'orc-1')
     })
-
     it('lança AppError(409) quando o status não é rascunho', async () => {
-      const selectStatus = makeSelectBuilder({ status: 'enviado' })
-      const db = {
-        selectFrom: vi.fn().mockReturnValue(selectStatus),
-        deleteFrom: vi.fn(),
-      } as unknown as Kysely<Database>
-
+      const { db, trx } = dbParaDeletar({ status: 'enviado', status_reaberto_de: null })
       const repo = criarOrcamentoRepository({ db })
       await expect(repo.deletar('tenant-1', 'orc-1')).rejects.toBeInstanceOf(AppError)
       await expect(repo.deletar('tenant-1', 'orc-1')).rejects.toMatchObject({ statusCode: 409 })
-      expect(db.deleteFrom).not.toHaveBeenCalled()
+      expect(trx.deleteFrom).not.toHaveBeenCalled()
     })
-
     it('lança AppError(404) quando o orçamento não existe para o tenant', async () => {
-      const selectStatus = makeSelectBuilder(undefined)
-      const db = {
-        selectFrom: vi.fn().mockReturnValue(selectStatus),
-        deleteFrom: vi.fn(),
-      } as unknown as Kysely<Database>
-
+      const { db } = dbParaDeletar(undefined)
       const repo = criarOrcamentoRepository({ db })
       await expect(repo.deletar('tenant-1', 'inexistente')).rejects.toMatchObject({
         statusCode: 404,
       })
+    })
+    it('não apaga o orçamento reaberto sem versão para restaurar (409)', async () => {
+      const selectStatus = makeSelectBuilder(undefined)
+      selectStatus.executeTakeFirst
+        .mockResolvedValueOnce({ status: 'rascunho', status_reaberto_de: 'reprovado' })
+        .mockResolvedValueOnce(undefined)
+      const trx = {
+        selectFrom: vi.fn().mockReturnValue(selectStatus),
+        deleteFrom: vi.fn(),
+      }
+      const repo = criarOrcamentoRepository({ db: makeDbComTransacao(trx) })
+      await expect(repo.deletar('tenant-1', 'orc-1')).rejects.toMatchObject({ statusCode: 409 })
+      expect(trx.deleteFrom).not.toHaveBeenCalled()
+    })
+  })
+  describe('reabrir()', () => {
+    function dbParaReabrir(row: unknown) {
+      const selectStatus = makeSelectBuilder(row)
+      const updateBuilder = makeUpdateBuilder(undefined)
+      Object.assign(updateBuilder, { execute: vi.fn().mockResolvedValue([]) })
+      const trx = {
+        selectFrom: vi.fn().mockReturnValue(selectStatus),
+        updateTable: vi.fn().mockReturnValue(updateBuilder),
+      }
+      return { db: makeDbComTransacao(trx), trx, updateBuilder }
+    }
+    it.each(['reprovado', 'cancelado', 'expirado'] as const)(
+      'reabre um orçamento %s como rascunho e guarda o status de origem',
+      async (status) => {
+        const { db, updateBuilder } = dbParaReabrir({ status })
+        const repo = criarOrcamentoRepository({ db })
+        const resultado = await repo.reabrir('tenant-1', 'orc-1')
+        expect(resultado).toEqual({ statusAnterior: status })
+        expect(updateBuilder.set).toHaveBeenCalledWith(
+          expect.objectContaining({ status: 'rascunho', status_reaberto_de: status }),
+        )
+      },
+    )
+    it.each(['rascunho', 'enviado', 'aprovado'])(
+      'lança AppError(409) quando o status é %s',
+      async (status) => {
+        const { db, trx } = dbParaReabrir({ status })
+        const repo = criarOrcamentoRepository({ db })
+        await expect(repo.reabrir('tenant-1', 'orc-1')).rejects.toMatchObject({ statusCode: 409 })
+        expect(trx.updateTable).not.toHaveBeenCalled()
+      },
+    )
+    it('lança AppError(404) quando o orçamento não existe para o tenant', async () => {
+      const { db } = dbParaReabrir(undefined)
+      const repo = criarOrcamentoRepository({ db })
+      await expect(repo.reabrir('tenant-1', 'x')).rejects.toMatchObject({ statusCode: 404 })
     })
   })
 })

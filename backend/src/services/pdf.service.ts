@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import * as fsPromises from 'node:fs/promises'
 import { join } from 'node:path'
 import { renderizarPdf as renderizarPdfPadrao } from '../lib/pdf.js'
@@ -22,8 +22,11 @@ import { AppError } from '../errors/app-error.js'
 //    nem acesso ao `PDFS_DIR` real.
 //  - Assinaturas alinhadas ao `html-renderer.service.ts`: `gerarPdf` recebe o
 //    HTML já montado mais `numero`/`versao` (que não vivem no snapshot), de modo
-//    que a integração envio→PDF (Tarefa 40) seja natural. O nome do arquivo é
-//    estável e único: `{numero}-v{versao}.pdf` (RF-016.7).
+//    que a integração envio→PDF (Tarefa 40) seja natural. O arquivo é estável e
+//    único POR TENANT: `{tenantId}/{numero}-v{versao}.pdf` (RF-016.7). O tenant
+//    precisa estar no caminho: a numeração dos orçamentos é por tenant, então
+//    `ORC-2026-0001-v1.pdf` existe em vários tenants e, sem o diretório do tenant,
+//    o `gerarPdf` reaproveitaria o PDF de outro tenant (auditoria B-11).
 //  - Meta de performance < 2s (RF-016.2) é responsabilidade do Puppeteer com
 //    Chromium real, validada em integração/manual (Tarefa 40), não aqui.
 // -----------------------------------------------------------------------------
@@ -35,9 +38,15 @@ export interface PdfFileSystem {
   readFile(caminho: string): Promise<Buffer>
   access(caminho: string): Promise<void>
   mkdir(caminho: string, opts: { recursive: true }): Promise<string | undefined>
+  // Publicação atômica sem sobrescrever: falha com EEXIST se o destino existe.
+  link(origem: string, destino: string): Promise<void>
+  // Remove o arquivo; não falha se ele não existir.
+  rm(caminho: string): Promise<void>
 }
 
 export interface GerarPdfInput {
+  // Tenant dono do documento — define o diretório do arquivo (UUID).
+  tenantId: string
   // HTML já montado pelo `html-renderer.service.ts`.
   html: string
   // Número do orçamento (ex.: 'ORC-2026-0001') — compõe o nome do arquivo.
@@ -55,6 +64,7 @@ export interface GerarPdfResultado {
 }
 
 export interface BuscarPdfInput {
+  tenantId: string
   numero: string
   versao: number
 }
@@ -81,9 +91,19 @@ const fsPadrao: PdfFileSystem = {
   readFile: (caminho) => fsPromises.readFile(caminho),
   access: (caminho) => fsPromises.access(caminho),
   mkdir: (caminho, opts) => fsPromises.mkdir(caminho, opts),
+  link: (origem, destino) => fsPromises.link(origem, destino),
+  rm: (caminho) => fsPromises.rm(caminho, { force: true }),
+}
+
+function ehArquivoExistente(erro: unknown): boolean {
+  return (erro as { code?: unknown } | null)?.code === 'EEXIST'
 }
 
 // Nome de arquivo estável e único por orçamento+versão (RF-016.7).
+// O `tenantId` vira nome de diretório: só UUID é aceito, para que um valor
+// inesperado nunca altere o caminho (ex.: `..`, separadores).
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function nomeArquivo(numero: string, versao: number): string {
   return `${numero}-v${versao}.pdf`
 }
@@ -93,8 +113,15 @@ export function criarPdfService(deps: PdfServiceDeps): PdfService {
   const fs = deps.fs ?? fsPadrao
   const hash = deps.hash ?? sha256Hex
 
-  function resolverCaminho(numero: string, versao: number): string {
-    return join(deps.pdfsDir, nomeArquivo(numero, versao))
+  function diretorioDoTenant(tenantId: string): string {
+    if (!UUID.test(tenantId)) {
+      throw new Error('tenantId inválido para o caminho do PDF')
+    }
+    return join(deps.pdfsDir, tenantId)
+  }
+
+  function resolverCaminho(tenantId: string, numero: string, versao: number): string {
+    return join(diretorioDoTenant(tenantId), nomeArquivo(numero, versao))
   }
 
   // Resolve se o arquivo já existe sem lançar (true/false).
@@ -109,7 +136,7 @@ export function criarPdfService(deps: PdfServiceDeps): PdfService {
 
   return {
     async gerarPdf(input: GerarPdfInput): Promise<GerarPdfResultado> {
-      const caminho = resolverCaminho(input.numero, input.versao)
+      const caminho = resolverCaminho(input.tenantId, input.numero, input.versao)
 
       // Imutabilidade: se já existe, não regenera nem sobrescreve — reusa os
       // bytes já gravados e apenas recomputa o hash.
@@ -118,14 +145,33 @@ export function criarPdfService(deps: PdfServiceDeps): PdfService {
         return { buffer, caminho, hash: hash(buffer) }
       }
 
-      await fs.mkdir(deps.pdfsDir, { recursive: true })
+      await fs.mkdir(diretorioDoTenant(input.tenantId), { recursive: true })
       const buffer = await renderizar(input.html)
-      await fs.writeFile(caminho, buffer)
+
+      // Escrita atômica: grava num temporário do MESMO diretório e só então o
+      // publica no caminho final com `link`, que é atômico e falha (EEXIST) em
+      // vez de sobrescrever. Uma falha no meio da escrita nunca deixa um PDF
+      // parcial no caminho final (que seria reaproveitado como "já existente"),
+      // e uma geração concorrente do mesmo arquivo não substitui a que venceu.
+      const temporario = `${caminho}.${randomUUID()}.tmp`
+      try {
+        await fs.writeFile(temporario, buffer)
+        try {
+          await fs.link(temporario, caminho)
+        } catch (erro) {
+          if (!ehArquivoExistente(erro)) throw erro
+          // Outra geração publicou primeiro: o documento oficial é o dela.
+          const existente = await fs.readFile(caminho)
+          return { buffer: existente, caminho, hash: hash(existente) }
+        }
+      } finally {
+        await fs.rm(temporario).catch(() => undefined)
+      }
       return { buffer, caminho, hash: hash(buffer) }
     },
 
     async buscarPdf(input: BuscarPdfInput): Promise<Buffer> {
-      const caminho = resolverCaminho(input.numero, input.versao)
+      const caminho = resolverCaminho(input.tenantId, input.numero, input.versao)
       try {
         return await fs.readFile(caminho)
       } catch {

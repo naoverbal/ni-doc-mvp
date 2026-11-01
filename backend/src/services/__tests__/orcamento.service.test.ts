@@ -6,6 +6,9 @@ import type {
   OrcamentoRepository,
   OrcamentoStatus,
 } from '../../repositories/orcamento.repository.js'
+import type { ClienteRepository } from '../../repositories/cliente.repository.js'
+import type { EmpresaRepository } from '../../repositories/empresa.repository.js'
+import type { ResponsavelRepository } from '../../repositories/responsavel.repository.js'
 import type { AuditoriaService } from '../auditoria.service.js'
 
 function orcamentoMock(status: OrcamentoStatus = 'rascunho'): OrcamentoComItens {
@@ -73,13 +76,18 @@ const listaMock: ListaOrcamentos = {
 function makeDeps(overrides?: {
   orcamentoRepo?: Partial<OrcamentoRepository>
   auditoriaService?: Partial<AuditoriaService>
+  clienteRepo?: Partial<ClienteRepository>
+  empresaRepo?: Partial<EmpresaRepository>
+  responsavelRepo?: Partial<ResponsavelRepository>
 }) {
   const orcamentoRepo: OrcamentoRepository = {
     criar: vi.fn().mockResolvedValue(orcamentoMock()),
     buscarPorId: vi.fn().mockResolvedValue(orcamentoMock()),
     atualizar: vi.fn().mockResolvedValue(orcamentoMock()),
     listarPorTenant: vi.fn().mockResolvedValue(listaMock),
-    deletar: vi.fn().mockResolvedValue(undefined),
+    deletar: vi.fn().mockResolvedValue({ resultado: 'removido' }),
+    reabrir: vi.fn().mockResolvedValue({ statusAnterior: 'reprovado' }),
+    cancelar: vi.fn().mockResolvedValue({ statusAnterior: 'enviado' }),
     ...overrides?.orcamentoRepo,
   }
   const auditoriaService: AuditoriaService = {
@@ -87,7 +95,15 @@ function makeDeps(overrides?: {
     listar: vi.fn().mockResolvedValue([]),
     ...overrides?.auditoriaService,
   }
-  return { orcamentoRepo, auditoriaService }
+  // Por padrão toda referência "existe" no tenant; os testes de 409 sobrescrevem.
+  const existe = vi.fn().mockResolvedValue({ id: 'ref-1' })
+  const clienteRepo = { buscarPorId: existe, ...overrides?.clienteRepo } as ClienteRepository
+  const empresaRepo = { buscarPorId: existe, ...overrides?.empresaRepo } as EmpresaRepository
+  const responsavelRepo = {
+    buscarPorId: existe,
+    ...overrides?.responsavelRepo,
+  } as ResponsavelRepository
+  return { orcamentoRepo, auditoriaService, clienteRepo, empresaRepo, responsavelRepo }
 }
 
 const ctx = { tenantId: 'tenant-1', usuarioId: 'user-1' }
@@ -119,6 +135,36 @@ describe('OrcamentoService', () => {
           titulo: 'Projeto X',
         }),
       )
+    })
+
+    it('lança AppError(409) e não cria quando o cliente não existe no tenant', async () => {
+      const deps = makeDeps({ clienteRepo: { buscarPorId: vi.fn().mockResolvedValue(null) } })
+      const service = criarOrcamentoService(deps)
+
+      await expect(service.criar(ctx, dadosValidos)).rejects.toMatchObject({ statusCode: 409 })
+      expect(deps.clienteRepo.buscarPorId).toHaveBeenCalledWith('tenant-1', 'cliente-1')
+      expect(deps.orcamentoRepo.criar).not.toHaveBeenCalled()
+    })
+
+    it('lança AppError(409) quando a empresa-cliente não existe no tenant', async () => {
+      const deps = makeDeps({ empresaRepo: { buscarPorId: vi.fn().mockResolvedValue(null) } })
+      const service = criarOrcamentoService(deps)
+
+      await expect(
+        service.criar(ctx, { ...dadosValidos, empresaClienteId: 'empresa-1' }),
+      ).rejects.toMatchObject({ statusCode: 409 })
+      expect(deps.orcamentoRepo.criar).not.toHaveBeenCalled()
+    })
+
+    it('lança AppError(409) quando o responsável de um item não existe no tenant', async () => {
+      const deps = makeDeps({ responsavelRepo: { buscarPorId: vi.fn().mockResolvedValue(null) } })
+      const service = criarOrcamentoService(deps)
+      const itens = [{ nome: 'A', quantidade: 1, valorUnitario: 1, responsavelId: 'resp-1' }]
+
+      await expect(service.criar(ctx, { ...dadosValidos, itens })).rejects.toMatchObject({
+        statusCode: 409,
+      })
+      expect(deps.orcamentoRepo.criar).not.toHaveBeenCalled()
     })
 
     it('lança AppError(400) quando a lista de itens está vazia', async () => {
@@ -170,9 +216,7 @@ describe('OrcamentoService', () => {
       const deps = makeDeps()
       const service = criarOrcamentoService(deps)
 
-      const condicoesPagamento = [
-        { descricao: 'À vista', percentual: 100, formaPagamento: 'PIX' },
-      ]
+      const condicoesPagamento = [{ descricao: 'À vista', percentual: 100, formaPagamento: 'PIX' }]
       await service.criar(ctx, { ...dadosValidos, prazoEntregaDias: 5, condicoesPagamento })
 
       expect(deps.orcamentoRepo.criar).toHaveBeenCalledWith(
@@ -242,6 +286,20 @@ describe('OrcamentoService', () => {
   describe('atualizar()', () => {
     const itens = [{ nome: 'Serviço A', quantidade: 1, valorUnitario: 100 }]
 
+    it('lança AppError(409) e não atualiza quando o cliente é de outro tenant', async () => {
+      const deps = makeDeps({ clienteRepo: { buscarPorId: vi.fn().mockResolvedValue(null) } })
+      const service = criarOrcamentoService(deps)
+
+      await expect(
+        service.atualizar(ctx, 'orcamento-1', {
+          clienteId: 'cliente-outro',
+          titulo: 'Novo',
+          itens,
+        }),
+      ).rejects.toMatchObject({ statusCode: 409 })
+      expect(deps.orcamentoRepo.atualizar).not.toHaveBeenCalled()
+    })
+
     it('atualiza quando o status é rascunho e audita', async () => {
       const deps = makeDeps()
       const service = criarOrcamentoService(deps)
@@ -299,12 +357,39 @@ describe('OrcamentoService', () => {
   })
 
   describe('deletar()', () => {
+    it('devolve o orçamento restaurado e audita descartar_reabertura quando o rascunho era reaberto', async () => {
+      const restaurado = orcamentoMock('reprovado')
+      const deps = makeDeps({
+        orcamentoRepo: {
+          deletar: vi
+            .fn()
+            .mockResolvedValue({ resultado: 'restaurado', statusRestaurado: 'reprovado' }),
+          buscarPorId: vi
+            .fn()
+            .mockResolvedValueOnce(orcamentoMock('rascunho'))
+            .mockResolvedValueOnce(restaurado),
+        },
+      })
+      const service = criarOrcamentoService(deps)
+
+      const resultado = await service.deletar(ctx, 'orcamento-1')
+
+      expect(resultado).toBe(restaurado)
+      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
+        expect.objectContaining({
+          acao: 'descartar_reabertura',
+          estadoNovo: expect.objectContaining({ status: 'reprovado' }),
+        }),
+      )
+    })
+
     it('deleta quando o status é rascunho e audita', async () => {
       const deps = makeDeps()
       const service = criarOrcamentoService(deps)
 
-      await service.deletar(ctx, 'orcamento-1')
+      const resultado = await service.deletar(ctx, 'orcamento-1')
 
+      expect(resultado).toBeNull()
       expect(deps.orcamentoRepo.deletar).toHaveBeenCalledWith('tenant-1', 'orcamento-1')
       expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
         expect.objectContaining({ acao: 'deletar', entidade: 'orcamentos' }),

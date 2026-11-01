@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import express from 'express'
 import request from 'supertest'
 import cookieParser from 'cookie-parser'
 import { criarAuthRouter } from '../auth.routes.js'
 import { errorHandler } from '../../middlewares/error-handler.js'
 import { AppError } from '../../errors/app-error.js'
+import { _resetEnvCache } from '../../config/env.js'
 import type { AuthService } from '../../services/auth.service.js'
 import type { UsuarioPublico } from '../../repositories/usuario.repository.js'
 import type { SessaoAtiva } from '../../repositories/sessao.repository.js'
@@ -78,6 +79,40 @@ describe('POST /api/auth/login', () => {
     expect(res.headers['set-cookie']).toBeDefined()
     const cookieHeader = (res.headers['set-cookie'] as unknown as string[]).join(';')
     expect(cookieHeader).toContain('session=')
+  })
+
+  describe('atributos do cookie de sessão (auditoria B-10)', () => {
+    const NODE_ENV_ORIGINAL = process.env['NODE_ENV']
+
+    afterEach(() => {
+      process.env['NODE_ENV'] = NODE_ENV_ORIGINAL
+      _resetEnvCache()
+    })
+
+    async function cookieDeLogin(): Promise<string> {
+      const res = await request(makeApp(makeAuthService()))
+        .post('/api/auth/login')
+        .send({ email: 'ana@exemplo.com', senha: 'senha1234' })
+      const cookies = res.headers['set-cookie'] as unknown as string[]
+      return cookies.find((c) => c.startsWith('session=')) ?? ''
+    }
+
+    it('quando o login dá certo, então o cookie session é HttpOnly e SameSite=Strict', async () => {
+      const cookie = await cookieDeLogin()
+      expect(cookie).toMatch(/HttpOnly/i)
+      expect(cookie).toMatch(/SameSite=Strict/i)
+      expect(cookie).not.toMatch(/SameSite=Lax/i)
+    })
+
+    it('quando o login é feito em produção, então o cookie também leva Secure', async () => {
+      process.env['NODE_ENV'] = 'production'
+      _resetEnvCache()
+      expect(await cookieDeLogin()).toMatch(/;\s*Secure/i)
+    })
+
+    it('quando o login é feito fora de produção, então o cookie não leva Secure (HTTP local)', async () => {
+      expect(await cookieDeLogin()).not.toMatch(/;\s*Secure/i)
+    })
   })
 
   it('retorna 400 com payload malformado (sem senha)', async () => {

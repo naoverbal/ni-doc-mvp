@@ -9,6 +9,8 @@
     "format": "prettier --write src",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:integracao": "vitest run --config vitest.integration.config.ts",
+    "test:tudo": "npm run lint && tsc --noEmit && npm run test && npm run test:integracao",
     "migrate": "tsx src/db/migrate.ts",
     "seed": "tsx src/db/seed.ts"
   },

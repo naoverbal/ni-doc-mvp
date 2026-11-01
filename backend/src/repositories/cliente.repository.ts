@@ -1,6 +1,16 @@
 import type { Kysely } from 'kysely'
 import type { Database } from '../types/database.js'
+import { AppError } from '../errors/app-error.js'
 import { criptografar, descriptografar, hashDocumento } from '../lib/crypto.js'
+
+// UNIQUE (tenant_id, documento_hash) da migration 001: rede de segurança contra
+// dois cadastros simultâneos do mesmo documento (a checagem prévia do serviço
+// não é atômica).
+function ehDocumentoDuplicado(erro: unknown): boolean {
+  if (typeof erro !== 'object' || erro === null) return false
+  const { code, constraint } = erro as { code?: string; constraint?: string }
+  return code === '23505' && (constraint ?? '').includes('documento_hash')
+}
 
 export interface CriarClienteInput {
   tenantId: string
@@ -102,23 +112,30 @@ export function criarClienteRepository(db: Kysely<Database>): ClienteRepository 
       const documentoHash = hashDocumento(input.documento)
       const documentoEncrypted = criptografar(input.documento)
 
-      const row = await db
-        .insertInto('clientes')
-        .values({
-          tenant_id: input.tenantId,
-          tipo_pessoa: input.tipoPessoa,
-          nome: input.nome,
-          documento_hash: documentoHash,
-          documento_encrypted: documentoEncrypted,
-          email_encrypted: input.email !== undefined ? criptografar(input.email) : null,
-          telefone_encrypted: input.telefone !== undefined ? criptografar(input.telefone) : null,
-          endereco_encrypted: input.endereco !== undefined ? criptografar(input.endereco) : null,
-          observacoes: input.observacoes ?? null,
-        })
-        .returning(COLUNAS_PUBLICAS)
-        .executeTakeFirstOrThrow()
+      try {
+        const row = await db
+          .insertInto('clientes')
+          .values({
+            tenant_id: input.tenantId,
+            tipo_pessoa: input.tipoPessoa,
+            nome: input.nome,
+            documento_hash: documentoHash,
+            documento_encrypted: documentoEncrypted,
+            email_encrypted: input.email !== undefined ? criptografar(input.email) : null,
+            telefone_encrypted: input.telefone !== undefined ? criptografar(input.telefone) : null,
+            endereco_encrypted: input.endereco !== undefined ? criptografar(input.endereco) : null,
+            observacoes: input.observacoes ?? null,
+          })
+          .returning(COLUNAS_PUBLICAS)
+          .executeTakeFirstOrThrow()
 
-      return mapRowToPublico(row as ClienteRow)
+        return mapRowToPublico(row as ClienteRow)
+      } catch (erro) {
+        if (ehDocumentoDuplicado(erro)) {
+          throw new AppError(409, 'Já existe um cliente com este documento neste tenant')
+        }
+        throw erro
+      }
     },
 
     async buscarPorDocumentoHash(

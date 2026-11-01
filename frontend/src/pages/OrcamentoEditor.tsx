@@ -59,6 +59,7 @@ import {
 import { useBuscarClientes } from '@/hooks/useReferencias'
 import { Autocomplete, type OpcaoAutocomplete } from '@/components/Autocomplete'
 import { ItemOrcamentoRow, type ItemFormulario } from '@/components/ItemOrcamentoRow'
+import { AcaoOrcamento } from '@/components/AcaoOrcamento'
 import { ModalConfirmacao } from '@/components/ModalConfirmacao'
 import './OrcamentoEditor.css'
 
@@ -445,14 +446,16 @@ export function OrcamentoEditor(): ReactElement {
             </Badge>
           </div>
           <div className="orcamento-editor__acoes">
-            <Button
-              type="submit"
-              appearance="outline"
-              icon={<Save20Regular />}
-              disabled={salvando}
-            >
+            <Button type="submit" appearance="outline" icon={<Save20Regular />} disabled={salvando}>
               {salvando ? 'Salvando…' : 'Salvar rascunho'}
             </Button>
+            {orcamento && (
+              <AcaoOrcamento
+                id={orcamento.id}
+                numero={orcamento.numero}
+                status={orcamento.status}
+              />
+            )}
             {podeEnviar && (
               <Button
                 type="button"
@@ -496,9 +499,7 @@ export function OrcamentoEditor(): ReactElement {
                 aria-label={
                   dadosExpandido ? 'Recolher dados do orçamento' : 'Expandir dados do orçamento'
                 }
-                icon={
-                  <ChevronUp20Regular className={dadosExpandido ? '' : 'chevron--recolhido'} />
-                }
+                icon={<ChevronUp20Regular className={dadosExpandido ? '' : 'chevron--recolhido'} />}
                 onClick={() => setDadosExpandido((atual) => !atual)}
               />
             </div>
@@ -806,7 +807,9 @@ export function OrcamentoEditor(): ReactElement {
                       min={0}
                       step="any"
                       size="small"
-                      value={Number.isFinite(descontoGlobalValor) ? String(descontoGlobalValor) : ''}
+                      value={
+                        Number.isFinite(descontoGlobalValor) ? String(descontoGlobalValor) : ''
+                      }
                       onChange={(_, dados) => setDescontoGlobalValor(paraNumero(dados.value))}
                     />
                   </div>
@@ -859,8 +862,8 @@ export function OrcamentoEditor(): ReactElement {
               </Text>
               <Body1>
                 <a href={urlPublica(ultimaVersao.tokenPublico)}>
-                  Abrir orçamento{' '}
-                  {ultimaVersao.versao > 0 ? `(versão ${ultimaVersao.versao})` : ''} para aceite
+                  Abrir orçamento {ultimaVersao.versao > 0 ? `(versão ${ultimaVersao.versao})` : ''}{' '}
+                  para aceite
                 </a>
               </Body1>
               <div>
@@ -895,12 +898,7 @@ export function OrcamentoEditor(): ReactElement {
             <Button type="button" onClick={voltar}>
               Cancelar
             </Button>
-            <Button
-              type="submit"
-              appearance="outline"
-              icon={<Save20Regular />}
-              disabled={salvando}
-            >
+            <Button type="submit" appearance="outline" icon={<Save20Regular />} disabled={salvando}>
               {salvando ? 'Salvando…' : 'Salvar rascunho'}
             </Button>
             {podeEnviar && (

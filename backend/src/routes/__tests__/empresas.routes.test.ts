@@ -39,7 +39,7 @@ const sessaoMock: SessaoAtiva = {
 }
 
 const empresaPublicaMock: EmpresaPublica = {
-  id: 'empresa-1',
+  id: '00000000-0000-4000-8000-000000000003',
   tenantId: 'tenant-1',
   tipo: 'cliente_pj',
   razaoSocial: 'Acme Ltda',
@@ -98,7 +98,7 @@ describe('GET /api/empresas', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toHaveLength(1)
-    expect(res.body[0].id).toBe('empresa-1')
+    expect(res.body[0].id).toBe('00000000-0000-4000-8000-000000000003')
     expect(empresaService.buscar).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
       'acme',
@@ -180,7 +180,7 @@ describe('POST /api/empresas', () => {
     })
 
     expect(res.status).toBe(201)
-    expect(res.body.id).toBe('empresa-1')
+    expect(res.body.id).toBe('00000000-0000-4000-8000-000000000003')
     expect(empresaService.criar).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
       {
@@ -287,15 +287,15 @@ describe('PUT /api/empresas/:id', () => {
     const app = makeApp(empresaService, authService)
 
     const res = await request(app)
-      .put('/api/empresas/empresa-1')
+      .put('/api/empresas/00000000-0000-4000-8000-000000000003')
       .set('Cookie', 'session=sessao-id-1')
       .send({ razaoSocial: 'Acme Atualizada' })
 
     expect(res.status).toBe(200)
-    expect(res.body.id).toBe('empresa-1')
+    expect(res.body.id).toBe('00000000-0000-4000-8000-000000000003')
     expect(empresaService.atualizar).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
-      'empresa-1',
+      '00000000-0000-4000-8000-000000000003',
       { razaoSocial: 'Acme Atualizada' },
     )
   })
@@ -308,7 +308,7 @@ describe('PUT /api/empresas/:id', () => {
     const app = makeApp(empresaService, authService)
 
     const res = await request(app)
-      .put('/api/empresas/inexistente')
+      .put('/api/empresas/00000000-0000-4000-8000-0000000000ff')
       .set('Cookie', 'session=sessao-id-1')
       .send({ razaoSocial: 'Acme' })
 
@@ -320,7 +320,9 @@ describe('PUT /api/empresas/:id', () => {
     const authService = makeAuthService()
     const app = makeApp(empresaService, authService)
 
-    const res = await request(app).put('/api/empresas/empresa-1').send({ razaoSocial: 'Acme' })
+    const res = await request(app)
+      .put('/api/empresas/00000000-0000-4000-8000-000000000003')
+      .send({ razaoSocial: 'Acme' })
 
     expect(res.status).toBe(401)
   })
@@ -337,14 +339,14 @@ describe('GET /api/empresas/:id', () => {
     const app = makeApp(empresaService, authService)
 
     const res = await request(app)
-      .get('/api/empresas/empresa-1')
+      .get('/api/empresas/00000000-0000-4000-8000-000000000003')
       .set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(200)
-    expect(res.body.id).toBe('empresa-1')
+    expect(res.body.id).toBe('00000000-0000-4000-8000-000000000003')
     expect(empresaService.buscarPorId).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
-      'empresa-1',
+      '00000000-0000-4000-8000-000000000003',
     )
   })
 
@@ -356,7 +358,7 @@ describe('GET /api/empresas/:id', () => {
     const app = makeApp(empresaService, authService)
 
     const res = await request(app)
-      .get('/api/empresas/inexistente')
+      .get('/api/empresas/00000000-0000-4000-8000-0000000000ff')
       .set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(404)
@@ -367,7 +369,7 @@ describe('GET /api/empresas/:id', () => {
     const authService = makeAuthService()
     const app = makeApp(empresaService, authService)
 
-    const res = await request(app).get('/api/empresas/empresa-1')
+    const res = await request(app).get('/api/empresas/00000000-0000-4000-8000-000000000003')
 
     expect(res.status).toBe(401)
   })

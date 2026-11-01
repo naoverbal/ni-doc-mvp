@@ -71,6 +71,20 @@ function makeUpdateBuilder() {
   return builder
 }
 
+function makeLockBuilder(statusLock: string | null | undefined) {
+  const status = statusLock === undefined ? 'rascunho' : statusLock
+  const builder = {
+    select: vi.fn(),
+    where: vi.fn(),
+    forUpdate: vi.fn(),
+    executeTakeFirst: vi.fn().mockResolvedValue(status === null ? undefined : { status }),
+  }
+  builder.select.mockReturnValue(builder)
+  builder.where.mockReturnValue(builder)
+  builder.forUpdate.mockReturnValue(builder)
+  return builder
+}
+
 function makeDeleteBuilder() {
   const builder = {
     where: vi.fn(),
@@ -115,6 +129,8 @@ function makeTrx(options: {
   deleteAceites: ReturnType<typeof makeDeleteBuilder>
   maxVersao?: number | null
   templateId?: string | null
+  // Status relido após o lock; `null` = orçamento inexistente. Padrão: rascunho.
+  statusLock?: string | null
 }) {
   const sqlExecutado: string[] = []
 
@@ -147,6 +163,8 @@ function makeTrx(options: {
     insertInto: vi.fn().mockReturnValue(options.insertVersao),
     updateTable: vi.fn().mockReturnValue(options.updateOrcamento),
     deleteFrom: vi.fn().mockReturnValue(options.deleteAceites),
+    // Lock de linha do orçamento (SELECT ... FOR UPDATE) antes de versionar.
+    selectFrom: vi.fn().mockReturnValue(makeLockBuilder(options.statusLock)),
   }
   return trx
 }
@@ -185,6 +203,23 @@ describe('OrcamentoVersaoRepository', () => {
       expect.objectContaining({ status: 'enviado', versao_atual: 1 }),
     )
     expect(versao.versao).toBe(1)
+  })
+
+  it('trava o orçamento e responde 409 sem versionar se o status relido não é rascunho', async () => {
+    const insertVersao = makeInsertBuilder(versaoRowBase())
+    const updateOrcamento = makeUpdateBuilder()
+    const deleteAceites = makeDeleteBuilder()
+    const trx = makeTrx({
+      insertVersao,
+      updateOrcamento,
+      deleteAceites,
+      statusLock: 'enviado',
+    })
+    const repo = criarOrcamentoVersaoRepository({ db: makeDbComTransacao(trx) })
+
+    await expect(repo.criarVersaoEnviar(inputBase)).rejects.toMatchObject({ statusCode: 409 })
+    expect(trx.selectFrom).toHaveBeenCalledWith('orcamentos')
+    expect(insertVersao.values).not.toHaveBeenCalled()
   })
 
   it('cria a versão N+1 em envios subsequentes (MAX 3 => versao 4)', async () => {
@@ -261,18 +296,20 @@ describe('OrcamentoVersaoRepository', () => {
     expect(insertVersao.values).not.toHaveBeenCalled()
   })
 
-  it('invalida o aceite anterior removendo aceites das versões do orçamento', async () => {
+  it('preserva os aceites das versões anteriores e limpa a origem da reabertura ao enviar', async () => {
     const insertVersao = makeInsertBuilder(versaoRowBase())
     const updateOrcamento = makeUpdateBuilder()
     const deleteAceites = makeDeleteBuilder()
     const trx = makeTrx({ insertVersao, updateOrcamento, deleteAceites, maxVersao: 1 })
     const db = makeDbComTransacao(trx)
-
     const repo = criarOrcamentoVersaoRepository({ db })
+
     await repo.criarVersaoEnviar(inputBase)
 
-    expect(trx.deleteFrom).toHaveBeenCalledWith('orcamento_aceites')
-    expect(deleteAceites.where).toHaveBeenCalled()
+    expect(trx.deleteFrom).not.toHaveBeenCalled()
+    expect(updateOrcamento.set).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'enviado', versao_atual: 2, status_reaberto_de: null }),
+    )
   })
 
   it('insere pdf_path e pdf_hash nulos quando não há callback de geração de PDF', async () => {
@@ -377,6 +414,68 @@ describe('OrcamentoVersaoRepository', () => {
     expect(versao.templateId).toBe('template-7')
     expect(versao.pdfPath).toBeNull()
     expect(versao.pdfHash).toBeNull()
+  })
+
+  describe('controle otimista do que o serviço leu', () => {
+    const atualizadoEmNoBanco = new Date('2026-01-10T12:00:00.123Z')
+
+    function trxComLock(templateId = 'template-1') {
+      const insertVersao = makeInsertBuilder(versaoRowBase())
+      const trx = makeTrx({
+        insertVersao,
+        updateOrcamento: makeUpdateBuilder(),
+        deleteAceites: makeDeleteBuilder(),
+        templateId,
+      })
+      const lock = makeLockBuilder('rascunho')
+      lock.executeTakeFirst.mockResolvedValue({
+        status: 'rascunho',
+        atualizado_em: atualizadoEmNoBanco,
+      })
+      trx.selectFrom.mockReturnValue(lock)
+      return { trx, insertVersao }
+    }
+
+    it('versiona quando atualizado_em e template ativo batem com o que foi lido', async () => {
+      const { trx, insertVersao } = trxComLock()
+      const repo = criarOrcamentoVersaoRepository({ db: makeDbComTransacao(trx) })
+
+      await repo.criarVersaoEnviar({
+        ...inputBase,
+        atualizadoEmLido: new Date(atualizadoEmNoBanco),
+        templateIdLido: 'template-1',
+      })
+
+      expect(insertVersao.values).toHaveBeenCalled()
+    })
+
+    it('responde 409 sem versionar quando o orçamento foi editado depois da leitura', async () => {
+      const { trx, insertVersao } = trxComLock()
+      const gerarPdfDaVersao = vi.fn()
+      const repo = criarOrcamentoVersaoRepository({ db: makeDbComTransacao(trx) })
+
+      await expect(
+        repo.criarVersaoEnviar({
+          ...inputBase,
+          atualizadoEmLido: new Date('2026-01-10T11:59:59.000Z'),
+          gerarPdfDaVersao,
+        }),
+      ).rejects.toMatchObject({ statusCode: 409 })
+      expect(gerarPdfDaVersao).not.toHaveBeenCalled()
+      expect(insertVersao.values).not.toHaveBeenCalled()
+    })
+
+    it('responde 409 sem versionar quando o template ativo mudou depois da leitura', async () => {
+      const { trx, insertVersao } = trxComLock('template-2')
+      const gerarPdfDaVersao = vi.fn()
+      const repo = criarOrcamentoVersaoRepository({ db: makeDbComTransacao(trx) })
+
+      await expect(
+        repo.criarVersaoEnviar({ ...inputBase, templateIdLido: 'template-1', gerarPdfDaVersao }),
+      ).rejects.toMatchObject({ statusCode: 409 })
+      expect(gerarPdfDaVersao).not.toHaveBeenCalled()
+      expect(insertVersao.values).not.toHaveBeenCalled()
+    })
   })
 
   // `buscarPorToken`/`buscarSnapshotPorToken` usam `sql`...`.execute(db)` sobre a

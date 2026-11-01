@@ -94,3 +94,31 @@ export function useEnviarOrcamento(id: string) {
     },
   })
 }
+
+// Corpo das ações que reconfirmam a senha (cancelar/reabrir).
+export interface ConfirmacaoAcaoPayload {
+  senha: string
+  justificativa: string
+}
+// Cancela um orçamento enviado/aprovado (POST /orcamentos/:id/cancelar). 403 =
+// senha incorreta. Em sucesso, invalida lista e detalhe.
+export function useCancelarOrcamento(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation<import('@/types/api').OrcamentoComItens, ApiError, ConfirmacaoAcaoPayload>({
+    mutationFn: (payload) => api.post(`/orcamentos/${id}/cancelar`, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CHAVE_ORCAMENTOS })
+    },
+  })
+}
+// Reabre um orçamento reprovado/cancelado/expirado como rascunho
+// (POST /orcamentos/:id/reabrir). Em sucesso, invalida lista e detalhe.
+export function useReabrirOrcamento(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation<import('@/types/api').OrcamentoComItens, ApiError, ConfirmacaoAcaoPayload>({
+    mutationFn: (payload) => api.post(`/orcamentos/${id}/reabrir`, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CHAVE_ORCAMENTOS })
+    },
+  })
+}

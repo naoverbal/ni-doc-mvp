@@ -79,6 +79,8 @@ function makeTrx(options: {
   insertAceite: ReturnType<typeof makeInsertBuilder>
   updateOrcamento: ReturnType<typeof makeUpdateBuilder>
   statusOrcamento?: string
+  // A versão é a vigente do orçamento (default: sim).
+  vigente?: boolean
 }) {
   const sqlExecutado: string[] = []
 
@@ -93,7 +95,9 @@ function makeTrx(options: {
       sqlExecutado.push(compiled.sql)
       if (sqlExecutado.length === 1) return Promise.resolve({ rows: [{}] })
       if (options.statusOrcamento === undefined) return Promise.resolve({ rows: [] })
-      return Promise.resolve({ rows: [{ status: options.statusOrcamento }] })
+      return Promise.resolve({
+        rows: [{ status: options.statusOrcamento, vigente: options.vigente ?? true }],
+      })
     },
     withPlugins: () => executor,
   }
@@ -207,6 +211,29 @@ describe('OrcamentoAceiteRepository', () => {
       expect(insertAceite.values).not.toHaveBeenCalled()
     })
 
+    it('lança AppError(409) quando o orçamento não está enviado (ex.: rascunho reaberto)', async () => {
+      const insertAceite = makeInsertBuilder(aceiteRowBase())
+      const updateOrcamento = makeUpdateBuilder()
+      const trx = makeTrx({ insertAceite, updateOrcamento, statusOrcamento: 'rascunho' })
+      const db = makeDbComTransacao(trx)
+      const repo = criarOrcamentoAceiteRepository({ db })
+      await expect(repo.aprovarAceite(inputBase)).rejects.toMatchObject({ statusCode: 409 })
+      expect(insertAceite.values).not.toHaveBeenCalled()
+    })
+    it('lança AppError(409) quando a versão foi substituída por uma mais recente', async () => {
+      const insertAceite = makeInsertBuilder(aceiteRowBase())
+      const updateOrcamento = makeUpdateBuilder()
+      const trx = makeTrx({
+        insertAceite,
+        updateOrcamento,
+        statusOrcamento: 'enviado',
+        vigente: false,
+      })
+      const db = makeDbComTransacao(trx)
+      const repo = criarOrcamentoAceiteRepository({ db })
+      await expect(repo.reprovarAceite(inputBase)).rejects.toMatchObject({ statusCode: 409 })
+      expect(insertAceite.values).not.toHaveBeenCalled()
+    })
     it('lança AppError(409) quando a versão/orçamento não existe', async () => {
       const insertAceite = makeInsertBuilder(aceiteRowBase())
       const updateOrcamento = makeUpdateBuilder()
@@ -335,7 +362,9 @@ describe('OrcamentoAceiteRepository', () => {
 
   describe('buscarPorVersao()', () => {
     it('retorna o aceite mapeado quando existe', async () => {
-      const selectBuilder = makeSelectBuilder(aceiteRowBase({ metodo: 'operador', usuario_id: 'op-1' }))
+      const selectBuilder = makeSelectBuilder(
+        aceiteRowBase({ metodo: 'operador', usuario_id: 'op-1' }),
+      )
       const db = {
         selectFrom: vi.fn().mockReturnValue(selectBuilder),
       } as unknown as Kysely<Database>

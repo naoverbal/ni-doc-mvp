@@ -39,7 +39,7 @@ const sessaoMock: SessaoAtiva = {
 }
 
 const responsavelPublicoMock: ResponsavelPublico = {
-  id: 'responsavel-1',
+  id: '00000000-0000-4000-8000-000000000004',
   tenantId: 'tenant-1',
   nome: 'Ana Engenheira',
   registroProfissional: 'CREA-123456',
@@ -95,7 +95,7 @@ describe('GET /api/responsaveis', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toHaveLength(1)
-    expect(res.body[0].id).toBe('responsavel-1')
+    expect(res.body[0].id).toBe('00000000-0000-4000-8000-000000000004')
     expect(responsavelService.buscar).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
       'ana',
@@ -145,7 +145,7 @@ describe('POST /api/responsaveis', () => {
       })
 
     expect(res.status).toBe(201)
-    expect(res.body.id).toBe('responsavel-1')
+    expect(res.body.id).toBe('00000000-0000-4000-8000-000000000004')
     expect(responsavelService.criar).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
       {
@@ -205,15 +205,15 @@ describe('PUT /api/responsaveis/:id', () => {
     const app = makeApp(responsavelService, authService)
 
     const res = await request(app)
-      .put('/api/responsaveis/responsavel-1')
+      .put('/api/responsaveis/00000000-0000-4000-8000-000000000004')
       .set('Cookie', 'session=sessao-id-1')
       .send({ nome: 'Ana Atualizada' })
 
     expect(res.status).toBe(200)
-    expect(res.body.id).toBe('responsavel-1')
+    expect(res.body.id).toBe('00000000-0000-4000-8000-000000000004')
     expect(responsavelService.atualizar).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
-      'responsavel-1',
+      '00000000-0000-4000-8000-000000000004',
       { nome: 'Ana Atualizada' },
     )
   })
@@ -226,7 +226,7 @@ describe('PUT /api/responsaveis/:id', () => {
     const app = makeApp(responsavelService, authService)
 
     const res = await request(app)
-      .put('/api/responsaveis/inexistente')
+      .put('/api/responsaveis/00000000-0000-4000-8000-0000000000ff')
       .set('Cookie', 'session=sessao-id-1')
       .send({ nome: 'Ana' })
 
@@ -238,7 +238,9 @@ describe('PUT /api/responsaveis/:id', () => {
     const authService = makeAuthService()
     const app = makeApp(responsavelService, authService)
 
-    const res = await request(app).put('/api/responsaveis/responsavel-1').send({ nome: 'Ana' })
+    const res = await request(app)
+      .put('/api/responsaveis/00000000-0000-4000-8000-000000000004')
+      .send({ nome: 'Ana' })
 
     expect(res.status).toBe(401)
   })
@@ -255,14 +257,14 @@ describe('GET /api/responsaveis/:id', () => {
     const app = makeApp(responsavelService, authService)
 
     const res = await request(app)
-      .get('/api/responsaveis/responsavel-1')
+      .get('/api/responsaveis/00000000-0000-4000-8000-000000000004')
       .set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(200)
-    expect(res.body.id).toBe('responsavel-1')
+    expect(res.body.id).toBe('00000000-0000-4000-8000-000000000004')
     expect(responsavelService.buscarPorId).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', usuarioId: 'user-1' }),
-      'responsavel-1',
+      '00000000-0000-4000-8000-000000000004',
     )
   })
 
@@ -274,7 +276,7 @@ describe('GET /api/responsaveis/:id', () => {
     const app = makeApp(responsavelService, authService)
 
     const res = await request(app)
-      .get('/api/responsaveis/inexistente')
+      .get('/api/responsaveis/00000000-0000-4000-8000-0000000000ff')
       .set('Cookie', 'session=sessao-id-1')
 
     expect(res.status).toBe(404)
@@ -285,7 +287,7 @@ describe('GET /api/responsaveis/:id', () => {
     const authService = makeAuthService()
     const app = makeApp(responsavelService, authService)
 
-    const res = await request(app).get('/api/responsaveis/responsavel-1')
+    const res = await request(app).get('/api/responsaveis/00000000-0000-4000-8000-000000000004')
 
     expect(res.status).toBe(401)
   })

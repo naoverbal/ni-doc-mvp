@@ -16,6 +16,7 @@ import {
 import { validate } from '../middlewares/validate.js'
 import { criarMiddlewareAuth } from '../middlewares/auth.js'
 import { setTenant } from '../middlewares/tenant.js'
+import { validarIdParam } from '../middlewares/validar-id.js'
 
 export function criarResponsaveisRouter(
   responsavelService: ResponsavelService,
@@ -27,6 +28,8 @@ export function criarResponsaveisRouter(
   // Todas as rotas de responsável técnico exigem autenticação e isolamento (RLS).
   router.use(autenticar)
   router.use(setTenant())
+  // Rotas /:id só aceitam UUID (400 em vez de erro cru do Postgres).
+  router.param('id', validarIdParam)
 
   function construirContexto(req: Request): ResponsavelContexto {
     return {

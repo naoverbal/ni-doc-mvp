@@ -374,8 +374,10 @@ export interface AceiteRegistradoPublico {
   orcamentoId: string
   metodo: 'cliente' | 'operador'
   hashDocumento: string
-  comprovantePdfPath: string | null
   comprovantePdfHash: string | null
+  // URL pública (relativa) para baixar o comprovante; null quando não há
+  // comprovante (reprovação).
+  comprovanteUrl: string | null
   criadoEm: string
 }
 

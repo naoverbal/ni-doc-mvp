@@ -30,6 +30,9 @@ export interface UsuarioRepository {
   criar(input: CriarUsuarioInput): Promise<UsuarioPublico>
   buscarPorEmail(email: string): Promise<UsuarioComSenha | null>
   buscarPorId(id: string): Promise<UsuarioPublico | null>
+  // Hash da senha do usuário, para reconfirmar a senha em ações sensíveis (sem
+  // criar sessão). Lido sob RLS, filtrando por tenant. Null se não existir.
+  buscarSenhaHashPorId(tenantId: string, id: string): Promise<string | null>
 }
 
 function mapRowToPublico(row: {
@@ -121,6 +124,17 @@ export function criarUsuarioRepository(db: Kysely<Database>): UsuarioRepository 
       if (!row) return null
 
       return mapRowToPublico(row)
+    },
+
+    async buscarSenhaHashPorId(tenantId: string, id: string): Promise<string | null> {
+      const row = await db
+        .selectFrom('usuarios')
+        .select('senha_hash')
+        .where('tenant_id', '=', tenantId)
+        .where('id', '=', id)
+        .executeTakeFirst()
+
+      return row?.senha_hash ?? null
     },
   }
 }

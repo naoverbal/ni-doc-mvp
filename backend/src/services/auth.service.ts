@@ -44,12 +44,7 @@ interface AuthServiceDeps {
 const OITO_HORAS_MS = 8 * 60 * 60 * 1000
 
 export function criarAuthService(deps: AuthServiceDeps): AuthService {
-  const {
-    usuarioRepo,
-    sessaoRepo,
-    auditoriaService,
-    escopoTenant = (_tenantId, fn) => fn(),
-  } = deps
+  const { usuarioRepo, sessaoRepo, auditoriaService, escopoTenant = (_tenantId, fn) => fn() } = deps
 
   return {
     async login(input: LoginInput): Promise<LoginResult> {
@@ -59,12 +54,10 @@ export function criarAuthService(deps: AuthServiceDeps): AuthService {
         throw new AppError(401, 'Credenciais inválidas')
       }
 
-      if (!usuario.ativo) {
-        throw new AppError(403, 'Usuário inativo')
-      }
-
+      // Usuário inativo recebe a mesma resposta de credencial inválida (não revela
+      // o estado da conta). A senha é verificada antes para manter o mesmo custo.
       const senhaValida = await verificarSenha(input.senha, usuario.senhaHash)
-      if (!senhaValida) {
+      if (!senhaValida || !usuario.ativo) {
         throw new AppError(401, 'Credenciais inválidas')
       }
 

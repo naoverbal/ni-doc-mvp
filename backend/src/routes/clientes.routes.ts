@@ -16,6 +16,7 @@ import {
 import { validate } from '../middlewares/validate.js'
 import { criarMiddlewareAuth } from '../middlewares/auth.js'
 import { setTenant } from '../middlewares/tenant.js'
+import { validarIdParam } from '../middlewares/validar-id.js'
 
 export function criarClientesRouter(
   clienteService: ClienteService,
@@ -28,6 +29,8 @@ export function criarClientesRouter(
   // O `setTenant` vem logo após `autenticar` pois depende de `req.usuario`.
   router.use(autenticar)
   router.use(setTenant())
+  // Rotas /:id só aceitam UUID (400 em vez de erro cru do Postgres).
+  router.param('id', validarIdParam)
 
   function construirContexto(req: Request): ClienteContexto {
     return {

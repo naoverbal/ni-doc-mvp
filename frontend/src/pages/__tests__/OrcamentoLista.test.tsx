@@ -195,4 +195,31 @@ describe('OrcamentoLista', () => {
     const rowheaders = within(tabela).getAllByRole('rowheader')
     expect(rowheaders.length).toBe(2)
   })
+  it('exibe expirado e cancelado com rótulo textual e as ações por status', async () => {
+    const base = LISTA_EXEMPLO.itens[0]!
+    vi.mocked(api.get).mockResolvedValueOnce({
+      ...LISTA_EXEMPLO,
+      itens: [
+        { ...base, id: 'a', numero: 'ORC-A', status: 'expirado' },
+        { ...base, id: 'b', numero: 'ORC-B', status: 'cancelado' },
+        { ...base, id: 'c', numero: 'ORC-C', status: 'enviado' },
+      ],
+    } satisfies ListaOrcamentos)
+    render(renderLista())
+    const tabela = await screen.findByRole('table')
+    expect(within(tabela).getByText('Expirado')).toBeInTheDocument()
+    expect(within(tabela).getByText('Cancelado')).toBeInTheDocument()
+    expect(
+      within(tabela).getByRole('button', { name: 'Reabrir orçamento ORC-A' }),
+    ).toBeInTheDocument()
+    expect(
+      within(tabela).getByRole('button', { name: 'Reabrir orçamento ORC-B' }),
+    ).toBeInTheDocument()
+    expect(
+      within(tabela).getByRole('button', { name: 'Cancelar orçamento ORC-C' }),
+    ).toBeInTheDocument()
+    expect(
+      within(tabela).queryByRole('button', { name: 'Cancelar orçamento ORC-A' }),
+    ).not.toBeInTheDocument()
+  })
 })
