@@ -38,10 +38,12 @@ const JUSTIFICATIVA = 'Cliente pediu nova proposta'
 type StatusOrigem = 'reprovado' | 'cancelado' | 'expirado'
 
 const publico = {
-  aprovar: (token: string) =>
-    request(novoApp()).post(`/api/publico/orcamento/${token}/aprovar`).set('User-Agent', UA),
-  reprovar: (token: string) =>
-    request(novoApp())
+  aprovar: async (token: string) =>
+    request(await novoApp())
+      .post(`/api/publico/orcamento/${token}/aprovar`)
+      .set('User-Agent', UA),
+  reprovar: async (token: string) =>
+    request(await novoApp())
       .post(`/api/publico/orcamento/${token}/reprovar`)
       .set('User-Agent', UA)
       .send({}),
@@ -540,7 +542,7 @@ describe('POST /api/orcamentos/:id/reabrir — estados e acesso', () => {
     const c = await criarCenario()
     const { orcamento } = await levarAte(c, 'reprovado')
 
-    const resposta = await request(novoApp())
+    const resposta = await request(await novoApp())
       .post(`/api/orcamentos/${orcamento.id}/reabrir`)
       .send({ senha: SENHA_PADRAO, justificativa: JUSTIFICATIVA })
 

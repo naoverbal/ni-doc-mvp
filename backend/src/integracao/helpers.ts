@@ -1,5 +1,5 @@
 import { randomInt, randomUUID } from 'node:crypto'
-import type { Express } from 'express'
+import { createServer, type Server } from 'node:http'
 import pg from 'pg'
 import request from 'supertest'
 import { expect } from 'vitest'
@@ -120,7 +120,14 @@ export async function limparDados(): Promise<void> {
 
 export { removerTenants } from './limpeza.js'
 
+const servidoresAbertos: Server[] = []
+
 export async function encerrarConexoes(): Promise<void> {
+  await Promise.all(
+    servidoresAbertos
+      .splice(0)
+      .map((servidor) => new Promise<void>((resolve) => servidor.close(() => resolve()))),
+  )
   await adminPool.end().catch(() => undefined)
 }
 
@@ -128,14 +135,32 @@ export async function encerrarConexoes(): Promise<void> {
  * App novo a cada chamada: cada instância tem seus próprios rate limiters
  * (store em memória), então testes não consomem a cota uns dos outros. As sessões
  * ficam no banco, então o cookie vale entre instâncias.
+ *
+ * Devolve o servidor JÁ escutando em `127.0.0.1` (porta sorteada). Passar o app
+ * Express cru ao supertest faz ele chamar `listen(0)`, que escuta em `::`; no
+ * macOS isso é aceito mesmo quando outro processo local (ex.: a IDE) ocupa
+ * `127.0.0.1` na mesma porta, e a conexão do supertest (sempre em `127.0.0.1`)
+ * cai nesse outro processo: respostas 404/426 intermitentes. Escutando
+ * explicitamente em IPv4, o sistema só sorteia uma porta livre em IPv4.
+ *
+ * É assíncrono porque o bind com host explícito só conclui no evento
+ * `listening`; o supertest precisa do endereço já definido ao receber o servidor.
  */
-export function novoApp(): Express {
-  return criarApp()
+export async function novoApp(): Promise<Server> {
+  const servidor = createServer(criarApp())
+  await new Promise<void>((resolve, reject) => {
+    servidor.once('error', reject)
+    servidor.listen(0, '127.0.0.1', () => resolve())
+  })
+  // Não segura o processo de teste no fim, mesmo se `encerrarConexoes` não rodar.
+  servidor.unref()
+  servidoresAbertos.push(servidor)
+  return servidor
 }
 
 /** Login real pela rota; devolve o cookie de sessão pronto para `.set('Cookie', ...)`. */
 export async function entrar(usuario: UsuarioCriado): Promise<string[]> {
-  const resposta = await request(novoApp())
+  const resposta = await request(await novoApp())
     .post('/api/auth/login')
     .send({ email: usuario.email, senha: usuario.senha })
   expect(resposta.status).toBe(200)
@@ -169,7 +194,7 @@ export interface Cenario {
   cliente: { id: string; nome: string }
   cookieOperador: string[]
   cookieAdmin: string[]
-  app: Express
+  app: Server
 }
 
 /** Tenant completo: admin, operador, cliente, template ativo e sessões abertas. */
@@ -180,7 +205,7 @@ export async function criarCenario(): Promise<Cenario> {
   const cliente = await criarCliente(tenant.id)
   const cookieOperador = await entrar(operador)
   const cookieAdmin = await entrar(admin)
-  return { tenant, admin, operador, cliente, cookieOperador, cookieAdmin, app: novoApp() }
+  return { tenant, admin, operador, cliente, cookieOperador, cookieAdmin, app: await novoApp() }
 }
 
 export interface OrcamentoCriado {

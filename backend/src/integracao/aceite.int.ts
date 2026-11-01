@@ -40,11 +40,13 @@ const UA = 'Agente-de-Teste/1.0'
 
 // App novo por chamada: o rate limit das rotas públicas é por instância.
 const publico = {
-  ver: (token: string) => request(novoApp()).get(`/api/publico/orcamento/${token}`),
-  aprovar: (token: string) =>
-    request(novoApp()).post(`/api/publico/orcamento/${token}/aprovar`).set('User-Agent', UA),
-  reprovar: (token: string, corpo: Record<string, unknown> = {}) =>
-    request(novoApp())
+  ver: async (token: string) => request(await novoApp()).get(`/api/publico/orcamento/${token}`),
+  aprovar: async (token: string) =>
+    request(await novoApp())
+      .post(`/api/publico/orcamento/${token}/aprovar`)
+      .set('User-Agent', UA),
+  reprovar: async (token: string, corpo: Record<string, unknown> = {}) =>
+    request(await novoApp())
       .post(`/api/publico/orcamento/${token}/reprovar`)
       .set('User-Agent', UA)
       .send(corpo),

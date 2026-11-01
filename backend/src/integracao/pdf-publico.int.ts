@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import request from 'supertest'
+import request, { type Test } from 'supertest'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { PDFS_DIR_TESTE } from './config-banco.js'
 import {
@@ -23,11 +23,16 @@ afterAll(async () => {
 })
 
 // App novo por chamada: o rate limit das rotas públicas é por instância.
-const pdf = (token: string) => request(novoApp()).get(`/api/publico/orcamento/${token}/pdf`)
-const comprovante = (token: string) =>
-  request(novoApp()).get(`/api/publico/orcamento/${token}/comprovante`)
-const aprovar = (token: string) =>
-  request(novoApp()).post(`/api/publico/orcamento/${token}/aprovar`)
+// `ajustar` permite configurar a requisição antes de enviá-la (ex.: ler o corpo
+// binário com `responseType('blob')`), já que o atalho devolve uma Promise.
+type Ajuste = (requisicao: Test) => Test
+const semAjuste: Ajuste = (requisicao) => requisicao
+const pdf = async (token: string, ajustar: Ajuste = semAjuste) =>
+  ajustar(request(await novoApp()).get(`/api/publico/orcamento/${token}/pdf`))
+const comprovante = async (token: string, ajustar: Ajuste = semAjuste) =>
+  ajustar(request(await novoApp()).get(`/api/publico/orcamento/${token}/comprovante`))
+const aprovar = async (token: string) =>
+  request(await novoApp()).post(`/api/publico/orcamento/${token}/aprovar`)
 
 async function bytesNoDisco(
   tenantId: string,
@@ -56,7 +61,7 @@ describe('PDF público (GET /api/publico/orcamento/:token/pdf)', () => {
   })
 
   it('quando o token é válido e a versão tem PDF, então responde 200 com application/pdf, os bytes do documento e Cache-Control private, no-store', async () => {
-    const resposta = await pdf(token).responseType('blob')
+    const resposta = await pdf(token, (t) => t.responseType('blob'))
     expect(resposta.status).toBe(200)
     expect(resposta.headers['content-type']).toMatch(/^application\/pdf/)
     expect(resposta.headers['cache-control']).toBe('private, no-store')
@@ -108,8 +113,8 @@ describe('PDF público (GET /api/publico/orcamento/:token/pdf)', () => {
     })
     expect(enviadoA.orcamento.numero).toBe(enviadoB.orcamento.numero)
 
-    const respA = await pdf(enviadoA.versao.tokenPublico).responseType('blob')
-    const respB = await pdf(enviadoB.versao.tokenPublico).responseType('blob')
+    const respA = await pdf(enviadoA.versao.tokenPublico, (t) => t.responseType('blob'))
+    const respB = await pdf(enviadoB.versao.tokenPublico, (t) => t.responseType('blob'))
 
     expect(respA.status).toBe(200)
     expect(respB.status).toBe(200)
@@ -117,7 +122,7 @@ describe('PDF público (GET /api/publico/orcamento/:token/pdf)', () => {
   })
 
   it('quando a rota recebe mais de 60 acessos em 15 minutos do mesmo IP, então responde 429', async () => {
-    const app = novoApp()
+    const app = await novoApp()
     let ultimo = 0
     for (let i = 0; i < 61; i++) {
       ultimo = (await request(app).get(`/api/publico/orcamento/${tokenDesconhecido()}/pdf`)).status
@@ -132,7 +137,7 @@ describe('comprovante público (GET /api/publico/orcamento/:token/comprovante)',
     const { orcamento, versao } = await criarEnviado(c)
     expect((await aprovar(versao.tokenPublico)).status).toBe(201)
 
-    const resposta = await comprovante(versao.tokenPublico).responseType('blob')
+    const resposta = await comprovante(versao.tokenPublico, (t) => t.responseType('blob'))
 
     expect(resposta.status).toBe(200)
     expect(resposta.headers['content-type']).toMatch(/^application\/pdf/)
@@ -174,7 +179,7 @@ describe('comprovante público (GET /api/publico/orcamento/:token/comprovante)',
   it('quando o cliente reprova, então comprovanteUrl é nulo', async () => {
     const c = await criarCenario()
     const { versao } = await criarEnviado(c)
-    const resposta = await request(novoApp())
+    const resposta = await request(await novoApp())
       .post(`/api/publico/orcamento/${versao.tokenPublico}/reprovar`)
       .send({})
     expect(resposta.status).toBe(201)

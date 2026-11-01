@@ -600,7 +600,7 @@ describe('enviar orçamento (POST /api/orcamentos/:id/enviar)', () => {
     const operador = await criarUsuario(tenant.id, 'operador')
     const cliente = await criarCliente(tenant.id)
     const cookie = await entrar(operador)
-    const app = novoApp()
+    const app = await novoApp()
     const criado = await request(app)
       .post('/api/orcamentos')
       .set('Cookie', cookie)

@@ -31,10 +31,12 @@ afterAll(async () => {
 const UA = 'Agente-de-Teste/1.0'
 
 const publico = {
-  aprovar: (token: string) =>
-    request(novoApp()).post(`/api/publico/orcamento/${token}/aprovar`).set('User-Agent', UA),
-  reprovar: (token: string) =>
-    request(novoApp())
+  aprovar: async (token: string) =>
+    request(await novoApp())
+      .post(`/api/publico/orcamento/${token}/aprovar`)
+      .set('User-Agent', UA),
+  reprovar: async (token: string) =>
+    request(await novoApp())
       .post(`/api/publico/orcamento/${token}/reprovar`)
       .set('User-Agent', UA)
       .send({}),

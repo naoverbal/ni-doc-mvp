@@ -33,7 +33,7 @@ function cookieDaSessao(cookies: string[]): string {
 
 describe('POST /api/auth/login', () => {
   it('quando recebe email e senha corretos, então responde 200, devolve o usuário e grava o cookie de sessão httpOnly', async () => {
-    const resposta = await request(novoApp())
+    const resposta = await request(await novoApp())
       .post('/api/auth/login')
       .send({ email: operador.email, senha: operador.senha })
 
@@ -65,7 +65,7 @@ describe('POST /api/auth/login', () => {
   })
 
   it('quando a senha está errada, então responde 401 e não grava cookie', async () => {
-    const resposta = await request(novoApp())
+    const resposta = await request(await novoApp())
       .post('/api/auth/login')
       .send({ email: operador.email, senha: 'senha-errada-qualquer' })
 
@@ -74,7 +74,7 @@ describe('POST /api/auth/login', () => {
   })
 
   it('quando o email não existe, então responde 401 com a mesma mensagem de senha errada', async () => {
-    const app = novoApp()
+    const app = await novoApp()
     const senhaErrada = await request(app)
       .post('/api/auth/login')
       .send({ email: operador.email, senha: 'senha-errada-qualquer' })
@@ -91,7 +91,7 @@ describe('POST /api/auth/login', () => {
     const tenant = await criarTenant()
     const inativo = await criarUsuario(tenant.id, 'operador', { ativo: false })
 
-    const resposta = await request(novoApp())
+    const resposta = await request(await novoApp())
       .post('/api/auth/login')
       .send({ email: inativo.email, senha: inativo.senha })
 
@@ -104,7 +104,7 @@ describe('POST /api/auth/login', () => {
   })
 
   it('quando falta email ou senha no corpo, então responde 400 e não cria sessão', async () => {
-    const app = novoApp()
+    const app = await novoApp()
     const semSenha = await request(app).post('/api/auth/login').send({ email: operador.email })
     const semEmail = await request(app).post('/api/auth/login').send({ senha: operador.senha })
 
@@ -114,7 +114,7 @@ describe('POST /api/auth/login', () => {
   })
 
   it('quando excede o limite de tentativas na janela, então responde 429', async () => {
-    const app = novoApp()
+    const app = await novoApp()
     const tentativas = []
     for (let i = 0; i < 5; i += 1) {
       tentativas.push(
@@ -134,10 +134,10 @@ describe('POST /api/auth/login', () => {
 
   it('quando dois logins do mesmo usuário chegam ao mesmo tempo, então ambos entram, com sessões distintas', async () => {
     const [a, b] = await Promise.all([
-      request(novoApp())
+      request(await novoApp())
         .post('/api/auth/login')
         .send({ email: operador.email, senha: operador.senha }),
-      request(novoApp())
+      request(await novoApp())
         .post('/api/auth/login')
         .send({ email: operador.email, senha: operador.senha }),
     ])
@@ -154,7 +154,9 @@ describe('sessão (GET /api/auth/me e POST /api/auth/logout)', () => {
   it('quando acessa /me com cookie de sessão válido, então responde 200 com o usuário', async () => {
     const cookie = await entrar(operador)
 
-    const resposta = await request(novoApp()).get('/api/auth/me').set('Cookie', cookie)
+    const resposta = await request(await novoApp())
+      .get('/api/auth/me')
+      .set('Cookie', cookie)
 
     expect(resposta.status).toBe(200)
     expect(resposta.body.usuario.id).toBe(operador.id)
@@ -162,13 +164,13 @@ describe('sessão (GET /api/auth/me e POST /api/auth/logout)', () => {
   })
 
   it('quando acessa /me sem cookie, então responde 401', async () => {
-    const resposta = await request(novoApp()).get('/api/auth/me')
+    const resposta = await request(await novoApp()).get('/api/auth/me')
 
     expect(resposta.status).toBe(401)
   })
 
   it('quando acessa /me com um id de sessão que não existe, então responde 401', async () => {
-    const resposta = await request(novoApp())
+    const resposta = await request(await novoApp())
       .get('/api/auth/me')
       .set('Cookie', 'session=00000000-0000-4000-8000-000000000000')
 
@@ -183,7 +185,9 @@ describe('sessão (GET /api/auth/me e POST /api/auth/logout)', () => {
       [idSessao],
     )
 
-    const resposta = await request(novoApp()).get('/api/auth/me').set('Cookie', cookie)
+    const resposta = await request(await novoApp())
+      .get('/api/auth/me')
+      .set('Cookie', cookie)
 
     expect(resposta.status).toBe(401)
     const limpou = (resposta.headers['set-cookie'] as unknown as string[] | undefined) ?? []
@@ -194,18 +198,22 @@ describe('sessão (GET /api/auth/me e POST /api/auth/logout)', () => {
     const cookie = await entrar(operador)
     const idSessao = cookieDaSessao(cookie).split(';')[0]?.replace('session=', '')
 
-    const logout = await request(novoApp()).post('/api/auth/logout').set('Cookie', cookie)
+    const logout = await request(await novoApp())
+      .post('/api/auth/logout')
+      .set('Cookie', cookie)
     expect(logout.status).toBe(200)
 
     const { rows } = await adminPool.query('SELECT 1 FROM sessoes WHERE id = $1', [idSessao])
     expect(rows).toHaveLength(0)
-    const me = await request(novoApp()).get('/api/auth/me').set('Cookie', cookie)
+    const me = await request(await novoApp())
+      .get('/api/auth/me')
+      .set('Cookie', cookie)
     expect(me.status).toBe(401)
   })
 
   it('quando faz logout duas vezes seguidas, então a segunda também responde 200', async () => {
     const cookie = await entrar(operador)
-    const app = novoApp()
+    const app = await novoApp()
 
     const primeiro = await request(app).post('/api/auth/logout').set('Cookie', cookie)
     const segundo = await request(app).post('/api/auth/logout').set('Cookie', cookie)
@@ -218,8 +226,12 @@ describe('sessão (GET /api/auth/me e POST /api/auth/logout)', () => {
     const cookie = await entrar(operador)
 
     const [a, b] = await Promise.all([
-      request(novoApp()).post('/api/auth/logout').set('Cookie', cookie),
-      request(novoApp()).post('/api/auth/logout').set('Cookie', cookie),
+      request(await novoApp())
+        .post('/api/auth/logout')
+        .set('Cookie', cookie),
+      request(await novoApp())
+        .post('/api/auth/logout')
+        .set('Cookie', cookie),
     ])
 
     expect(a.status).toBe(200)

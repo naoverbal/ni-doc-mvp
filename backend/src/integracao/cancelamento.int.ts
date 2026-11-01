@@ -31,10 +31,12 @@ const UA = 'Agente-de-Teste/1.0'
 const JUSTIFICATIVA = 'Cliente desistiu da contratação'
 
 const publico = {
-  aprovar: (token: string) =>
-    request(novoApp()).post(`/api/publico/orcamento/${token}/aprovar`).set('User-Agent', UA),
-  reprovar: (token: string) =>
-    request(novoApp())
+  aprovar: async (token: string) =>
+    request(await novoApp())
+      .post(`/api/publico/orcamento/${token}/aprovar`)
+      .set('User-Agent', UA),
+  reprovar: async (token: string) =>
+    request(await novoApp())
       .post(`/api/publico/orcamento/${token}/reprovar`)
       .set('User-Agent', UA)
       .send({}),
@@ -298,7 +300,7 @@ describe('POST /api/orcamentos/:id/cancelar — acesso', () => {
     const c = await criarCenario()
     const { orcamento } = await criarEnviado(c)
 
-    const resposta = await request(novoApp())
+    const resposta = await request(await novoApp())
       .post(`/api/orcamentos/${orcamento.id}/cancelar`)
       .send({ senha: SENHA_PADRAO, justificativa: JUSTIFICATIVA })
 
