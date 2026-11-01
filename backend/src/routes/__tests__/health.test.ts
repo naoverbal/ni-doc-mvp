@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import request from 'supertest'
 import express from 'express'
 import { criarApp } from '../../app.js'
 import { AppError } from '../../errors/app-error.js'
 import { errorHandler } from '../../middlewares/error-handler.js'
+import { _resetEnvCache } from '../../config/env.js'
 
 describe('GET /health', () => {
   it('retorna 200 com status ok', async () => {
@@ -17,6 +18,45 @@ describe('GET /health', () => {
     const app = criarApp()
     const res = await request(app).get('/health')
     expect(res.body).toHaveProperty('env')
+  })
+})
+
+describe('trust proxy (auditoria B-6)', () => {
+  afterEach(() => {
+    delete process.env['TRUST_PROXY']
+    _resetEnvCache()
+  })
+
+  it('não confia em nenhum proxy por padrão', () => {
+    _resetEnvCache()
+    expect(criarApp().get('trust proxy')).toBe(0)
+  })
+
+  it('usa o número de proxies configurado em TRUST_PROXY', () => {
+    process.env['TRUST_PROXY'] = '1'
+    _resetEnvCache()
+    expect(criarApp().get('trust proxy')).toBe(1)
+  })
+
+  it('expõe o IP de X-Forwarded-For como req.ip só quando há proxy confiável', async () => {
+    const ipVisto = async (confiar: string | undefined): Promise<string> => {
+      if (confiar === undefined) delete process.env['TRUST_PROXY']
+      else process.env['TRUST_PROXY'] = confiar
+      _resetEnvCache()
+      const app = criarApp()
+      // Rota de sonda registrada ANTES do errorHandler não existe; monta um app
+      // que herda apenas a configuração de proxy do app real.
+      const sonda = express()
+      sonda.set('trust proxy', app.get('trust proxy'))
+      sonda.get('/ip', (req, res) => {
+        res.json({ ip: req.ip })
+      })
+      const res = await request(sonda).get('/ip').set('X-Forwarded-For', '203.0.113.9')
+      return (res.body as { ip: string }).ip
+    }
+
+    expect(await ipVisto(undefined)).not.toBe('203.0.113.9')
+    expect(await ipVisto('1')).toBe('203.0.113.9')
   })
 })
 

@@ -31,6 +31,13 @@ export const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().optional(),
   PDFS_DIR: z.string().default('/var/ni-doc/pdfs'),
+  // Número de proxies reversos CONFIÁVEIS na frente do backend (auditoria B-6).
+  // Define quantos saltos de `X-Forwarded-For` o Express aceita para calcular
+  // `req.ip` (usado pelos rate limits e pelas evidências de aceite). 0 = não
+  // confiar em nenhum cabeçalho (padrão seguro; `req.ip` é o IP da conexão).
+  // Atrás só do Nginx do repositório use 1; com Cloudflare + Nginx use 2. Valor
+  // maior que o real deixa o cliente forjar o IP; menor faz todos parecerem o proxy.
+  TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
 })
 
 export type Env = z.infer<typeof envSchema>

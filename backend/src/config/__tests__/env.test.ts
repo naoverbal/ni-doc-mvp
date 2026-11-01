@@ -91,4 +91,20 @@ describe('envSchema', () => {
       expect(result.data.SMTP_HOST).toBeUndefined()
     }
   })
+
+  describe('TRUST_PROXY', () => {
+    it('assume 0 (não confiar em proxy) quando ausente', () => {
+      const result = envSchema.safeParse(envValido())
+      expect(result.success && result.data.TRUST_PROXY).toBe(0)
+    })
+
+    it('converte a string para número', () => {
+      const result = envSchema.safeParse({ ...envValido(), TRUST_PROXY: '2' })
+      expect(result.success && result.data.TRUST_PROXY).toBe(2)
+    })
+
+    it.each(['-1', '6', '1.5', 'abc'])('rejeita o valor inválido %s', (valor) => {
+      expect(envSchema.safeParse({ ...envValido(), TRUST_PROXY: valor }).success).toBe(false)
+    })
+  })
 })

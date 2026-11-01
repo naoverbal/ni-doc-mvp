@@ -48,6 +48,10 @@ import { db, executarComTenant } from './config/database.js'
 export function criarApp(): express.Express {
   const app = express()
 
+  // IP real do cliente atrás do Nginx (rate limit por IP, evidência de aceite).
+  // Número de proxies confiáveis vem de TRUST_PROXY (0 = não confiar em nenhum).
+  app.set('trust proxy', env.TRUST_PROXY)
+
   app.use(helmet())
   app.use(
     cors({
