@@ -612,6 +612,186 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
     teclado; lint/build limpos
   - _Requirements: RF-023, RNF-003_
 
+### Fase 17 — Ciclo de vida do orçamento e integridade (achados da suíte de integração)
+
+> **Motivação:** a suíte de request specs (`backend/src/integracao/*.int.ts`, rodada por
+> `npm run test:integracao` com Postgres real e RLS ativo) encontrou falhas reais de integridade
+> (envio duplicado em concorrência, decisão sobre orçamento reprovado, referência entre tenants,
+> id malformado) e as regras de negócio abaixo, definidas pelo dono do produto, ainda não existem
+> (cancelar, expirar automaticamente, reabrir). Os status `expirado` e `cancelado` existem no
+> banco (RF-009) mas nenhuma rota os produz.
+>
+> **Máquina de estados alvo:**
+> `rascunho → enviado → aprovado | reprovado | expirado | cancelado`; `aprovado` e `reprovado`
+> são finais para aprovar/reprovar (nova decisão → 409). Saídas permitidas de um estado
+> "encerrado": **cancelar** (a partir de `enviado` ou `aprovado`) e **reabrir** (a partir de
+> `reprovado`, `cancelado` ou `expirado`, voltando a `rascunho`; a nova versão nasce no envio
+> seguinte), ambas com confirmação de senha + justificativa.
+>
+> **Regra de execução:** testes de integração primeiro (TDD), uma tarefa por sessão. As tarefas
+> 64 e 65 já têm testes escritos e **falhando** na suíte: a tarefa é fazê-los passar **sem
+> alterá-los, pulá-los ou afrouxá-los**.
+
+- [ ] 64. Backend — envio atômico e finalidade de `reprovado`
+  - **Envio concorrente:** dois `POST /api/orcamentos/:id/enviar` simultâneos no mesmo rascunho
+    criam hoje duas versões (v1 e v2, cada uma com token público). Serializar o envio por
+    orçamento (lock de linha `SELECT ... FOR UPDATE` do orçamento dentro da transação de
+    `criarVersaoEnviar`, relendo o status depois do lock) para que só um vença e o outro receba 409
+  - **Decisão sobre reprovado:** `aprovarViaCliente` e `aceiteManual` sobre orçamento `reprovado`
+    estouram `duplicate key ... orcamento_aceites_versao_id_key` (500). Responder 409
+    ("Orçamento já decidido"): checar o status `reprovado` no service e no repositório
+    (`registrarDecisao` hoje só conflita com `aprovado` ao aprovar)
+  - **Testes (já escritos, hoje falhando):** `orcamentos.int.ts` — "dois envios do mesmo rascunho
+    chegam ao mesmo tempo, então só um cria versão e o outro responde 409"; `aceite.int.ts` —
+    "o cliente reprova e depois tenta aprovar" e "reprova e o operador tenta aceite manual"
+    (409, status continua `reprovado`, um só aceite)
+  - DoD: os 3 testes passam sem alteração; demais testes unitários e de integração continuam
+    verdes; lint/build limpos
+  - _Requirements: RF-008, RF-009, RF-019, RF-020_
+
+- [ ] 65. Backend — integridade de entrada (tenant, id, duplicidade, login)
+  - **Referência entre tenants (vazamento de dados):** `POST/PUT /api/orcamentos` aceitam
+    `clienteId`, `empresaClienteId` e `responsavelId` (itens) de **outro tenant** e gravam a
+    referência, porque a FK do Postgres ignora o RLS. Validar no service/repositório que cada
+    referência existe **no tenant do usuário** (leitura sob RLS) e responder **409** quando não
+    existir. Avaliar uma FK composta `(tenant_id, id)` ou trigger como defesa no banco
+    (migration nova, idempotente)
+  - **Id malformado:** rotas `/:id` (orçamentos, clientes, empresas, responsáveis) devolvem 500
+    com o erro cru do Postgres para um id que não é UUID. Validar o parâmetro (Zod `uuid`) e
+    responder **400**
+  - **Orçamento duplicado:** o mesmo usuário não cria o mesmo orçamento duas vezes. "Mesmo
+    orçamento" = mesmo tenant, usuário, cliente, título e itens (conteúdo idêntico) → **409**, tanto
+    em sequência quanto em requisições simultâneas (clique duplo). Outro usuário do tenant pode
+    criar conteúdo idêntico. Implementar com hash de conteúdo + índice único parcial (migration) para
+    valer sob concorrência, não só por checagem na aplicação
+  - **Login de usuário inativo:** responder **401** (hoje 403) com a mesma mensagem de credencial
+    inválida, sem criar sessão
+  - **Testes (já escritos):** `isolamento.int.ts` — 3 testes de referência cruzada (409);
+    `orcamentos.int.ts` — "id é malformado, então responde 400" e o grupo "orçamento duplicado";
+    `auth.int.ts` — "usuário está inativo, então responde 401". Acrescentar os equivalentes de id
+    malformado para clientes/empresas/responsáveis e de `PUT` com referência cruzada
+  - DoD: testes citados passam sem alteração; nenhum 500 por entrada inválida nas rotas `/:id`;
+    migrations idempotentes; lint/build/testes verdes
+  - _Requirements: RF-002, RF-005, RF-010, RF-011, RF-012_
+
+- [ ] 66. Backend — validade e expiração automática
+  - **Validade no envio:** a validade do orçamento é `data_emissao + validade_dias`. Enviar com
+    validade já vencida (anterior à data do envio) é recusado e nada é persistido. No envio, gravar
+    `orcamento_versoes.expira_em` com a data de validade (hoje sempre `NULL`)
+  - **Expiração automática (RF-009.5):** job agendado (padrão de `jobs/limpar-pdfs.ts`, registrado
+    em `server.ts`) que muda para `expirado` os orçamentos `enviado` cuja validade foi atingida,
+    com auditoria. Além do job, o aceite deve checar a validade **no momento da decisão** (não
+    depender de o job já ter rodado)
+  - **Bloqueios:** não é possível aprovar nem reprovar um orçamento `expirado` (cliente via token
+    e aceite manual); editar/excluir/reenviar continuam bloqueados (409)
+  - **Testes de integração (escrever primeiro):**
+    - "quando o rascunho tem validade vencida, então enviar responde erro e nada é persistido"
+    - "quando o orçamento enviado atinge a data de validade e o job roda, então vira expirado"
+    - "quando o job roda duas vezes (ou duas instâncias ao mesmo tempo), então a segunda não altera nada e não duplica auditoria"
+    - "quando o orçamento enviado já passou da validade mas o job ainda não rodou, então aprovar e reprovar são recusados"
+    - "quando o orçamento está expirado, então aprovar/reprovar pelo cliente e aceite manual são recusados e o status continua expirado"
+    - "quando o orçamento aprovado/reprovado passou da validade, então o job não o altera"
+  - **Decisões (confirmadas pelo dono do produto):** (a) enviar com validade vencida → **400**;
+    (b) aprovar/reprovar orçamento expirado → **410**, tanto na rota pública quanto no aceite
+    manual; (c) a data de vencimento é `data_emissao + validade_dias` e o orçamento vale **o dia
+    do vencimento inteiro**: expira às **00:00 do dia seguinte** ao vencimento. Comparar em data
+    civil no fuso `America/Sao_Paulo` (definir fuso único no job e nas checagens), nunca em UTC
+    puro. `orcamento_versoes.expira_em` guarda esse instante (00:00 do dia seguinte). Testes de
+    borda obrigatórios: às 23:59:59 do dia do vencimento ainda é válido (aprovar funciona) e às
+    00:00:00 do dia seguinte está expirado (410)
+  - DoD: status `expirado` produzido pelo job e comprovado em teste com Postgres real; regras de
+    bloqueio verificadas; job idempotente; lint/build/testes verdes
+  - _Requirements: RF-008, RF-009, RF-019_
+
+- [ ] 67. Backend — cancelar orçamento (`cancelado`)
+  - Nova rota (sugestão de contrato: `POST /api/orcamentos/:id/cancelar`, corpo
+    `{ senha, justificativa }`). Permite cancelar orçamento `enviado` ou `aprovado`. Exige
+    **confirmação com a senha do usuário logado** (verificar com `verificarSenha`, sem criar sessão
+    nova) e **justificativa obrigatória** (Zod `trim().min(1)`, `.strict()`). Registra auditoria
+    (`acao='cancelar'`, usuário, justificativa, IP/UA) e, se configurado, notifica por e-mail
+  - **Quem pode:** usuários do **tenant do orçamento** com papel `admin` ou `operador`; outro tenant
+    recebe 404 (RLS). Rascunho não se cancela (exclui-se); `reprovado`, `expirado` e `cancelado`
+    respondem 409
+  - Cancelar um `aprovado` preserva o aceite e o comprovante (imutáveis); só o status muda. O link
+    público passa a recusar nova decisão
+  - **Testes de integração (escrever primeiro):**
+    - "quando admin ou operador do tenant cancela um orçamento enviado com senha correta e justificativa, então responde 200, status vira cancelado e há auditoria"
+    - "quando cancela um orçamento aprovado, então o status vira cancelado e o aceite original continua intacto"
+    - "quando a senha está errada, então responde erro de credencial, o status não muda e a tentativa fica auditada"
+    - "quando falta a justificativa ou ela é só espaços, então responde 400 e nada muda"
+    - "quando o orçamento é rascunho, reprovado, expirado ou já cancelado, então responde 409"
+    - "quando o usuário é de outro tenant, então responde 404 e o orçamento não muda"
+    - "quando não está autenticado, então responde 401"
+    - "quando dois cancelamentos chegam ao mesmo tempo, então só um vale e o outro responde 409"
+    - "quando o cliente tenta aprovar ou reprovar pelo link de um orçamento cancelado, então é recusado"
+  - **Decisões (confirmadas pelo dono do produto):** (a) qualquer usuário (admin ou operador) do
+    tenant do orçamento pode cancelar, **inclusive o orçamento criado por outro operador**;
+    (b) senha errada → **403** (nunca 401, para não confundir com sessão expirada), com limite de
+    tentativas por usuário (rate limit) para impedir força bruta de senha por essa rota. Teste
+    adicional: "quando um operador cancela o orçamento criado por outro operador do mesmo tenant,
+    então responde 200"
+  - DoD: rota implementada com os testes acima verdes; senha nunca aparece em log/auditoria;
+    lint/build/testes verdes
+  - _Requirements: RF-009_
+
+- [ ] 68. Backend — reabrir orçamento (nova versão)
+  - Nova rota (sugestão: `POST /api/orcamentos/:id/reabrir`, corpo `{ senha, justificativa }`).
+    Só para orçamento `reprovado`, `cancelado` ou `expirado`, por usuário do **tenant do
+    orçamento** (admin ou operador), com **confirmação de senha** e **justificativa obrigatória**
+    (mesmo mecanismo da tarefa 67 — extrair um helper compartilhado de confirmação de senha) e
+    registra auditoria (`acao='reabrir'`, com a justificativa)
+  - **Comportamento (confirmado pelo dono do produto):** a reabertura leva o orçamento de volta
+    para **`rascunho`**; a **nova versão (N+1) é criada no envio seguinte**, pelo fluxo normal de
+    `/enviar` (novo token público, novo PDF/hash, invalida o aceite anterior — RF-008.5 — e notifica
+    o cliente — RF-008.6). O histórico de versões anteriores fica intacto e imutável (RF-008.3)
+  - **Consequências derivadas (confirmar na revisão da tarefa):** (1) ao reabrir, redefinir
+    `data_emissao` para a data da reabertura mantendo `validade_dias`; sem isso, um orçamento
+    `expirado` voltaria a rascunho já com validade vencida e a regra da tarefa 66 impediria o
+    reenvio; (2) **excluir um rascunho reaberto é permitido (confirmado), mas nunca apaga o
+    histórico**: o orçamento **não é removido**; ele **volta ao último status** que tinha antes da
+    reabertura (`reprovado`, `cancelado` ou `expirado`), com todas as versões, PDFs e aceites
+    preservados, e a exclusão fica registrada em auditoria. Para isso é preciso guardar o status de
+    origem da reabertura (coluna dedicada ou `estado_anterior` do evento `reabrir`) e **restaurar o
+    conteúdo editável (itens/campos) a partir do snapshot da última versão**, descartando as
+    edições do rascunho (confirmado). Resposta: 200 com o orçamento restaurado (confirmado; não
+    204, pois o recurso continua existindo). Um rascunho que **nunca foi enviado** continua sendo
+    excluído de verdade (204). Como defesa no banco, trocar `ON DELETE CASCADE` por `RESTRICT` em
+    `orcamento_versoes`/`orcamento_aceites`, de modo que nenhum caminho apague versões em cascata
+    (migration); (3) a edição do rascunho reaberto segue as regras normais
+  - **Testes de integração (escrever primeiro):**
+    - "quando admin ou operador do tenant reabre um orçamento reprovado/cancelado/expirado com senha correta e justificativa, então responde 200, o status vira rascunho e há auditoria com a justificativa"
+    - "quando o orçamento reaberto é enviado, então cria a versão N+1 (a v1 e seu PDF/aceite continuam imutáveis) e o token antigo não permite mais decidir"
+    - "quando um orçamento expirado é reaberto, então a validade é renovada e o reenvio é aceito"
+    - "quando exclui um rascunho reaberto, então o orçamento volta ao último status (reprovado/cancelado/expirado), todas as versões, PDFs e aceites continuam no banco e há auditoria da exclusão"
+    - "quando exclui um rascunho reaberto depois de editá-lo, então o conteúdo volta ao da última versão enviada"
+    - "quando exclui um rascunho que nunca foi enviado, então ele é removido de verdade (204)"
+    - "quando duas exclusões do mesmo rascunho reaberto chegam ao mesmo tempo, então o status final é o último status e o histórico continua intacto"
+    - "quando o orçamento reaberto é aprovado pelo novo link, então o status vira aprovado e o aceite fica ligado à nova versão"
+    - "quando a senha está errada ou falta justificativa, então nada muda"
+    - "quando o orçamento está rascunho, enviado ou aprovado, então responde 409"
+    - "quando o usuário é de outro tenant, então responde 404"
+    - "quando não está autenticado, então responde 401"
+    - "quando duas reaberturas chegam ao mesmo tempo, então só uma vale e a outra responde 409"
+  - **Decisões (confirmadas):** quem pode = mesma regra do cancelamento (qualquer admin/operador
+    do tenant, inclusive sobre orçamento de outro operador); senha errada → 403
+  - DoD: fluxo completo com Postgres real comprovado pelos testes acima; imutabilidade das
+    versões anteriores comprovada; lint/build/testes verdes
+  - _Requirements: RF-008, RF-009, RF-019_
+
+- [ ] 69. Frontend — cancelar, reabrir e novos status
+  - Na lista e no detalhe do orçamento: exibir os status `expirado` e `cancelado` com rótulo
+    textual (nunca só cor) e as ações **Cancelar orçamento** (para `enviado`/`aprovado`) e
+    **Reabrir orçamento** (para `reprovado`/`cancelado`/`expirado`), visíveis conforme a regra das
+    tarefas 67–68
+  - Diálogo de confirmação em Fluent 2 (`Dialog`) com campos **Senha** e **Justificativa**
+    (React Hook Form + Zod, `label` associado, `aria-invalid`/`aria-describedby`, erros anunciados com
+    `aria-live`), foco preso e devolvido ao gatilho, `Esc` fecha, botões descritivos ("Cancelar
+    orçamento"/"Reabrir orçamento"); tratar senha incorreta sem expor detalhes
+  - **TDD:** testes de componente das ações por status, do diálogo (validação, envio, erro de senha)
+    e da lista com os novos status; `eslint-plugin-jsx-a11y` sem avisos
+  - DoD: fluxo operável por teclado; textos pt-BR; testes verdes; lint/build limpos
+  - _Requirements: RF-009, RNF-003_
+
 ## Notes
 
 - Ciclo TDD obrigatório: testes antes da implementação; tarefa concluída só com testes passando e lint sem erros.
@@ -644,12 +824,16 @@ graph TD
     F14["Fase 14 — Refino de UI (58–59)"]
     F15["Fase 15 — Refino do Editor de Orçamento (60–62)"]
     F16["Fase 16 — Sidebar Colapsável (63)"]
+    F17["Fase 17 — Ciclo de vida do orçamento (64–69)"]
     F0 --> F1 --> F2 --> F3 --> F4 --> F5 --> F6 --> F7 --> F8 --> F9 --> F10 --> F11 --> F12
     F3 --> F13
     F10 --> F14
     F10 --> F15
     F10 --> F16
+    F9 --> F17
+    F13 --> F17
 ```
+A Fase 17 (ciclo de vida do orçamento) depende do aceite (Fase 9) e do RLS ativo (Fase 13). Dentro dela, as tarefas 64 e 65 corrigem falhas já cobertas por testes na suíte de integração e podem ser feitas primeiro; 66 (expiração) precede 67 e 68 (que reaproveitam o status `expirado` e o helper de confirmação de senha); 69 (frontend) depende de 67 e 68.
 
 A Fase 13 (ativação do RLS) é uma correção de segurança transversal: depende apenas da infraestrutura de banco (Fase 2) e de auth/tenant (Fase 3), não das fases de feature. Pode ser priorizada e executada de forma independente.
 
@@ -674,7 +858,8 @@ As Fases 14, 15 e 16 são refinos de UI/produto sobre o frontend já entregue (F
     { "wave": 13, "name": "Ativação do RLS por Request", "tasks": ["56"], "dependsOn": [3] },
     { "wave": 14, "name": "Refinamento de UI (Fluent 2)", "tasks": ["58", "59"], "dependsOn": [10] },
     { "wave": 15, "name": "Refino do Editor de Orçamento", "tasks": ["60", "61", "62"], "dependsOn": [10] },
-    { "wave": 16, "name": "Sidebar Colapsável (App Shell)", "tasks": ["63"], "dependsOn": [10] }
+    { "wave": 16, "name": "Sidebar Colapsável (App Shell)", "tasks": ["63"], "dependsOn": [10] },
+    { "wave": 17, "name": "Ciclo de vida do orçamento e integridade", "tasks": ["64", "65", "66", "67", "68", "69"], "dependsOn": [9, 13] }
   ]
 }
 ```
