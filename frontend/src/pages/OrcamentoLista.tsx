@@ -1,5 +1,6 @@
 import { useId, useState, type ReactElement } from 'react'
 import { Link } from 'react-router-dom'
+import { AcaoOrcamento } from '@/components/AcaoOrcamento'
 import { useExcluirOrcamento, useOrcamentos } from '@/hooks/useOrcamentos'
 import { OPCOES_STATUS, ROTULO_STATUS } from '@/lib/orcamento-status'
 import type { OrcamentoStatus } from '@/types/api'
@@ -113,7 +114,12 @@ export function OrcamentoLista(): ReactElement {
                       disabled={excluir.isPending}
                     >
                       <span aria-hidden="true">🗑</span>
-                    </button>
+                    </button>{' '}
+                    <AcaoOrcamento
+                      id={orcamento.id}
+                      numero={orcamento.numero}
+                      status={orcamento.status}
+                    />
                   </td>
                 </tr>
               ))}

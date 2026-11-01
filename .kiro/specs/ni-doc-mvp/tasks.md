@@ -778,7 +778,7 @@ Este documento descreve o plano de implementação do MVP do ni-doc, organizado 
     versões anteriores comprovada; lint/build/testes verdes
   - _Requirements: RF-008, RF-009, RF-019_
 
-- [ ] 69. Frontend — cancelar, reabrir e novos status
+- [x] 69. Frontend — cancelar, reabrir e novos status
   - Na lista e no detalhe do orçamento: exibir os status `expirado` e `cancelado` com rótulo
     textual (nunca só cor) e as ações **Cancelar orçamento** (para `enviado`/`aprovado`) e
     **Reabrir orçamento** (para `reprovado`/`cancelado`/`expirado`), visíveis conforme a regra das
