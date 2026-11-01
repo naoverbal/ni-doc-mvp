@@ -10,6 +10,7 @@ import { env } from './config/env.js'
 
 const pinoHttp = pinoHttpModule.pinoHttp
 import { errorHandler } from './middlewares/error-handler.js'
+import { criarApiRateLimit } from './middlewares/rate-limit.js'
 import { criarAuthRouter } from './routes/auth.routes.js'
 import { criarClientesRouter } from './routes/clientes.routes.js'
 import { criarEmpresasRouter } from './routes/empresas.routes.js'
@@ -70,6 +71,13 @@ export function criarApp(): express.Express {
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', env: env.NODE_ENV })
   })
+
+  // Limite geral das rotas autenticadas (B-8), antes dos routers de domínio.
+  // /api/auth (limite de login próprio) e /api/publico (limite próprio) ficam fora.
+  app.use(
+    ['/api/clientes', '/api/empresas', '/api/responsaveis', '/api/orcamentos', '/api/templates'],
+    criarApiRateLimit(),
+  )
 
   // Auth routes
   const auditoriaRepo = criarAuditoriaRepository(db)

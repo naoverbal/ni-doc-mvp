@@ -42,13 +42,26 @@ export function criarConfirmacaoSenhaRateLimit(): RateLimitRequestHandler {
   })
 }
 
-export const apiRateLimit = rateLimit({
-  windowMs: 60 * 1000, // 1 min
-  max: 100,
-  message: { erro: 'Muitas requisições.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-})
+/**
+ * Cria um rate limiter geral para as rotas autenticadas da API (auditoria B-8),
+ * por IP (depende de `TRUST_PROXY` correto atrás do Nginx). Contém raspagem e
+ * abuso de um cliente autenticado ou de uma sessão roubada. O teto de 300 por
+ * minuto acomoda o uso normal da SPA (o dashboard percorre todas as páginas da
+ * lista) e usuários que compartilham o IP de um escritório. Login, confirmação
+ * de senha e rotas públicas têm limites próprios, mais estritos.
+ *
+ * Fábrica (não singleton) para que cada app tenha seu store e os testes não
+ * vazem contagem entre si.
+ */
+export function criarApiRateLimit(max = 300): RateLimitRequestHandler {
+  return rateLimit({
+    windowMs: 60 * 1000, // 1 min
+    max,
+    message: { erro: 'Muitas requisições. Tente novamente em instantes.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+}
 
 /**
  * Cria um rate limiter para as rotas públicas (visualização e aceite via token).
