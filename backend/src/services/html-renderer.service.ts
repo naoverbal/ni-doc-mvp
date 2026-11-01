@@ -5,6 +5,7 @@ import type {
 } from './snapshot.service.js'
 import type { LayoutTemplate } from '../repositories/template.repository.js'
 import { AppError } from '../errors/app-error.js'
+import { ehDataUrlImagemValido } from '../lib/data-url-imagem.js'
 
 // -----------------------------------------------------------------------------
 // Serviço PURO e determinístico de renderização de HTML (RF-016, critérios 4 e
@@ -133,7 +134,7 @@ function coletarImagens(layout: LayoutTemplate): ImagemEmbutida[] {
       if (entrada !== null && typeof entrada === 'object') {
         const nome = (entrada as Record<string, unknown>)['nome']
         const dataUrl = (entrada as Record<string, unknown>)['dataUrl']
-        if (ehString(nome) && ehString(dataUrl)) {
+        if (ehString(nome) && ehString(dataUrl) && ehDataUrlImagemValido(dataUrl)) {
           imagens.push({ nome, dataUrl })
         }
       }
@@ -144,7 +145,7 @@ function coletarImagens(layout: LayoutTemplate): ImagemEmbutida[] {
   if (typeof bruto === 'object') {
     const imagens: ImagemEmbutida[] = []
     for (const [nome, dataUrl] of Object.entries(bruto as Record<string, unknown>)) {
-      if (ehString(dataUrl)) {
+      if (ehString(dataUrl) && ehDataUrlImagemValido(dataUrl)) {
         imagens.push({ nome, dataUrl })
       }
     }
@@ -168,8 +169,8 @@ function altDaImagem(nome: string): string {
 }
 
 // Substitui os placeholders `{img:nome}` pela tag <img> com o data URL. Os data
-// URLs são markup/estrutura (não dados do usuário) e não são escapados. Todo
-// `<img>` recebe um `alt` descritivo e não-vazio (acessibilidade).
+// URLs não são escapados, por isso `coletarImagens` só deixa passar os que casam
+// com `ehDataUrlImagemValido`. Todo `<img>` recebe um `alt` descritivo e não-vazio (acessibilidade).
 function embutirImagens(texto: string, imagens: ImagemEmbutida[]): string {
   return texto.replace(/\{img:(\w+)\}/g, (_match, nome: string) => {
     const imagem = imagens.find((img) => img.nome === nome)

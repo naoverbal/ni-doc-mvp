@@ -213,6 +213,25 @@ describe('html-renderer.service', () => {
     expect(html).toContain('<img src="data:image/jpeg;base64,BBBB"')
   })
 
+  it('descarta imagens cujo data URL tenta injetar atributos ou carregar recurso externo', () => {
+    const layout = layoutMock({
+      corpo: '<header>{img:a}{img:b}{img:c}{img:d}</header>',
+      imagens: {
+        a: 'data:image/png;base64,AAAA" onerror="alert(1)',
+        b: 'http://169.254.169.254/latest/meta-data',
+        c: 'data:text/html;base64,PHNjcmlwdD4=',
+        d: 'javascript:alert(1)',
+      },
+    })
+
+    const html = service.renderizar(input({ layout }))
+
+    expect(html).not.toContain('onerror')
+    expect(html).not.toContain('169.254.169.254')
+    expect(html).not.toContain('javascript:')
+    expect(html).not.toContain('<img src=')
+  })
+
   it('ignora {img:nome} quando a imagem referenciada não existe e descarta entradas inválidas do array', () => {
     const layout = layoutMock({
       corpo: '<header>{img:ausente}</header>',
