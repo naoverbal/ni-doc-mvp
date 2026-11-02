@@ -78,19 +78,25 @@ const useStyles = makeStyles({
   botaoEntrar: {
     width: '100%',
   },
-  // Estado de carregamento: o botão mantém a cor de marca com 50% de opacidade
-  // (em vez do cinza padrão de "desabilitado" do Fluent). Os três seletores
-  // cobrem repouso/hover/pressionado, que o Fluent estiliza separadamente.
+  // Estado de carregamento: o botão mantém a cor de marca (definida em
+  // botaoClaro/botaoEscuro, que também sobrepõem o cinza de "desabilitado" do
+  // Fluent) com 50% de opacidade, como no Figma. Controle inativo é isento do
+  // critério de contraste do WCAG 1.4.3.
   botaoCarregando: {
-    backgroundColor: tokens.colorBrandBackground,
-    color: tokens.colorNeutralForegroundOnBrand,
     opacity: 0.5,
+  },
+  // Modo claro: o Figma usa o tom 80 da marca (#6b7c72), que dá ~4,4:1 com
+  // texto branco de 14px (abaixo do AA, 4,5:1). Priorizamos o AA: tom 70
+  // (~5,7:1), com 60 no hover e 50 ao pressionar.
+  botaoClaro: {
+    backgroundColor: marca[70],
+    color: tokens.colorNeutralForegroundOnBrand,
     ':hover': {
-      backgroundColor: tokens.colorBrandBackground,
+      backgroundColor: marca[60],
       color: tokens.colorNeutralForegroundOnBrand,
     },
     ':hover:active': {
-      backgroundColor: tokens.colorBrandBackground,
+      backgroundColor: marca[50],
       color: tokens.colorNeutralForegroundOnBrand,
     },
   },
@@ -238,7 +244,7 @@ export function Login(): ReactElement {
           size="large"
           className={mergeClasses(
             estilos.botaoEntrar,
-            escuro && estilos.botaoEscuro,
+            escuro ? estilos.botaoEscuro : estilos.botaoClaro,
             enviando && estilos.botaoCarregando,
           )}
           disabledFocusable={enviando}
