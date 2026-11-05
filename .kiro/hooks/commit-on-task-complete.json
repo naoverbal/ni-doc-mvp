@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Commit ao concluir tarefa",
+      "trigger": "PostTaskExec",
+      "description": "Ao concluir uma tarefa da spec, cria automaticamente o commit da mudança seguindo a convenção commit-format.",
+      "action": {
+        "type": "agent",
+        "prompt": "A tarefa foi concluída. Crie o commit desta tarefa automaticamente, seguindo a convenção de steering `commit-format`:\n\n1. Verifique antes de commitar: build, lint e testes devem estar limpos. Se a verificação falhar, NÃO commite — relate o que falhou e pare.\n2. Faça o stage apenas dos arquivos da tarefa, pelo nome (nunca `git add -A` ou `git add .`).\n3. Antes de commitar, verifique se algum arquivo em stage parece conter segredos (`.env`, credenciais, chaves). Se sim, remova-o do stage e avise.\n4. Monte a mensagem no padrão Conventional Commits do projeto: `<tipo>(<escopo>): <descrição no imperativo>`, com corpo e rodapé (ex.: `Fixes #NN`) quando fizerem sentido. Escolha o tipo mais específico e mantenha atomicidade (um commit por mudança lógica).\n5. Execute o `git commit`. NÃO execute `git push` — o envio ao remoto é decisão do usuário.\n6. Se o escopo de arquivos for ambíguo ou a tarefa misturar mudanças que deveriam ser commits separados, não commite: prepare a mensagem e peça orientação."
+      }
+    }
+  ]
+}

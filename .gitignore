@@ -7,4 +7,6 @@ coverage/
 *.log
 .nyc_output/
 backend/.agents/
-.kiro/
+# Metadados de execução da IDE (histórico de sessões); o restante da .kiro
+# (specs, tasks, steering e hooks) é versionado.
+.kiro/specs/**/tasks.meta.json

@@ -103,7 +103,9 @@ describe('Login', () => {
     await usuario.click(screen.getByRole('button', { name: 'Entrar' }))
 
     const alerta = await screen.findByRole('alert')
-    expect(alerta).toHaveTextContent('E-mail ou senha inválidos')
+    expect(alerta).toHaveTextContent(
+      'Credenciais inválidas. Verifique seus dados e tente novamente.',
+    )
     expect(alerta).toHaveAttribute('aria-live', 'assertive')
     expect(useAuthStore.getState().autenticado).toBe(false)
   })

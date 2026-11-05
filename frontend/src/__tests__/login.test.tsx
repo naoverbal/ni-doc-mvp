@@ -7,7 +7,7 @@ import { lightTheme } from '@/theme/ni-doc-theme'
 import { Login } from '@/pages/Login'
 
 // Cobre o comportamento visual novo do redesign (toggle de senha e checkbox
-// "Lembrar de mim"); o fluxo de submit/erro é coberto por pages/__tests__.
+// "Lembrar-me"); o fluxo de submit/erro é coberto por pages/__tests__.
 const mutateAsync = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('@/hooks/useAuth', () => ({
@@ -43,11 +43,11 @@ describe('Login — redesign Fluent', () => {
     expect(senha).toHaveAttribute('type', 'password')
   })
 
-  it('exibe o checkbox "Lembrar de mim" (apenas visual, fora do submit)', async () => {
+  it('exibe o checkbox "Lembrar-me" (apenas visual, fora do submit)', async () => {
     const usuario = userEvent.setup()
     renderLogin()
 
-    const lembrar = screen.getByRole('checkbox', { name: 'Lembrar de mim' })
+    const lembrar = screen.getByRole('checkbox', { name: 'Lembrar-me' })
     expect(lembrar).toBeInTheDocument()
 
     await usuario.click(lembrar)
@@ -55,7 +55,7 @@ describe('Login — redesign Fluent', () => {
     await usuario.type(screen.getByLabelText('Senha'), 'senha-forte-123')
     await usuario.click(screen.getByRole('button', { name: 'Entrar' }))
 
-    // "Lembrar de mim" não entra no payload do login.
+    // "Lembrar-me" não entra no payload do login.
     expect(mutateAsync).toHaveBeenCalledWith({
       email: 'ana@exemplo.com',
       senha: 'senha-forte-123',

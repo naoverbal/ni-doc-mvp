@@ -14,10 +14,10 @@ import {
   Spinner,
   Text,
   makeStyles,
+  mergeClasses,
   tokens,
 } from '@fluentui/react-components'
 import {
-  Document24Regular,
   Eye20Regular,
   EyeOff20Regular,
   LockClosed20Regular,
@@ -25,18 +25,21 @@ import {
 } from '@fluentui/react-icons'
 import { AuthLayout } from '@/components/common/AuthLayout'
 import { useLogin } from '@/hooks/useAuth'
+import { useThemeStore } from '@/stores/theme.store'
+import { marca } from '@/theme/ni-doc-theme'
 
 // Validação do formulário no cliente (espelha o schema do backend: e-mail
 // válido e senha com no mínimo 8 caracteres). Mensagens em pt-BR.
 const loginSchema = z.object({
   email: z.string().min(1, 'Informe o e-mail').email('Informe um e-mail válido'),
-  senha: z.string().min(8, 'A senha deve ter ao menos 8 caracteres'),
+  senha: z.string().min(1, 'Informe sua senha').min(8, 'A senha deve ter ao menos 8 caracteres'),
 })
 
 type LoginFormulario = z.infer<typeof loginSchema>
 
 // Mensagem genérica para credenciais inválidas: não revela se o e-mail existe.
-const MENSAGEM_CREDENCIAIS_INVALIDAS = 'E-mail ou senha inválidos'
+const MENSAGEM_CREDENCIAIS_INVALIDAS =
+  'Credenciais inválidas. Verifique seus dados e tente novamente.'
 
 interface EstadoRota {
   from?: Location
@@ -48,12 +51,12 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     rowGap: tokens.spacingVerticalL,
   },
-  // Topo do card: logo (quadrado com a cor de marca) + nome do produto.
+  // Topo do card: badge circular da marca + nome do produto, lado a lado.
   topo: {
     display: 'flex',
-    flexDirection: 'column',
     alignItems: 'center',
-    rowGap: tokens.spacingVerticalS,
+    justifyContent: 'center',
+    columnGap: tokens.spacingHorizontalM,
   },
   logo: {
     display: 'flex',
@@ -61,30 +64,60 @@ const useStyles = makeStyles({
     justifyContent: 'center',
     width: '48px',
     height: '48px',
-    borderRadius: tokens.borderRadiusLarge,
+    borderRadius: tokens.borderRadiusCircular,
     backgroundColor: tokens.colorBrandBackground,
     color: tokens.colorNeutralForegroundOnBrand,
   },
-  // Linha de cabeçalho da senha: o label "Senha" (renderizado pelo próprio
-  // Field) fica à esquerda e o link "Esqueceu a senha?" é alinhado à direita na
-  // mesma altura. O link fica FORA do <label> do Field para não poluir o nome
-  // acessível do input (um leitor de tela não deve ler "Senha Esqueceu a
-  // senha?" como rótulo). Usamos flex, não posicionamento absoluto.
-  campoSenha: {
+  // Linha de opções: "Lembrar-me" à esquerda e "Esqueci minha senha" à direita.
+  opcoes: {
     display: 'flex',
-    flexDirection: 'column',
-  },
-  linkEsqueceuLinha: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    // Puxa o link para a mesma linha visual do label "Senha" do Field abaixo,
-    // compensando a altura do próprio label para que fiquem alinhados.
-    marginBottom: `calc(-1 * ${tokens.lineHeightBase200})`,
-    position: 'relative',
-    zIndex: 1,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: '32px',
   },
   botaoEntrar: {
     width: '100%',
+  },
+  // Estado de carregamento: o botão mantém a cor de marca (definida em
+  // botaoClaro/botaoEscuro, que também sobrepõem o cinza de "desabilitado" do
+  // Fluent) com 50% de opacidade, como no Figma. Controle inativo é isento do
+  // critério de contraste do WCAG 1.4.3.
+  botaoCarregando: {
+    opacity: 0.5,
+  },
+  // Modo claro: o Figma usa o tom 80 da marca (#6b7c72), que dá ~4,4:1 com
+  // texto branco de 14px (abaixo do AA, 4,5:1). Priorizamos o AA: tom 70
+  // (~5,7:1), com 60 no hover e 50 ao pressionar.
+  botaoClaro: {
+    backgroundColor: marca[70],
+    color: tokens.colorNeutralForegroundOnBrand,
+    ':hover': {
+      backgroundColor: marca[60],
+      color: tokens.colorNeutralForegroundOnBrand,
+    },
+    ':hover:active': {
+      backgroundColor: marca[50],
+      color: tokens.colorNeutralForegroundOnBrand,
+    },
+  },
+  // Modo escuro: botão, link e foco usam o tom 110 da marca (design Figma).
+  botaoEscuro: {
+    backgroundColor: marca[110],
+    color: tokens.colorNeutralForegroundInverted,
+    ':hover': {
+      backgroundColor: marca[120],
+      color: tokens.colorNeutralForegroundInverted,
+    },
+    ':hover:active': {
+      backgroundColor: marca[100],
+      color: tokens.colorNeutralForegroundInverted,
+    },
+  },
+  linkEscuro: {
+    color: marca[110],
+    ':hover': {
+      color: marca[120],
+    },
   },
 })
 
@@ -93,6 +126,7 @@ export function Login(): ReactElement {
   const location = useLocation()
   const login = useLogin()
   const estilos = useStyles()
+  const escuro = useThemeStore((estado) => estado.modo === 'escuro')
 
   // Estado local do toggle de visibilidade da senha (apenas visual).
   const [mostrarSenha, setMostrarSenha] = useState(false)
@@ -124,10 +158,12 @@ export function Login(): ReactElement {
   const topo = (
     <div className={estilos.topo}>
       <span className={estilos.logo} aria-hidden>
-        <Document24Regular />
+        <Text as="span" size={600} weight="bold">
+          n
+        </Text>
       </span>
-      <Text weight="semibold" size={400}>
-        Ni.doc
+      <Text weight="semibold" size={500}>
+        ni-doc
       </Text>
     </div>
   )
@@ -135,10 +171,11 @@ export function Login(): ReactElement {
   return (
     <AuthLayout
       topo={topo}
-      titulo="Entre na sua conta"
-      subtitulo="Insira seus dados para continuar."
+      titulo="Bem-vindo de volta"
+      subtitulo="Entre com suas credenciais para acessar o sistema"
+      notaRodape="Não tem uma conta? Fale com o administrador do seu tenant."
     >
-      <form onSubmit={aoEnviar} noValidate className={estilos.formulario}>
+      <form onSubmit={aoEnviar} noValidate className={estilos.formulario} aria-busy={enviando}>
         {/* Erro de autenticação: anunciado imediatamente por leitores de tela.
             O MessageBar do Fluent fixa role="status" (polite); o wrapper com
             role="alert"/aria-live="assertive" garante o anúncio assertivo. */}
@@ -151,7 +188,7 @@ export function Login(): ReactElement {
         )}
 
         <Field
-          label="E-mail"
+          label={{ children: 'E-mail', weight: 'semibold' }}
           validationState={errors.email ? 'error' : 'none'}
           validationMessage={errors.email?.message}
         >
@@ -159,62 +196,62 @@ export function Login(): ReactElement {
             type="email"
             size="large"
             autoComplete="email"
-            placeholder="voce@exemplo.com"
+            placeholder="exemplo@email.com"
             contentBefore={<Mail20Regular aria-hidden />}
             {...register('email')}
           />
         </Field>
 
-        <div className={estilos.campoSenha}>
-          {/* Link "Esqueceu a senha?" alinhado à direita, na mesma linha do
-              label "Senha". É placeholder (não há fluxo de recuperação de senha
-              no MVP) e fica fora do <label> do Field para preservar o nome
-              acessível do campo. */}
-          <div className={estilos.linkEsqueceuLinha}>
-            <Link as="button" type="button" inline>
-              Esqueceu a senha?
-            </Link>
-          </div>
-          <Field
-            label="Senha"
-            validationState={errors.senha ? 'error' : 'none'}
-            validationMessage={errors.senha?.message}
-          >
-            <Input
-              type={mostrarSenha ? 'text' : 'password'}
-              size="large"
-              autoComplete="current-password"
-              placeholder="Digite sua senha"
-              contentBefore={<LockClosed20Regular aria-hidden />}
-              contentAfter={
-                <Button
-                  appearance="transparent"
-                  type="button"
-                  size="small"
-                  icon={mostrarSenha ? <EyeOff20Regular /> : <Eye20Regular />}
-                  aria-label={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
-                  onClick={() => setMostrarSenha((atual) => !atual)}
-                />
-              }
-              {...register('senha')}
-            />
-          </Field>
+        <Field
+          label={{ children: 'Senha', weight: 'semibold' }}
+          validationState={errors.senha ? 'error' : 'none'}
+          validationMessage={errors.senha?.message}
+        >
+          <Input
+            type={mostrarSenha ? 'text' : 'password'}
+            size="large"
+            autoComplete="current-password"
+            placeholder="Sua senha"
+            contentBefore={<LockClosed20Regular aria-hidden />}
+            contentAfter={
+              <Button
+                appearance="transparent"
+                type="button"
+                size="small"
+                icon={mostrarSenha ? <EyeOff20Regular /> : <Eye20Regular />}
+                aria-label={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                onClick={() => setMostrarSenha((atual) => !atual)}
+              />
+            }
+            {...register('senha')}
+          />
+        </Field>
+
+        <div className={estilos.opcoes}>
+          {/* "Lembrar-me" é apenas visual: não entra no schema nem no submit. */}
+          <Checkbox label="Lembrar-me" />
+          {/* Placeholder: não há fluxo de recuperação de senha no MVP. */}
+          <Link as="button" type="button" className={escuro ? estilos.linkEscuro : undefined}>
+            Esqueci minha senha
+          </Link>
         </div>
 
-        {/* "Lembrar de mim" é apenas visual: não entra no schema nem no submit. */}
-        <Checkbox label="Lembrar de mim" />
-
+        {/* disabledFocusable mantém o botão no foco durante o envio e impede
+            novo clique/Enter (o Fluent bloqueia o click). */}
         <Button
           appearance="primary"
           type="submit"
           size="large"
-          className={estilos.botaoEntrar}
-          disabled={enviando}
+          className={mergeClasses(
+            estilos.botaoEntrar,
+            escuro ? estilos.botaoEscuro : estilos.botaoClaro,
+            enviando && estilos.botaoCarregando,
+          )}
+          disabledFocusable={enviando}
           icon={enviando ? <Spinner size="tiny" /> : undefined}
         >
-          {enviando ? 'Entrando…' : 'Entrar'}
+          {enviando ? 'Entrando...' : 'Entrar'}
         </Button>
-
       </form>
     </AuthLayout>
   )

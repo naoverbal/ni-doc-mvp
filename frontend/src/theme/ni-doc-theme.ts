@@ -8,7 +8,7 @@ import {
 // Rampa de marca do ni-doc (verde-sálvia, base no tom 60 = #4d5d53).
 // 10 = tom mais escuro → 160 = mais claro. Gerada no Fluent Theme Designer
 // para garantir contraste AA; ver .kiro/steering/ui.md.
-const marca: BrandVariants = {
+export const marca: BrandVariants = {
   10: '#171d19',
   20: '#222924',
   30: '#2d352f',
