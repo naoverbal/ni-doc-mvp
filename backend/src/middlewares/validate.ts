@@ -6,7 +6,7 @@ export function validate(schema: ZodSchema): RequestHandler {
   return (req: Request, _res: Response, next: NextFunction): void => {
     const result = schema.safeParse(req.body)
     if (!result.success) {
-      next(new AppError(400, 'Dados inválidos', result.error.errors))
+      next(new AppError(400, 'Dados inválidos', result.error.issues))
       return
     }
     req.body = result.data

@@ -19,7 +19,7 @@ export function errorHandler(
   if (err instanceof ZodError) {
     res.status(400).json({
       erro: 'Dados inválidos',
-      detalhes: err.errors,
+      detalhes: err.issues,
     })
     return
   }
