@@ -3,7 +3,7 @@ name: Deploy
 # Deploy automático para a VPS de produção (Hostinger).
 #
 # Fluxo (design.md §17.1):
-#   1. Push na `main`
+#   1. Disparo manual na `main` (o gatilho de push está desativado, ver abaixo)
 #   2. Job `ci` roda a esteira de verificação (lint -> build -> testes), com um
 #      PostgreSQL de serviço, espelhando o workflow de CI (ci.yml).
 #   3. Se o CI passar, o job `deploy` faz SSH na VPS e executa, no diretório do
@@ -23,11 +23,14 @@ name: Deploy
 # repositório na VPS (ver design.md §16.2). Esta pipeline o referencia; a
 # criação do arquivo em si está fora do escopo desta tarefa.
 
+# ATENÇÃO: enquanto o MVP não tiver ambiente de produção (VPS, secrets e
+# docker-compose.prod.yml), o deploy roda apenas por disparo manual. Para
+# reativar o deploy automático, adicione o gatilho `push` na branch `main`:
+#   push:
+#     branches:
+#       - main
 on:
-  push:
-    branches:
-      - main
-  # Permite disparar o deploy manualmente pela aba Actions.
+  # Disparo manual pela aba Actions (a partir da `main`).
   workflow_dispatch:
 
 # Evita deploys concorrentes: um novo push cancela um deploy em andamento.
