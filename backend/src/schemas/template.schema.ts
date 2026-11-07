@@ -23,7 +23,7 @@ function dataUrlsDasImagens(imagens: unknown): unknown[] {
 }
 
 export const atualizarTemplateSchema = z.object({
-  layoutJson: z.record(z.unknown()).superRefine((layout, ctx) => {
+  layoutJson: z.record(z.string(), z.unknown()).superRefine((layout, ctx) => {
     const invalidas = dataUrlsDasImagens(layout['imagens']).some(
       (valor) => typeof valor !== 'string' || !ehDataUrlImagemValido(valor),
     )

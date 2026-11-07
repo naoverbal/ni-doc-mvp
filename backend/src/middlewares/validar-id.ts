@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from 'express'
 import { z } from 'zod'
 import { AppError } from '../errors/app-error.js'
 
-const uuidSchema = z.string().uuid()
+const uuidSchema = z.guid()
 
 /**
  * Handler para `router.param('id', validarIdParam)`: recusa com 400 um parâmetro
