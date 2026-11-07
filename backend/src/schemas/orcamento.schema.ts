@@ -48,7 +48,7 @@ const itemSchema = z
     valorUnitario: z.number().nonnegative().max(MAX_VALOR_MONETARIO),
     descontoTipo: descontoTipoSchema.optional(),
     descontoValor: z.number().nonnegative().max(MAX_VALOR_MONETARIO).optional(),
-    responsavelId: z.string().uuid().optional(),
+    responsavelId: z.guid().optional(),
   })
   .superRefine((item, ctx) => {
     if (item.quantidade * item.valorUnitario > MAX_BRUTO_ITEM) {
@@ -108,8 +108,8 @@ function validarOrcamento(
 
 export const criarOrcamentoSchema = z
   .object({
-    clienteId: z.string().uuid(),
-    empresaClienteId: z.string().uuid().optional(),
+    clienteId: z.guid(),
+    empresaClienteId: z.guid().optional(),
     titulo: z.string().min(1).max(MAX_TEXTO_CURTO),
     descricao: z.string().max(MAX_TEXTO_LONGO).optional(),
     validadeDias: z.number().int().positive().max(MAX_DIAS).optional(),
@@ -128,8 +128,8 @@ export type CriarOrcamentoPayload = z.infer<typeof criarOrcamentoSchema>
 // os demais campos são opcionais.
 export const atualizarOrcamentoSchema = z
   .object({
-    clienteId: z.string().uuid().optional(),
-    empresaClienteId: z.string().uuid().optional(),
+    clienteId: z.guid().optional(),
+    empresaClienteId: z.guid().optional(),
     titulo: z.string().min(1).max(MAX_TEXTO_CURTO).optional(),
     descricao: z.string().max(MAX_TEXTO_LONGO).optional(),
     validadeDias: z.number().int().positive().max(MAX_DIAS).optional(),
