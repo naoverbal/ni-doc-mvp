@@ -7,6 +7,8 @@ import {
   criarRascunho,
   encerrarConexoes,
   limparDados,
+  novoApp,
+  SENHA_PADRAO,
   type Cenario,
 } from './helpers.js'
 
@@ -188,5 +190,166 @@ describe('GET /api/dashboard/criados', () => {
 
     expect(resposta.status).toBe(200)
     expect(resposta.body).toEqual([])
+  })
+})
+
+describe('GET /api/dashboard/enviados e /aprovados', () => {
+  let s: Cenario
+
+  const manual = (c: Cenario, id: string) =>
+    request(c.app)
+      .post(`/api/orcamentos/${id}/aceite-manual`)
+      .set('Cookie', c.cookieOperador)
+      .send({ justificativa: 'Aprovou por telefone' })
+
+  const cancelar = (c: Cenario, id: string) =>
+    request(c.app)
+      .post(`/api/orcamentos/${id}/cancelar`)
+      .set('Cookie', c.cookieOperador)
+      .send({ senha: SENHA_PADRAO, justificativa: 'Cliente desistiu' })
+
+  // Ajusta as datas direto no banco (papel privilegiado): a imutabilidade das
+  // versões e dos aceites é por privilégio do papel de aplicação.
+  async function datarEnvio(id: string, versao: number, quando: string): Promise<void> {
+    await adminPool.query(
+      'UPDATE orcamento_versoes SET enviado_em = $3 WHERE orcamento_id = $1 AND versao = $2',
+      [id, versao, quando],
+    )
+  }
+
+  async function datarAceite(id: string, versao: number, quando: string): Promise<void> {
+    await adminPool.query(
+      `UPDATE orcamento_aceites SET criado_em = $3
+       WHERE versao_id = (SELECT id FROM orcamento_versoes WHERE orcamento_id = $1 AND versao = $2)`,
+      [id, versao, quando],
+    )
+  }
+
+  beforeAll(async () => {
+    s = await criarCenario()
+
+    // e1: enviado e ainda aguardando.
+    const e1 = await criarEnviado(s)
+    await datarEnvio(e1.orcamento.id, 1, '2025-03-10T15:00:00Z')
+
+    // e2: enviado em março e cancelado depois.
+    const e2 = await criarEnviado(s)
+    expect((await cancelar(s, e2.orcamento.id)).status).toBe(200)
+    await datarEnvio(e2.orcamento.id, 1, '2025-03-12T15:00:00Z')
+
+    // e3: enviado em março, aprovado em abril.
+    const e3 = await criarEnviado(s)
+    expect((await manual(s, e3.orcamento.id)).status).toBe(201)
+    await datarEnvio(e3.orcamento.id, 1, '2025-03-05T15:00:00Z')
+    await datarAceite(e3.orcamento.id, 1, '2025-04-02T15:00:00Z')
+
+    // e4: enviado em março, aprovado em abril e cancelado depois.
+    const e4 = await criarEnviado(s)
+    expect((await manual(s, e4.orcamento.id)).status).toBe(201)
+    expect((await cancelar(s, e4.orcamento.id)).status).toBe(200)
+    await datarEnvio(e4.orcamento.id, 1, '2025-03-20T15:00:00Z')
+    await datarAceite(e4.orcamento.id, 1, '2025-04-10T15:00:00Z')
+
+    // e5: rascunho, fora das duas séries.
+    await criarRascunho(s)
+
+    // e6: reprovado na v1, reaberto, reenviado (v2) e aprovado na v2. Conta uma
+    // única vez, pela versão vigente.
+    const e6 = await criarEnviado(s)
+    const reprovacao = await request(await novoApp())
+      .post(`/api/publico/orcamento/${e6.versao.tokenPublico}/reprovar`)
+      .set('User-Agent', 'vitest-int')
+      .send({})
+    expect(reprovacao.status).toBe(201)
+    const reabertura = await request(s.app)
+      .post(`/api/orcamentos/${e6.orcamento.id}/reabrir`)
+      .set('Cookie', s.cookieOperador)
+      .send({ senha: SENHA_PADRAO, justificativa: 'Cliente pediu nova proposta' })
+    expect(reabertura.status).toBe(200)
+    const reenvio = await request(s.app)
+      .post(`/api/orcamentos/${e6.orcamento.id}/enviar`)
+      .set('Cookie', s.cookieOperador)
+    expect(reenvio.status).toBe(201)
+    expect((await manual(s, e6.orcamento.id)).status).toBe(201)
+    await datarEnvio(e6.orcamento.id, 1, '2025-03-01T15:00:00Z')
+    await datarAceite(e6.orcamento.id, 1, '2025-03-02T15:00:00Z')
+    await datarEnvio(e6.orcamento.id, 2, '2025-03-25T15:00:00Z')
+    await datarAceite(e6.orcamento.id, 2, '2025-04-20T15:00:00Z')
+  })
+
+  it('enviados: mantém no mês do envio o que foi cancelado depois e detalha pelo status atual', async () => {
+    const resposta = await get(s, '/enviados?granularidade=mes')
+
+    expect(resposta.status).toBe(200)
+    const pontos = resposta.body as Array<{
+      chave: string
+      rotulo: string
+      quantidade: number
+      valor: number
+      porStatus: Record<string, { quantidade: number; valor: number }>
+    }>
+    // e5 (rascunho) fica de fora; e6 conta uma vez (v2). Cada orçamento vale 200.
+    expect(pontos).toHaveLength(1)
+    expect(pontos[0]).toMatchObject({
+      chave: '2025-03',
+      rotulo: '03/2025',
+      quantidade: 5,
+      valor: 1000,
+    })
+    expect(pontos[0]?.porStatus['enviado']).toEqual({ quantidade: 1, valor: 200 })
+    expect(pontos[0]?.porStatus['aprovado']).toEqual({ quantidade: 2, valor: 400 })
+    expect(pontos[0]?.porStatus['cancelado']).toEqual({ quantidade: 2, valor: 400 })
+    expect(pontos[0]?.porStatus['rascunho']).toEqual({ quantidade: 0, valor: 0 })
+  })
+
+  it('aprovados: mantém no mês da aprovação o aprovado cancelado depois e ignora a reprovação anterior', async () => {
+    const resposta = await get(s, '/aprovados?granularidade=mes')
+
+    expect(resposta.status).toBe(200)
+    const pontos = resposta.body as Array<{
+      chave: string
+      quantidade: number
+      valor: number
+      porStatus: Record<string, { quantidade: number; valor: number }>
+    }>
+    // Só abril: a reprovação da v1 do e6 (março) não conta; e2 não tem aceite.
+    expect(pontos).toHaveLength(1)
+    expect(pontos[0]).toMatchObject({ chave: '2025-04', quantidade: 3, valor: 600 })
+    expect(pontos[0]?.porStatus['aprovado']).toEqual({ quantidade: 2, valor: 400 })
+    expect(pontos[0]?.porStatus['cancelado']).toEqual({ quantidade: 1, valor: 200 })
+    expect(pontos[0]?.porStatus['reprovado']).toEqual({ quantidade: 0, valor: 0 })
+  })
+
+  it('filtra pelo intervalo da data do evento (envio / aceite)', async () => {
+    const enviados = await get(s, '/enviados?de=2025-03-15&ate=2025-03-31')
+    expect((enviados.body as Array<{ quantidade: number }>)[0]?.quantidade).toBe(2) // e4 e e6
+
+    const aprovados = await get(s, '/aprovados?de=2025-04-05&ate=2025-04-30')
+    expect((aprovados.body as Array<{ quantidade: number }>)[0]?.quantidade).toBe(2) // e4 e e6
+
+    const vazio = await get(s, '/aprovados?de=2025-05-01&ate=2025-05-31')
+    expect(vazio.body).toEqual([])
+  })
+
+  it('agrupa por semana ISO com rótulo AAAA-Sww', async () => {
+    const resposta = await get(s, '/aprovados?granularidade=semana')
+
+    const pontos = resposta.body as Array<{ chave: string; rotulo: string }>
+    // 02/04 = W14, 10/04 = W15, 20/04 (domingo) = W16.
+    expect(pontos.map((p) => p.chave)).toEqual(['2025-W14', '2025-W15', '2025-W16'])
+    expect(pontos.map((p) => p.rotulo)).toEqual(['2025-S14', '2025-S15', '2025-S16'])
+  })
+
+  it('não enxerga dados de outro tenant', async () => {
+    const outro = await criarCenario()
+
+    expect((await get(outro, '/enviados')).body).toEqual([])
+    expect((await get(outro, '/aprovados')).body).toEqual([])
+  })
+
+  it.each(['enviados', 'aprovados'])('%s: intervalo invertido responde 400', async (rota) => {
+    const resposta = await get(s, `/${rota}?de=2025-05-01&ate=2025-04-01`)
+
+    expect(resposta.status).toBe(400)
   })
 })

@@ -5,6 +5,7 @@ import {
 import type {
   DashboardRepository,
   FiltroCriados,
+  LinhaSerieStatus,
   OrcamentoDashboard,
 } from '../repositories/dashboard.repository.js'
 import type { Granularidade } from '../schemas/dashboard.schema.js'
@@ -44,6 +45,18 @@ export interface PontoCriados {
   quantidade: number
 }
 
+// Ponto das séries por evento (enviados / aprovados). `quantidade` e `valor`
+// somam TODOS os orçamentos do período do evento; `porStatus` detalha pelo status
+// ATUAL, de modo que um cancelamento posterior aparece no período de origem
+// (ex.: enviado em março e cancelado em abril aparece como cancelado em março).
+export interface PontoSerieStatus {
+  chave: string
+  rotulo: string
+  quantidade: number
+  valor: number
+  porStatus: Record<OrcamentoStatus, TotalPorStatus>
+}
+
 export interface OrcamentoDashboardPublico extends OrcamentoDashboard {
   // Dias inteiros desde o envio da versão vigente; null se não houver envio.
   diasAguardando: number | null
@@ -77,8 +90,38 @@ function rotuloDe(granularidade: Granularidade, chave: string): string {
 export interface DashboardService {
   resumo(ctx: DashboardContexto): Promise<ResumoDashboard>
   criadosPorPeriodo(ctx: DashboardContexto, filtro: FiltroCriados): Promise<PontoCriados[]>
+  enviadosPorPeriodo(ctx: DashboardContexto, filtro: FiltroCriados): Promise<PontoSerieStatus[]>
+  aprovadosPorPeriodo(ctx: DashboardContexto, filtro: FiltroCriados): Promise<PontoSerieStatus[]>
   recentes(ctx: DashboardContexto, limite: number): Promise<OrcamentoDashboardPublico[]>
   pendentes(ctx: DashboardContexto, limite: number): Promise<OrcamentoDashboardPublico[]>
+}
+
+// Agrupa as linhas (período x status) em um ponto por período, na ordem recebida
+// (o repositório já ordena pela chave).
+function agruparPorPeriodo(
+  linhas: LinhaSerieStatus[],
+  granularidade: Granularidade,
+): PontoSerieStatus[] {
+  const pontos = new Map<string, PontoSerieStatus>()
+  for (const linha of linhas) {
+    let ponto = pontos.get(linha.chave)
+    if (ponto === undefined) {
+      ponto = {
+        chave: linha.chave,
+        rotulo: rotuloDe(granularidade, linha.chave),
+        quantidade: 0,
+        valor: 0,
+        porStatus: Object.fromEntries(
+          STATUS_ORCAMENTO.map((status) => [status, { quantidade: 0, valor: 0 }]),
+        ) as Record<OrcamentoStatus, TotalPorStatus>,
+      }
+      pontos.set(linha.chave, ponto)
+    }
+    ponto.porStatus[linha.status] = { quantidade: linha.quantidade, valor: arredondar(linha.valor) }
+    ponto.quantidade += linha.quantidade
+    ponto.valor = arredondar(ponto.valor + linha.valor)
+  }
+  return Array.from(pontos.values())
 }
 
 export interface DashboardServiceDeps {
@@ -142,6 +185,22 @@ export function criarDashboardService({
         rotulo: rotuloDe(filtro.granularidade, ponto.chave),
         quantidade: ponto.quantidade,
       }))
+    },
+
+    async enviadosPorPeriodo(
+      ctx: DashboardContexto,
+      filtro: FiltroCriados,
+    ): Promise<PontoSerieStatus[]> {
+      const linhas = await dashboardRepo.enviadosPorPeriodo(ctx.tenantId, filtro)
+      return agruparPorPeriodo(linhas, filtro.granularidade)
+    },
+
+    async aprovadosPorPeriodo(
+      ctx: DashboardContexto,
+      filtro: FiltroCriados,
+    ): Promise<PontoSerieStatus[]> {
+      const linhas = await dashboardRepo.aprovadosPorPeriodo(ctx.tenantId, filtro)
+      return agruparPorPeriodo(linhas, filtro.granularidade)
     },
 
     async recentes(ctx: DashboardContexto, limite: number): Promise<OrcamentoDashboardPublico[]> {

@@ -51,6 +51,26 @@ export function criarDashboardRouter(
     }
   })
 
+  // GET /api/dashboard/enviados?granularidade=&de=&ate= — enviados por período do envio.
+  router.get('/enviados', async (req, res, next) => {
+    try {
+      const filtro = lerQuery(criadosQuerySchema, req)
+      res.json(await dashboardService.enviadosPorPeriodo(construirContexto(req), filtro))
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // GET /api/dashboard/aprovados?granularidade=&de=&ate= — aprovados por período do aceite.
+  router.get('/aprovados', async (req, res, next) => {
+    try {
+      const filtro = lerQuery(criadosQuerySchema, req)
+      res.json(await dashboardService.aprovadosPorPeriodo(construirContexto(req), filtro))
+    } catch (err) {
+      next(err)
+    }
+  })
+
   // GET /api/dashboard/recentes?limite= — últimos orçamentos criados.
   router.get('/recentes', async (req, res, next) => {
     try {

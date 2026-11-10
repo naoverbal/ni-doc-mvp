@@ -9,6 +9,8 @@ function makeRepo(overrides?: Partial<DashboardRepository>): DashboardRepository
   return {
     resumoPorStatus: vi.fn().mockResolvedValue([]),
     criadosPorPeriodo: vi.fn().mockResolvedValue([]),
+    enviadosPorPeriodo: vi.fn().mockResolvedValue([]),
+    aprovadosPorPeriodo: vi.fn().mockResolvedValue([]),
     recentes: vi.fn().mockResolvedValue([]),
     pendentes: vi.fn().mockResolvedValue([]),
     ...overrides,
@@ -16,6 +18,69 @@ function makeRepo(overrides?: Partial<DashboardRepository>): DashboardRepository
 }
 
 const ctx = { tenantId: 'tenant-1' }
+
+describe('dashboardService.enviadosPorPeriodo / aprovadosPorPeriodo', () => {
+  const filtro = { granularidade: 'mes' as const, de: '2025-03-01', ate: '2025-04-30' }
+
+  it('agrupa por período somando todos os status e detalhando pelo status atual', async () => {
+    const repo = makeRepo({
+      enviadosPorPeriodo: vi.fn().mockResolvedValue([
+        { chave: '2025-03', status: 'enviado', quantidade: 1, valor: 100 },
+        { chave: '2025-03', status: 'aprovado', quantidade: 2, valor: 250.5 },
+        // Enviado em março e cancelado depois: continua em março.
+        { chave: '2025-03', status: 'cancelado', quantidade: 1, valor: 50 },
+        { chave: '2025-04', status: 'reprovado', quantidade: 1, valor: 10 },
+      ]),
+    })
+    const service = criarDashboardService({ dashboardRepo: repo })
+
+    const pontos = await service.enviadosPorPeriodo(ctx, filtro)
+
+    expect(repo.enviadosPorPeriodo).toHaveBeenCalledWith('tenant-1', filtro)
+    expect(pontos).toHaveLength(2)
+    expect(pontos[0]).toMatchObject({
+      chave: '2025-03',
+      rotulo: '03/2025',
+      quantidade: 4,
+      valor: 400.5,
+    })
+    expect(pontos[0]?.porStatus.cancelado).toEqual({ quantidade: 1, valor: 50 })
+    expect(pontos[0]?.porStatus.aprovado).toEqual({ quantidade: 2, valor: 250.5 })
+    expect(pontos[0]?.porStatus.rascunho).toEqual({ quantidade: 0, valor: 0 })
+    expect(pontos[1]).toMatchObject({ chave: '2025-04', quantidade: 1, valor: 10 })
+  })
+
+  it('aprovados mantém o aprovado que foi cancelado depois no período da aprovação', async () => {
+    const repo = makeRepo({
+      aprovadosPorPeriodo: vi.fn().mockResolvedValue([
+        { chave: '2025-W14', status: 'aprovado', quantidade: 1, valor: 200 },
+        { chave: '2025-W14', status: 'cancelado', quantidade: 1, valor: 200 },
+      ]),
+    })
+    const service = criarDashboardService({ dashboardRepo: repo })
+
+    const pontos = await service.aprovadosPorPeriodo(ctx, { granularidade: 'semana' })
+
+    expect(repo.aprovadosPorPeriodo).toHaveBeenCalledWith('tenant-1', { granularidade: 'semana' })
+    expect(pontos).toEqual([
+      expect.objectContaining({
+        chave: '2025-W14',
+        rotulo: '2025-S14',
+        quantidade: 2,
+        valor: 400,
+      }),
+    ])
+    expect(pontos[0]?.porStatus.aprovado.quantidade).toBe(1)
+    expect(pontos[0]?.porStatus.cancelado.quantidade).toBe(1)
+  })
+
+  it('retorna lista vazia sem linhas', async () => {
+    const service = criarDashboardService({ dashboardRepo: makeRepo() })
+
+    expect(await service.enviadosPorPeriodo(ctx, filtro)).toEqual([])
+    expect(await service.aprovadosPorPeriodo(ctx, filtro)).toEqual([])
+  })
+})
 
 describe('dashboardService.resumo', () => {
   it('retorna todos os status zerados e conversão nula sem orçamentos', async () => {

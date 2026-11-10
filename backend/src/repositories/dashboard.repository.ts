@@ -1,4 +1,4 @@
-import { sql, type Kysely } from 'kysely'
+import { sql, type Kysely, type RawBuilder } from 'kysely'
 import type { Database } from '../types/database.js'
 import type { OrcamentoStatus } from './orcamento.repository.js'
 import type { Granularidade } from '../schemas/dashboard.schema.js'
@@ -46,9 +46,26 @@ export interface OrcamentoDashboard {
   expiraEm: Date | null
 }
 
+// Linha das séries por evento (envio / aprovação): período x status ATUAL.
+// O orçamento fica no período do evento original; o status atual mostra, nesse
+// mesmo período, o impacto de cancelamentos e expirações posteriores.
+export interface LinhaSerieStatus {
+  chave: string
+  status: OrcamentoStatus
+  quantidade: number
+  valor: number
+}
+
 export interface DashboardRepository {
   resumoPorStatus(tenantId: string): Promise<LinhaStatus[]>
   criadosPorPeriodo(tenantId: string, filtro: FiltroCriados): Promise<PontoCriadosBruto[]>
+  // Por `enviado_em` da versão vigente; status atuais: enviado, aprovado,
+  // reprovado, expirado e cancelado (rascunho, inclusive reaberto, fica de fora).
+  enviadosPorPeriodo(tenantId: string, filtro: FiltroCriados): Promise<LinhaSerieStatus[]>
+  // Por data do aceite da versão vigente; status atuais: aprovado e cancelado
+  // (só `enviado` e `aprovado` podem ser cancelados, e só decisões geram aceite,
+  // então cancelado + aceite vigente = aprovado que foi cancelado depois).
+  aprovadosPorPeriodo(tenantId: string, filtro: FiltroCriados): Promise<LinhaSerieStatus[]>
   recentes(tenantId: string, limite: number): Promise<OrcamentoDashboard[]>
   // `enviado` do envio mais antigo para o mais novo (aguardando há mais tempo).
   pendentes(tenantId: string, limite: number): Promise<OrcamentoDashboard[]>
@@ -63,6 +80,43 @@ interface LinhaStatusRow {
 interface CriadosRow {
   chave: string
   quantidade: string
+}
+
+interface SerieStatusRow {
+  chave: string
+  status: OrcamentoStatus
+  quantidade: string
+  valor: string
+}
+
+// Expressão da chave do período para uma coluna timestamptz, no fuso de São
+// Paulo (mesma regra da expiração): sem isso, um orçamento criado às 22h do
+// último dia do mês cairia no mês seguinte (UTC).
+function expressaoChave(coluna: string, granularidade: Granularidade): RawBuilder<string> {
+  return sql<string>`to_char(
+    date_trunc(${TRUNC[granularidade]}, ${sql.ref(coluna)} AT TIME ZONE ${FUSO}),
+    ${FORMATO[granularidade]}
+  )`
+}
+
+// Filtro opcional de intervalo (datas civis inclusivas, fuso de São Paulo).
+function clausulaIntervalo(coluna: string, filtro: FiltroCriados): RawBuilder<unknown> {
+  const de = filtro.de ?? null
+  const ate = filtro.ate ?? null
+  const ref = sql.ref(coluna)
+  return sql`(${de}::date IS NULL
+              OR ${ref} >= (${de}::date)::timestamp AT TIME ZONE ${FUSO})
+         AND (${ate}::date IS NULL
+              OR ${ref} < ((${ate}::date + 1)::timestamp AT TIME ZONE ${FUSO}))`
+}
+
+function mapRowSerieStatus(row: SerieStatusRow): LinhaSerieStatus {
+  return {
+    chave: row.chave,
+    status: row.status,
+    quantidade: Number(row.quantidade),
+    valor: Number(row.valor),
+  }
 }
 
 interface OrcamentoDashboardRow {
@@ -154,24 +208,13 @@ export function criarDashboardRepository({ db }: DashboardRepositoryDeps): Dashb
       tenantId: string,
       filtro: FiltroCriados,
     ): Promise<PontoCriadosBruto[]> {
-      const de = filtro.de ?? null
-      const ate = filtro.ate ?? null
-
-      // A data é truncada no fuso de São Paulo (mesma regra da expiração): sem
-      // isso, um orçamento criado às 22h do último dia do mês cairia no mês
-      // seguinte (UTC). `GROUP BY 1` evita casar expressões parametrizadas.
+      // `GROUP BY 1` evita casar expressões parametrizadas entre SELECT e GROUP.
       const resultado = await sql<CriadosRow>`
-        SELECT to_char(
-                 date_trunc(${TRUNC[filtro.granularidade]}, criado_em AT TIME ZONE ${FUSO}),
-                 ${FORMATO[filtro.granularidade]}
-               ) AS chave,
+        SELECT ${expressaoChave('criado_em', filtro.granularidade)} AS chave,
                COUNT(*)::text AS quantidade
         FROM orcamentos
         WHERE tenant_id = ${tenantId}
-          AND (${de}::date IS NULL
-               OR criado_em >= (${de}::date)::timestamp AT TIME ZONE ${FUSO})
-          AND (${ate}::date IS NULL
-               OR criado_em < ((${ate}::date + 1)::timestamp AT TIME ZONE ${FUSO}))
+          AND ${clausulaIntervalo('criado_em', filtro)}
         GROUP BY 1
         ORDER BY 1
       `.execute(db)
@@ -180,6 +223,55 @@ export function criarDashboardRepository({ db }: DashboardRepositoryDeps): Dashb
         chave: row.chave,
         quantidade: Number(row.quantidade),
       }))
+    },
+
+    async enviadosPorPeriodo(
+      tenantId: string,
+      filtro: FiltroCriados,
+    ): Promise<LinhaSerieStatus[]> {
+      // Versão vigente apenas: um orçamento reaberto e reenviado conta no novo
+      // envio, não duas vezes.
+      const resultado = await sql<SerieStatusRow>`
+        SELECT ${expressaoChave('v.enviado_em', filtro.granularidade)} AS chave,
+               o.status AS status,
+               COUNT(*)::text AS quantidade,
+               COALESCE(SUM(o.total), 0)::text AS valor
+        FROM orcamentos o
+        JOIN orcamento_versoes v
+          ON v.orcamento_id = o.id AND v.versao = o.versao_atual
+        WHERE o.tenant_id = ${tenantId}
+          AND o.status IN ('enviado', 'aprovado', 'reprovado', 'expirado', 'cancelado')
+          AND ${clausulaIntervalo('v.enviado_em', filtro)}
+        GROUP BY 1, 2
+        ORDER BY 1, 2
+      `.execute(db)
+
+      return resultado.rows.map(mapRowSerieStatus)
+    },
+
+    async aprovadosPorPeriodo(
+      tenantId: string,
+      filtro: FiltroCriados,
+    ): Promise<LinhaSerieStatus[]> {
+      // Aceite da versão vigente (UNIQUE por versão). Um orçamento reprovado na
+      // v1 e aprovado na v2 conta uma única vez, no aceite da v2.
+      const resultado = await sql<SerieStatusRow>`
+        SELECT ${expressaoChave('a.criado_em', filtro.granularidade)} AS chave,
+               o.status AS status,
+               COUNT(*)::text AS quantidade,
+               COALESCE(SUM(o.total), 0)::text AS valor
+        FROM orcamentos o
+        JOIN orcamento_versoes v
+          ON v.orcamento_id = o.id AND v.versao = o.versao_atual
+        JOIN orcamento_aceites a ON a.versao_id = v.id
+        WHERE o.tenant_id = ${tenantId}
+          AND o.status IN ('aprovado', 'cancelado')
+          AND ${clausulaIntervalo('a.criado_em', filtro)}
+        GROUP BY 1, 2
+        ORDER BY 1, 2
+      `.execute(db)
+
+      return resultado.rows.map(mapRowSerieStatus)
     },
 
     async recentes(tenantId: string, limite: number): Promise<OrcamentoDashboard[]> {

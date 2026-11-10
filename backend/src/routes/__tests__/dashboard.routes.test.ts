@@ -46,6 +46,8 @@ function makeDashboardService(overrides?: Partial<DashboardService>): DashboardS
   return {
     resumo: vi.fn().mockResolvedValue({ porStatus: {}, taxaConversao: null }),
     criadosPorPeriodo: vi.fn().mockResolvedValue([]),
+    enviadosPorPeriodo: vi.fn().mockResolvedValue([]),
+    aprovadosPorPeriodo: vi.fn().mockResolvedValue([]),
     recentes: vi.fn().mockResolvedValue([]),
     pendentes: vi.fn().mockResolvedValue([]),
     ...overrides,
@@ -116,6 +118,39 @@ describe('rotas /api/dashboard', () => {
 
     expect(res.status).toBe(400)
     expect(service.criadosPorPeriodo).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['enviados', 'enviadosPorPeriodo'],
+    ['aprovados', 'aprovadosPorPeriodo'],
+  ] as const)('GET /%s aplica o padrão (mes) e repassa o intervalo', async (rota, metodo) => {
+    const service = makeDashboardService()
+    const app = makeApp(service, makeAuthService())
+
+    await request(app).get(`/api/dashboard/${rota}`).set('Cookie', 'session=abc')
+    expect(service[metodo]).toHaveBeenLastCalledWith(
+      { tenantId: 'tenant-1' },
+      { granularidade: 'mes' },
+    )
+
+    await request(app)
+      .get(`/api/dashboard/${rota}?granularidade=ano&de=2025-01-01&ate=2025-12-31`)
+      .set('Cookie', 'session=abc')
+    expect(service[metodo]).toHaveBeenLastCalledWith(
+      { tenantId: 'tenant-1' },
+      { granularidade: 'ano', de: '2025-01-01', ate: '2025-12-31' },
+    )
+  })
+
+  it.each(['enviados', 'aprovados'])('GET /%s retorna 400 para intervalo invertido', async (rota) => {
+    const service = makeDashboardService()
+    const res = await request(makeApp(service, makeAuthService()))
+      .get(`/api/dashboard/${rota}?de=2025-05-01&ate=2025-04-01`)
+      .set('Cookie', 'session=abc')
+
+    expect(res.status).toBe(400)
+    expect(service.enviadosPorPeriodo).not.toHaveBeenCalled()
+    expect(service.aprovadosPorPeriodo).not.toHaveBeenCalled()
   })
 
   it.each(['recentes', 'pendentes'] as const)('GET /%s usa limite padrão 5', async (rota) => {
