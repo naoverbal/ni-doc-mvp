@@ -33,7 +33,8 @@ export interface ResumoDashboard {
   valorEnviado: number
   // Soma de `total` dos `aprovado` (status atual).
   valorAprovado: number
-  // Fração 0..1, ou null quando não há base de cálculo. Ver DENOMINADOR_CONVERSAO.
+  // Fração 0..1 (aprovados sobre enviado + aprovado + reprovado), ou null quando
+  // não há base de cálculo. Ver DENOMINADOR_CONVERSAO.
   taxaConversao: number | null
 }
 
@@ -48,9 +49,9 @@ export interface OrcamentoDashboardPublico extends OrcamentoDashboard {
   diasAguardando: number | null
 }
 
-// Status que entram no denominador da taxa de conversão. A definição ainda não
-// foi fechada pelo produto (expirado/cancelado ficam de fora por ora); é o único
-// ponto a alterar quando a regra for decidida.
+// Status que entram no denominador da taxa de conversão. Decisão de produto:
+// expirado e cancelado NÃO entram; só quem recebeu decisão (aprovado/reprovado)
+// ou ainda aguarda (enviado). É o único ponto a alterar se a regra mudar.
 const DENOMINADOR_CONVERSAO: readonly OrcamentoStatus[] = ['enviado', 'aprovado', 'reprovado']
 
 const MS_POR_DIA = 24 * 60 * 60 * 1000
