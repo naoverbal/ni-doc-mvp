@@ -21,11 +21,36 @@ vi.mock('@/hooks/useAuth', () => ({
   useLogout: () => ({ mutateAsync: vi.fn().mockResolvedValue(undefined), isPending: false }),
 }))
 
-// O Dashboard real busca todos os orçamentos ao montar; aqui o foco é a
-// estrutura de rotas/layout, então mockamos o hook com uma lista vazia (estado
-// resolvido) para não disparar rede nem exigir um QueryClientProvider.
-vi.mock('@/hooks/useDashboardOrcamentos', () => ({
-  useDashboardOrcamentos: () => ({ data: [], isLoading: false, isError: false }),
+// O Dashboard real consulta o backend ao montar; aqui o foco é a estrutura de
+// rotas/layout, então mockamos os hooks com um painel vazio (estado resolvido)
+// para não disparar rede nem exigir um QueryClientProvider.
+vi.mock('@/hooks/useDashboard', () => ({
+  useDashboard: () => {
+    const zero = { quantidade: 0, valor: 0 }
+    return {
+      data: {
+        resumo: {
+          porStatus: {
+            rascunho: zero,
+            enviado: zero,
+            aprovado: zero,
+            reprovado: zero,
+            expirado: zero,
+            cancelado: zero,
+          },
+          valorEmAberto: 0,
+          valorEnviado: 0,
+          valorAprovado: 0,
+          taxaConversao: null,
+        },
+        recentes: [],
+        pendentes: [],
+      },
+      isLoading: false,
+      isError: false,
+    }
+  },
+  useDashboardCriados: () => ({ data: [], isError: false }),
 }))
 
 const ADMIN: Usuario = { id: 'u-1', nome: 'Ana Admin', papel: 'admin' }

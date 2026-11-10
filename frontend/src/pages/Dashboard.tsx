@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type ReactElement } from 'react'
+import { useId, useState, type ReactElement } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
 import {
   Button,
@@ -26,21 +26,25 @@ import {
 } from '@fluentui/react-icons'
 import { DonutChart, VerticalBarChart } from '@fluentui/react-charts'
 import { CardKpi } from '@/components/dashboard/CardKpi'
-import { useDashboardOrcamentos } from '@/hooks/useDashboardOrcamentos'
-import {
-  aguardandoHaMaisTempo,
-  agruparCriadosPorPeriodo,
-  contarPorStatus,
-  distribuicaoPorStatus,
-  recentes,
-  taxaConversao,
-  valorEmAberto,
-  valorEnviado,
-  type Granularidade,
-} from '@/lib/dashboard-metricas'
+import { useDashboard, useDashboardCriados } from '@/hooks/useDashboard'
 import { formatarMoeda, formatarPercentual } from '@/lib/formato'
 import { ROTULO_STATUS } from '@/lib/orcamento-status'
-import type { OrcamentoResumo } from '@/types/api'
+import type {
+  GranularidadeDashboard,
+  OrcamentoDashboard,
+  OrcamentoStatus,
+  ResumoDashboard,
+} from '@/types/api'
+
+// Ordem fixa dos status na distribuição (donut e legenda).
+const ORDEM_STATUS: OrcamentoStatus[] = [
+  'rascunho',
+  'enviado',
+  'aprovado',
+  'reprovado',
+  'expirado',
+  'cancelado',
+]
 
 const useStyles = makeStyles({
   pagina: {
@@ -135,26 +139,33 @@ const useStyles = makeStyles({
   },
 })
 
-// Métricas derivadas das funções puras; memoizadas por lista de orçamentos.
-function useMetricas(orcamentos: OrcamentoResumo[]) {
-  return useMemo(() => {
-    const contagem = contarPorStatus(orcamentos)
-    return {
-      contagem,
-      total: orcamentos.length,
-      emAberto: valorEmAberto(orcamentos),
-      enviado: valorEnviado(orcamentos),
-      taxa: taxaConversao(orcamentos),
-      distribuicao: distribuicaoPorStatus(orcamentos),
-      maisRecentes: recentes(orcamentos),
-      aguardando: aguardandoHaMaisTempo(orcamentos),
-    }
-  }, [orcamentos])
+// Fatias do donut: só os status com quantidade > 0, com rótulo textual (o status
+// nunca é comunicado só por cor).
+function fatiasDeStatus(resumo: ResumoDashboard): Array<{ legend: string; data: number }> {
+  return ORDEM_STATUS.filter((status) => resumo.porStatus[status].quantidade > 0).map((status) => ({
+    legend: ROTULO_STATUS[status],
+    data: resumo.porStatus[status].quantidade,
+  }))
 }
 
-// Item acionável de lista: número, título, status (rótulo + cor) e total, com
-// link para o detalhe. O status leva rótulo textual, nunca só cor.
-function ItemOrcamento({ orcamento }: { orcamento: OrcamentoResumo }): ReactElement {
+function totalDeOrcamentos(resumo: ResumoDashboard): number {
+  return ORDEM_STATUS.reduce((soma, status) => soma + resumo.porStatus[status].quantidade, 0)
+}
+
+function textoDiasAguardando(dias: number): string {
+  if (dias === 0) return 'Enviado hoje'
+  return dias === 1 ? 'Aguardando há 1 dia' : `Aguardando há ${dias} dias`
+}
+
+// Item acionável de lista: número, título, cliente, status (rótulo + cor) e
+// total, com link para o detalhe. O status leva rótulo textual, nunca só cor.
+function ItemOrcamento({
+  orcamento,
+  mostrarEspera = false,
+}: {
+  orcamento: OrcamentoDashboard
+  mostrarEspera?: boolean
+}): ReactElement {
   const estilos = useStyles()
   return (
     <li className={estilos.itemLista}>
@@ -165,9 +176,13 @@ function ItemOrcamento({ orcamento }: { orcamento: OrcamentoResumo }): ReactElem
         <Text weight="semibold">{formatarMoeda(orcamento.total)}</Text>
       </div>
       <div className={estilos.itemMeta}>
+        <Text size={200}>{orcamento.clienteNome}</Text>
         <Text size={200} data-status={orcamento.status}>
           {ROTULO_STATUS[orcamento.status]}
         </Text>
+        {mostrarEspera && orcamento.diasAguardando !== null ? (
+          <Text size={200}>{textoDiasAguardando(orcamento.diasAguardando)}</Text>
+        ) : null}
       </div>
     </li>
   )
@@ -175,20 +190,14 @@ function ItemOrcamento({ orcamento }: { orcamento: OrcamentoResumo }): ReactElem
 
 export function Dashboard(): ReactElement {
   const estilos = useStyles()
-  const [granularidade, setGranularidade] = useState<Granularidade>('mes')
+  const [granularidade, setGranularidade] = useState<GranularidadeDashboard>('mes')
   const serieId = useId()
 
-  const { data, isLoading, isError } = useDashboardOrcamentos()
-  const orcamentos = useMemo(() => data ?? [], [data])
-  const metricas = useMetricas(orcamentos)
-
-  const serie = useMemo(
-    () => agruparCriadosPorPeriodo(orcamentos, granularidade),
-    [orcamentos, granularidade],
-  )
+  const { data, isLoading, isError } = useDashboard()
+  const criados = useDashboardCriados(granularidade)
 
   function aoSelecionarGranularidade(_evento: SelectTabEvent, dados: SelectTabData): void {
-    setGranularidade(dados.value as Granularidade)
+    setGranularidade(dados.value as GranularidadeDashboard)
   }
 
   if (isLoading) {
@@ -207,7 +216,7 @@ export function Dashboard(): ReactElement {
     )
   }
 
-  if (isError) {
+  if (isError || !data) {
     return (
       <main id="conteudo">
         <h1>Painel de orçamentos</h1>
@@ -222,7 +231,10 @@ export function Dashboard(): ReactElement {
     )
   }
 
-  if (orcamentos.length === 0) {
+  const { resumo, recentes, pendentes } = data
+  const total = totalDeOrcamentos(resumo)
+
+  if (total === 0) {
     return (
       <main id="conteudo">
         <h1>Painel de orçamentos</h1>
@@ -242,12 +254,12 @@ export function Dashboard(): ReactElement {
     )
   }
 
-  const fatiasDonut = metricas.distribuicao.map((fatia) => ({
-    legend: fatia.legenda,
-    data: fatia.valor,
-  }))
+  const fatiasDonut = fatiasDeStatus(resumo)
 
-  const pontosSerie = serie.map((ponto) => ({ x: ponto.rotulo, y: ponto.quantidade }))
+  const pontosSerie = (criados.data ?? []).map((ponto) => ({
+    x: ponto.rotulo,
+    y: ponto.quantidade,
+  }))
 
   return (
     <main id="conteudo" className={estilos.pagina}>
@@ -258,45 +270,45 @@ export function Dashboard(): ReactElement {
         <div className={estilos.gridCards}>
           <CardKpi
             rotulo="Aguardando"
-            valor={String(metricas.contagem.enviado)}
+            valor={String(resumo.porStatus.enviado.quantidade)}
             descricao="Enviados sem decisão"
             icone={<Send24Regular aria-hidden />}
           />
           <CardKpi
             rotulo="Aprovados"
-            valor={String(metricas.contagem.aprovado)}
+            valor={String(resumo.porStatus.aprovado.quantidade)}
             icone={<CheckmarkCircle24Regular aria-hidden />}
           />
           <CardKpi
             rotulo="Reprovados"
-            valor={String(metricas.contagem.reprovado)}
+            valor={String(resumo.porStatus.reprovado.quantidade)}
             icone={<DismissCircle24Regular aria-hidden />}
           />
           <CardKpi
             rotulo="Rascunhos"
-            valor={String(metricas.contagem.rascunho)}
+            valor={String(resumo.porStatus.rascunho.quantidade)}
             icone={<DocumentMultiple24Regular aria-hidden />}
           />
           <CardKpi
             rotulo="Total de orçamentos"
-            valor={String(metricas.total)}
+            valor={String(total)}
             icone={<DocumentMultiple24Regular aria-hidden />}
           />
           <CardKpi
             rotulo="Valor em aberto"
-            valor={formatarMoeda(metricas.emAberto)}
+            valor={formatarMoeda(resumo.valorEmAberto)}
             descricao="Soma dos enviados aguardando decisão"
             icone={<Money24Regular aria-hidden />}
           />
           <CardKpi
             rotulo="Valor total enviado"
-            valor={formatarMoeda(metricas.enviado)}
+            valor={formatarMoeda(resumo.valorEnviado)}
             descricao="Enviados + aprovados + reprovados"
             icone={<Money24Regular aria-hidden />}
           />
           <CardKpi
             rotulo="Taxa de conversão"
-            valor={formatarPercentual(metricas.taxa)}
+            valor={formatarPercentual(resumo.taxaConversao)}
             descricao="Aprovados sobre os que saíram de rascunho"
             icone={<DataTrending24Regular aria-hidden />}
           />
@@ -331,7 +343,13 @@ export function Dashboard(): ReactElement {
           <Tab value="ano">Ano</Tab>
         </TabList>
         <div className={estilos.grafico} id={serieId}>
-          {pontosSerie.length > 0 ? (
+          {criados.isError ? (
+            <div role="alert" aria-live="assertive">
+              <MessageBar intent="error">
+                <MessageBarBody>Não foi possível carregar a série. Tente novamente.</MessageBarBody>
+              </MessageBar>
+            </div>
+          ) : pontosSerie.length > 0 ? (
             <VerticalBarChart
               data={pontosSerie}
               chartTitle="Orçamentos criados por período"
@@ -349,7 +367,7 @@ export function Dashboard(): ReactElement {
         <div className={estilos.secao}>
           <h2 id="secao-recentes">Orçamentos recentes</h2>
           <ul className={estilos.lista} aria-labelledby="secao-recentes">
-            {metricas.maisRecentes.map((orcamento) => (
+            {recentes.map((orcamento) => (
               <ItemOrcamento key={orcamento.id} orcamento={orcamento} />
             ))}
           </ul>
@@ -357,10 +375,10 @@ export function Dashboard(): ReactElement {
 
         <div className={estilos.secao}>
           <h2 id="secao-aguardando">Aguardando há mais tempo</h2>
-          {metricas.aguardando.length > 0 ? (
+          {pendentes.length > 0 ? (
             <ul className={estilos.lista} aria-labelledby="secao-aguardando">
-              {metricas.aguardando.map((orcamento) => (
-                <ItemOrcamento key={orcamento.id} orcamento={orcamento} />
+              {pendentes.map((orcamento) => (
+                <ItemOrcamento key={orcamento.id} orcamento={orcamento} mostrarEspera />
               ))}
             </ul>
           ) : (

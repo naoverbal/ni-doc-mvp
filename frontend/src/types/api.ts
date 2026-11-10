@@ -58,6 +58,49 @@ export interface ListarOrcamentosFiltro {
 }
 
 // -----------------------------------------------------------------------------
+// Dashboard (GET /api/dashboard/*). Espelha dashboard.service do backend; as
+// agregações vêm prontas do servidor, pelo status ATUAL de cada orçamento.
+// -----------------------------------------------------------------------------
+
+export type GranularidadeDashboard = 'semana' | 'mes' | 'ano'
+
+export interface TotalPorStatus {
+  quantidade: number
+  valor: number
+}
+
+export interface ResumoDashboard {
+  porStatus: Record<OrcamentoStatus, TotalPorStatus>
+  valorEmAberto: number
+  valorEnviado: number
+  valorAprovado: number
+  // Fração 0..1; null quando não há base de cálculo.
+  taxaConversao: number | null
+}
+
+export interface PontoCriados {
+  // Chave canônica ordenável ('2025-03', '2025-W03', '2025').
+  chave: string
+  rotulo: string
+  quantidade: number
+}
+
+export interface OrcamentoDashboard {
+  id: string
+  numero: string
+  titulo: string
+  status: OrcamentoStatus
+  clienteId: string
+  clienteNome: string
+  total: number
+  criadoEm: string
+  enviadoEm: string | null
+  expiraEm: string | null
+  // Dias inteiros desde o envio da versão vigente; null se nunca foi enviado.
+  diasAguardando: number | null
+}
+
+// -----------------------------------------------------------------------------
 // Entidades de referência para o editor (RF-006, RF-010, RF-012). Espelham os
 // *Publico do backend; apenas os campos usados pela UI do editor são tipados.
 // -----------------------------------------------------------------------------
