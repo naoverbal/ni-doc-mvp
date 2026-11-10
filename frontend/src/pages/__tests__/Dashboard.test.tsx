@@ -12,22 +12,22 @@ import type { OrcamentoDashboard, PontoCriados, ResumoDashboard } from '@/types/
 // têm testes próprios no backend.
 vi.mock('@/hooks/useDashboard', () => ({
   useDashboard: vi.fn(),
-  useDashboardCriados: vi.fn(),
+  useDashboardSerie: vi.fn(),
 }))
 
-const { useDashboard, useDashboardCriados } = await import('@/hooks/useDashboard')
+const { useDashboard, useDashboardSerie } = await import('@/hooks/useDashboard')
 const mockDashboard = vi.mocked(useDashboard)
-const mockCriados = vi.mocked(useDashboardCriados)
+const mockSerie = vi.mocked(useDashboardSerie)
 
 type EstadoDashboard = ReturnType<typeof useDashboard>
-type EstadoCriados = ReturnType<typeof useDashboardCriados>
+type EstadoSerie = ReturnType<typeof useDashboardSerie>
 
 function estado(parcial: Partial<EstadoDashboard>): EstadoDashboard {
   return { data: undefined, isLoading: false, isError: false, ...parcial }
 }
 
-function estadoCriados(parcial: Partial<EstadoCriados> = {}): EstadoCriados {
-  return { data: [], isError: false, ...parcial } as EstadoCriados
+function estadoSerie(parcial: Partial<EstadoSerie> = {}): EstadoSerie {
+  return { data: [], isError: false, ...parcial } as EstadoSerie
 }
 
 const ZERO = { quantidade: 0, valor: 0 }
@@ -99,7 +99,7 @@ function renderDashboard(): void {
 describe('Dashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockCriados.mockReturnValue(estadoCriados({ data: SERIE }))
+    mockSerie.mockReturnValue(estadoSerie({ data: SERIE }))
   })
 
   it('renderiza um <main id="conteudo"> e um <h1> descritivo', () => {
@@ -169,16 +169,59 @@ describe('Dashboard', () => {
     const usuario = userEvent.setup()
     renderDashboard()
 
-    expect(mockCriados).toHaveBeenLastCalledWith('mes')
+    expect(mockSerie).toHaveBeenLastCalledWith('criados', 'mes')
     await usuario.click(screen.getByRole('tab', { name: /ano/i }))
 
     expect(screen.getByRole('tab', { name: /ano/i })).toHaveAttribute('aria-selected', 'true')
-    expect(mockCriados).toHaveBeenLastCalledWith('ano')
+    expect(mockSerie).toHaveBeenLastCalledWith('criados', 'ano')
+  })
+
+  it('troca a série (criação, envio, aprovação) e atualiza título e descrição', async () => {
+    mockDashboard.mockReturnValue(estado({ data: DADOS }))
+    const usuario = userEvent.setup()
+    renderDashboard()
+
+    expect(screen.getByRole('heading', { name: 'Orçamentos criados' })).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+
+    await usuario.click(screen.getByRole('tab', { name: 'Envio' }))
+    expect(mockSerie).toHaveBeenLastCalledWith('enviados', 'mes')
+    expect(screen.getByRole('heading', { name: 'Orçamentos enviados' })).toBeInTheDocument()
+    expect(screen.getByText(/aparecem no período do envio/i)).toBeInTheDocument()
+
+    await usuario.click(screen.getByRole('tab', { name: 'Aprovação' }))
+    expect(mockSerie).toHaveBeenLastCalledWith('aprovados', 'mes')
+    expect(screen.getByRole('heading', { name: 'Orçamentos aprovados' })).toBeInTheDocument()
+  })
+
+  it('mostra o detalhamento com valor e cancelados no período de origem', () => {
+    const porStatus = resumo({
+      enviado: { quantidade: 1, valor: 100 },
+      aprovado: { quantidade: 2, valor: 400 },
+      cancelado: { quantidade: 1, valor: 200 },
+    }).porStatus
+    mockDashboard.mockReturnValue(estado({ data: DADOS }))
+    mockSerie.mockReturnValue(
+      estadoSerie({
+        data: [
+          { chave: '2025-03', rotulo: '03/2025', quantidade: 4, valor: 700, porStatus },
+        ] as EstadoSerie['data'],
+      }),
+    )
+    renderDashboard()
+
+    const tabela = screen.getByRole('table', { name: /detalhamento por período/i })
+    const linha = within(tabela).getByText('03/2025').closest('tr') as HTMLElement
+    expect(within(linha).getByText('4')).toBeInTheDocument()
+    expect(within(linha).getByText(/700,00/)).toBeInTheDocument()
+    // Cancelados depois = 1 (aparece no período do envio).
+    expect(within(linha).getByText('1')).toBeInTheDocument()
+    expect(within(tabela).getByRole('columnheader', { name: /cancelados depois/i })).toBeInTheDocument()
   })
 
   it('anuncia erro ao carregar a série sem derrubar o restante do painel', () => {
     mockDashboard.mockReturnValue(estado({ data: DADOS }))
-    mockCriados.mockReturnValue(estadoCriados({ data: undefined, isError: true }))
+    mockSerie.mockReturnValue(estadoSerie({ data: undefined, isError: true }))
     renderDashboard()
 
     expect(screen.getByRole('alert')).toHaveTextContent(/não foi possível carregar a série/i)

@@ -50,7 +50,7 @@ vi.mock('@/hooks/useDashboard', () => ({
       isError: false,
     }
   },
-  useDashboardCriados: () => ({ data: [], isError: false }),
+  useDashboardSerie: () => ({ data: [], isError: false }),
 }))
 
 const ADMIN: Usuario = { id: 'u-1', nome: 'Ana Admin', papel: 'admin' }

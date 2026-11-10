@@ -4,7 +4,9 @@ import type {
   GranularidadeDashboard,
   OrcamentoDashboard,
   PontoCriados,
+  PontoSerieStatus,
   ResumoDashboard,
+  TipoSerieDashboard,
 } from '@/types/api'
 
 // Dados do dashboard vindos dos endpoints de agregação do backend
@@ -54,13 +56,22 @@ export function useDashboard(): EstadoDashboard {
   }
 }
 
-// Série de orçamentos criados por período. Trocar a granularidade refaz a busca
-// (o agrupamento é no servidor, no fuso de São Paulo); o gráfico anterior
-// permanece visível enquanto a nova série carrega.
-export function useDashboardCriados(granularidade: GranularidadeDashboard) {
-  return useQuery<PontoCriados[], ApiError>({
-    queryKey: ['dashboard', 'criados', granularidade],
-    queryFn: () => api.get<PontoCriados[]>(`/dashboard/criados?granularidade=${granularidade}`),
+// Série por período: criados (data de criação), enviados (data do envio) ou
+// aprovados (data do aceite). Trocar a série ou a granularidade refaz a busca (o
+// agrupamento é no servidor, no fuso de São Paulo); o gráfico anterior permanece
+// visível enquanto a nova série carrega. `enviados` e `aprovados` trazem também
+// valor e detalhamento por status atual (PontoSerieStatus).
+export function useDashboardSerie(
+  tipo: TipoSerieDashboard,
+  granularidade: GranularidadeDashboard,
+) {
+  return useQuery<Array<PontoCriados | PontoSerieStatus>, ApiError>({
+    queryKey: ['dashboard', tipo, granularidade],
+    queryFn: () =>
+      api.get<Array<PontoCriados | PontoSerieStatus>>(
+        `/dashboard/${tipo}?granularidade=${granularidade}`,
+      ),
     placeholderData: keepPreviousData,
   })
 }
+

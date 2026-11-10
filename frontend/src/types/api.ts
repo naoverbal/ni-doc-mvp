@@ -85,6 +85,16 @@ export interface PontoCriados {
   quantidade: number
 }
 
+// Ponto das séries por evento (enviados / aprovados). `quantidade` e `valor`
+// somam todos os orçamentos do período do evento; `porStatus` detalha pelo
+// status ATUAL, então um cancelamento posterior aparece no período de origem.
+export interface PontoSerieStatus extends PontoCriados {
+  valor: number
+  porStatus: Record<OrcamentoStatus, TotalPorStatus>
+}
+
+export type TipoSerieDashboard = 'criados' | 'enviados' | 'aprovados'
+
 export interface OrcamentoDashboard {
   id: string
   numero: string

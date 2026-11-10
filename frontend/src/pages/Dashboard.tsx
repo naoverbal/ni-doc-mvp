@@ -8,6 +8,12 @@ import {
   SkeletonItem,
   Spinner,
   Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
   TabList,
   Text,
   makeStyles,
@@ -26,15 +32,37 @@ import {
 } from '@fluentui/react-icons'
 import { DonutChart, VerticalBarChart } from '@fluentui/react-charts'
 import { CardKpi } from '@/components/dashboard/CardKpi'
-import { useDashboard, useDashboardCriados } from '@/hooks/useDashboard'
+import { useDashboard, useDashboardSerie } from '@/hooks/useDashboard'
 import { formatarMoeda, formatarPercentual } from '@/lib/formato'
 import { ROTULO_STATUS } from '@/lib/orcamento-status'
 import type {
   GranularidadeDashboard,
   OrcamentoDashboard,
   OrcamentoStatus,
+  PontoCriados,
+  PontoSerieStatus,
   ResumoDashboard,
+  TipoSerieDashboard,
 } from '@/types/api'
+
+const TITULO_SERIE: Record<TipoSerieDashboard, string> = {
+  criados: 'Orçamentos criados',
+  enviados: 'Orçamentos enviados',
+  aprovados: 'Orçamentos aprovados',
+}
+
+const DESCRICAO_SERIE: Record<TipoSerieDashboard, string> = {
+  criados: 'Agrupados pela data de criação.',
+  enviados:
+    'Agrupados pela data do envio. Cancelamentos e expirações posteriores aparecem no período do envio.',
+  aprovados:
+    'Agrupados pela data da aprovação. Cancelamentos posteriores aparecem no período da aprovação.',
+}
+
+// Distingue pontos com valor e detalhamento por status dos pontos só de contagem.
+function temDetalhePorStatus(ponto: PontoCriados | PontoSerieStatus): ponto is PontoSerieStatus {
+  return 'porStatus' in ponto
+}
 
 // Ordem fixa dos status na distribuição (donut e legenda).
 const ORDEM_STATUS: OrcamentoStatus[] = [
@@ -188,16 +216,59 @@ function ItemOrcamento({
   )
 }
 
+// Detalhamento por período das séries de envio e aprovação: quantidade, valor e
+// o impacto de cancelamentos (e expirações) no período de origem. Também serve
+// de alternativa textual ao gráfico.
+function TabelaSerie({
+  titulo,
+  pontos,
+  mostrarExpirados,
+}: {
+  titulo: string
+  pontos: PontoSerieStatus[]
+  mostrarExpirados: boolean
+}): ReactElement {
+  return (
+    <Table aria-label={`${titulo}: detalhamento por período`} size="small">
+      <TableHeader>
+        <TableRow>
+          <TableHeaderCell>Período</TableHeaderCell>
+          <TableHeaderCell>Orçamentos</TableHeaderCell>
+          <TableHeaderCell>Valor</TableHeaderCell>
+          <TableHeaderCell>Cancelados depois</TableHeaderCell>
+          {mostrarExpirados ? <TableHeaderCell>Expirados</TableHeaderCell> : null}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {pontos.map((ponto) => (
+          <TableRow key={ponto.chave}>
+            <TableCell>{ponto.rotulo}</TableCell>
+            <TableCell>{ponto.quantidade}</TableCell>
+            <TableCell>{formatarMoeda(ponto.valor)}</TableCell>
+            <TableCell>{ponto.porStatus.cancelado.quantidade}</TableCell>
+            {mostrarExpirados ? <TableCell>{ponto.porStatus.expirado.quantidade}</TableCell> : null}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
 export function Dashboard(): ReactElement {
   const estilos = useStyles()
   const [granularidade, setGranularidade] = useState<GranularidadeDashboard>('mes')
+  const [tipoSerie, setTipoSerie] = useState<TipoSerieDashboard>('criados')
   const serieId = useId()
 
   const { data, isLoading, isError } = useDashboard()
-  const criados = useDashboardCriados(granularidade)
+  const serie = useDashboardSerie(tipoSerie, granularidade)
 
   function aoSelecionarGranularidade(_evento: SelectTabEvent, dados: SelectTabData): void {
     setGranularidade(dados.value as GranularidadeDashboard)
+  }
+
+  function aoSelecionarSerie(_evento: SelectTabEvent, dados: SelectTabData): void {
+    setTipoSerie(dados.value as TipoSerieDashboard)
   }
 
   if (isLoading) {
@@ -256,10 +327,9 @@ export function Dashboard(): ReactElement {
 
   const fatiasDonut = fatiasDeStatus(resumo)
 
-  const pontosSerie = (criados.data ?? []).map((ponto) => ({
-    x: ponto.rotulo,
-    y: ponto.quantidade,
-  }))
+  const pontos = serie.data ?? []
+  const pontosSerie = pontos.map((ponto) => ({ x: ponto.rotulo, y: ponto.quantidade }))
+  const pontosDetalhados = pontos.filter(temDetalhePorStatus)
 
   return (
     <main id="conteudo" className={estilos.pagina}>
@@ -332,7 +402,19 @@ export function Dashboard(): ReactElement {
       </section>
 
       <section className={estilos.secao} aria-labelledby="secao-serie">
-        <h2 id="secao-serie">Orçamentos criados</h2>
+        <h2 id="secao-serie">{TITULO_SERIE[tipoSerie]}</h2>
+        <Text size={200} className={estilos.textoSecundario}>
+          {DESCRICAO_SERIE[tipoSerie]}
+        </Text>
+        <TabList
+          selectedValue={tipoSerie}
+          onTabSelect={aoSelecionarSerie}
+          aria-label="Série do gráfico"
+        >
+          <Tab value="criados">Criação</Tab>
+          <Tab value="enviados">Envio</Tab>
+          <Tab value="aprovados">Aprovação</Tab>
+        </TabList>
         <TabList
           selectedValue={granularidade}
           onTabSelect={aoSelecionarGranularidade}
@@ -343,7 +425,7 @@ export function Dashboard(): ReactElement {
           <Tab value="ano">Ano</Tab>
         </TabList>
         <div className={estilos.grafico} id={serieId}>
-          {criados.isError ? (
+          {serie.isError ? (
             <div role="alert" aria-live="assertive">
               <MessageBar intent="error">
                 <MessageBarBody>Não foi possível carregar a série. Tente novamente.</MessageBarBody>
@@ -352,7 +434,7 @@ export function Dashboard(): ReactElement {
           ) : pontosSerie.length > 0 ? (
             <VerticalBarChart
               data={pontosSerie}
-              chartTitle="Orçamentos criados por período"
+              chartTitle={`${TITULO_SERIE[tipoSerie]} por período`}
               hideLegend
             />
           ) : (
@@ -361,6 +443,13 @@ export function Dashboard(): ReactElement {
             </Text>
           )}
         </div>
+        {!serie.isError && pontosDetalhados.length > 0 ? (
+          <TabelaSerie
+            titulo={TITULO_SERIE[tipoSerie]}
+            pontos={pontosDetalhados}
+            mostrarExpirados={tipoSerie === 'enviados'}
+          />
+        ) : null}
       </section>
 
       <section className={estilos.listas} aria-label="Listas de orçamentos">
