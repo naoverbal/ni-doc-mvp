@@ -45,6 +45,12 @@ vi.mock('@/hooks/useDashboard', () => ({
         },
         recentes: [],
         pendentes: [],
+        vencendo: [],
+        tempoDecisao: {
+          geral: { quantidade: 0, mediaDias: null, medianaDias: null },
+          aprovados: { quantidade: 0, mediaDias: null, medianaDias: null },
+          reprovados: { quantidade: 0, mediaDias: null, medianaDias: null },
+        },
       },
       isLoading: false,
       isError: false,

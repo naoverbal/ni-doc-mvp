@@ -5,7 +5,13 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { FluentProvider } from '@fluentui/react-components'
 import { lightTheme } from '@/theme/ni-doc-theme'
 import { Dashboard } from '@/pages/Dashboard'
-import type { OrcamentoDashboard, PontoCriados, ResumoDashboard } from '@/types/api'
+import type {
+  OrcamentoDashboard,
+  OrcamentoVencendo,
+  PontoCriados,
+  ResumoDashboard,
+  TempoDecisao,
+} from '@/types/api'
 
 // Mocka os hooks de dados do dashboard para controlar os estados
 // (loading/erro/vazio/dados) sem tocar a rede. As agregações são do servidor e
@@ -69,7 +75,32 @@ function orc(parcial: Partial<OrcamentoDashboard> = {}): OrcamentoDashboard {
   }
 }
 
+function venc(diasParaVencer: number): OrcamentoVencendo {
+  const base = orc()
+  return {
+    id: base.id,
+    numero: base.numero,
+    titulo: base.titulo,
+    status: 'enviado',
+    clienteId: base.clienteId,
+    clienteNome: base.clienteNome,
+    total: base.total,
+    criadoEm: base.criadoEm,
+    enviadoEm: base.enviadoEm,
+    expiraEm: '2025-07-01T03:00:00.000Z',
+    diasParaVencer,
+  }
+}
+
+const TEMPO: TempoDecisao = {
+  geral: { quantidade: 4, mediaDias: 5.5, medianaDias: 5 },
+  aprovados: { quantidade: 3, mediaDias: 5.3, medianaDias: 4 },
+  reprovados: { quantidade: 1, mediaDias: 6, medianaDias: 6 },
+}
+
 const DADOS = {
+  vencendo: [venc(1), venc(5)],
+  tempoDecisao: TEMPO,
   resumo: resumo({
     rascunho: { quantidade: 1, valor: 999 },
     enviado: { quantidade: 2, valor: 150 },
@@ -128,7 +159,15 @@ describe('Dashboard', () => {
 
   it('mostra o estado vazio com ação "Novo orçamento" quando não há orçamentos', () => {
     mockDashboard.mockReturnValue(
-      estado({ data: { resumo: resumo(), recentes: [], pendentes: [] } }),
+      estado({
+        data: {
+          resumo: resumo(),
+          recentes: [],
+          pendentes: [],
+          vencendo: [],
+          tempoDecisao: TEMPO,
+        },
+      }),
     )
     renderDashboard()
     expect(screen.getByText(/nenhum orçamento ainda/i)).toBeInTheDocument()
@@ -249,6 +288,50 @@ describe('Dashboard', () => {
     expect(within(secao).getByText('Enviado hoje')).toBeInTheDocument()
     expect(within(secao).getByText('Aguardando há 1 dia')).toBeInTheDocument()
     expect(within(secao).getByText('Aguardando há 7 dias')).toBeInTheDocument()
+  })
+
+  it('exibe o tempo mediano até a decisão com a média e a quebra por resultado', () => {
+    mockDashboard.mockReturnValue(estado({ data: DADOS }))
+    renderDashboard()
+
+    const card = screen.getByText('Tempo mediano até a decisão').closest('div')?.parentElement
+    expect(card).toHaveTextContent('5 dias')
+    expect(card).toHaveTextContent('Média 5,5 dias em 4 decisões')
+    expect(card).toHaveTextContent('Aprovados: 4 dias')
+    expect(card).toHaveTextContent('Reprovados: 6 dias')
+  })
+
+  it('mostra traço e aviso no card de tempo quando não há decisões', () => {
+    const vazio = { quantidade: 0, mediaDias: null, medianaDias: null }
+    mockDashboard.mockReturnValue(
+      estado({
+        data: { ...DADOS, tempoDecisao: { geral: vazio, aprovados: vazio, reprovados: vazio } },
+      }),
+    )
+    renderDashboard()
+
+    const card = screen.getByText('Tempo mediano até a decisão').closest('div')?.parentElement
+    expect(card).toHaveTextContent('—')
+    expect(card).toHaveTextContent('Sem decisões registradas')
+  })
+
+  it('lista os orçamentos que vencem na janela com os dias restantes', () => {
+    mockDashboard.mockReturnValue(estado({ data: DADOS }))
+    renderDashboard()
+
+    const secao = screen
+      .getByRole('heading', { name: /vencendo nos próximos 7 dias/i })
+      .closest('div') as HTMLElement
+    expect(within(secao).getByText('Vence em 1 dia')).toBeInTheDocument()
+    expect(within(secao).getByText('Vence em 5 dias')).toBeInTheDocument()
+    expect(within(secao).getAllByRole('link')).toHaveLength(2)
+  })
+
+  it('informa quando nenhum orçamento vence na janela', () => {
+    mockDashboard.mockReturnValue(estado({ data: { ...DADOS, vencendo: [] } }))
+    renderDashboard()
+
+    expect(screen.getByText(/nenhum orçamento vence nesse período/i)).toBeInTheDocument()
   })
 
   it('informa quando nenhum orçamento aguarda decisão', () => {

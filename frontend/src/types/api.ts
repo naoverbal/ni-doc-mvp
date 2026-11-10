@@ -95,6 +95,20 @@ export interface PontoSerieStatus extends PontoCriados {
 
 export type TipoSerieDashboard = 'criados' | 'enviados' | 'aprovados'
 
+export interface EstatisticaDecisao {
+  quantidade: number
+  // Dias, 1 casa decimal; null quando não há decisões.
+  mediaDias: number | null
+  medianaDias: number | null
+}
+
+// Tempo do envio até a decisão. Aprovado depois cancelado conta como aprovado.
+export interface TempoDecisao {
+  geral: EstatisticaDecisao
+  aprovados: EstatisticaDecisao
+  reprovados: EstatisticaDecisao
+}
+
 export interface OrcamentoDashboard {
   id: string
   numero: string
@@ -108,6 +122,12 @@ export interface OrcamentoDashboard {
   expiraEm: string | null
   // Dias inteiros desde o envio da versão vigente; null se nunca foi enviado.
   diasAguardando: number | null
+}
+
+// Item de GET /dashboard/vencendo: `expiraEm` é o vencimento efetivo e
+// `diasParaVencer` é arredondado para cima (mínimo 1).
+export interface OrcamentoVencendo extends Omit<OrcamentoDashboard, 'diasAguardando'> {
+  diasParaVencer: number
 }
 
 // -----------------------------------------------------------------------------

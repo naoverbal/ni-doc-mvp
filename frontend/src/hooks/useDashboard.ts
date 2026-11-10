@@ -1,11 +1,14 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '@/services/api'
+import { DIAS_VENCIMENTO } from '@/lib/dashboard-config'
 import type {
   GranularidadeDashboard,
   OrcamentoDashboard,
+  OrcamentoVencendo,
   PontoCriados,
   PontoSerieStatus,
   ResumoDashboard,
+  TempoDecisao,
   TipoSerieDashboard,
 } from '@/types/api'
 
@@ -19,6 +22,8 @@ export interface DadosDashboard {
   resumo: ResumoDashboard
   recentes: OrcamentoDashboard[]
   pendentes: OrcamentoDashboard[]
+  vencendo: OrcamentoVencendo[]
+  tempoDecisao: TempoDecisao
 }
 
 export interface EstadoDashboard {
@@ -44,15 +49,34 @@ export function useDashboard(): EstadoDashboard {
     queryFn: () => api.get<OrcamentoDashboard[]>(`/dashboard/pendentes?limite=${LIMITE_LISTAS}`),
   })
 
+  const vencendo = useQuery<OrcamentoVencendo[], ApiError>({
+    queryKey: ['dashboard', 'vencendo', DIAS_VENCIMENTO, LIMITE_LISTAS],
+    queryFn: () =>
+      api.get<OrcamentoVencendo[]>(
+        `/dashboard/vencendo?dias=${DIAS_VENCIMENTO}&limite=${LIMITE_LISTAS}`,
+      ),
+  })
+  const tempoDecisao = useQuery<TempoDecisao, ApiError>({
+    queryKey: ['dashboard', 'tempo-decisao'],
+    queryFn: () => api.get<TempoDecisao>('/dashboard/tempo-decisao'),
+  })
+
   const data =
-    resumo.data && recentes.data && pendentes.data
-      ? { resumo: resumo.data, recentes: recentes.data, pendentes: pendentes.data }
+    resumo.data && recentes.data && pendentes.data && vencendo.data && tempoDecisao.data
+      ? {
+          resumo: resumo.data,
+          recentes: recentes.data,
+          pendentes: pendentes.data,
+          vencendo: vencendo.data,
+          tempoDecisao: tempoDecisao.data,
+        }
       : undefined
 
+  const consultas = [resumo, recentes, pendentes, vencendo, tempoDecisao]
   return {
     data,
-    isLoading: resumo.isLoading || recentes.isLoading || pendentes.isLoading,
-    isError: resumo.isError || recentes.isError || pendentes.isError,
+    isLoading: consultas.some((consulta) => consulta.isLoading),
+    isError: consultas.some((consulta) => consulta.isError),
   }
 }
 

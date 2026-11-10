@@ -23,6 +23,7 @@ import {
 } from '@fluentui/react-components'
 import {
   CheckmarkCircle24Regular,
+  Clock24Regular,
   DataTrending24Regular,
   DismissCircle24Regular,
   DocumentAdd24Regular,
@@ -33,7 +34,8 @@ import {
 import { DonutChart, VerticalBarChart } from '@fluentui/react-charts'
 import { CardKpi } from '@/components/dashboard/CardKpi'
 import { useDashboard, useDashboardSerie } from '@/hooks/useDashboard'
-import { formatarMoeda, formatarPercentual } from '@/lib/formato'
+import { DIAS_VENCIMENTO } from '@/lib/dashboard-config'
+import { formatarDias, formatarMoeda, formatarPercentual } from '@/lib/formato'
 import { ROTULO_STATUS } from '@/lib/orcamento-status'
 import type {
   GranularidadeDashboard,
@@ -42,6 +44,7 @@ import type {
   PontoCriados,
   PontoSerieStatus,
   ResumoDashboard,
+  TempoDecisao,
   TipoSerieDashboard,
 } from '@/types/api'
 
@@ -185,14 +188,32 @@ function textoDiasAguardando(dias: number): string {
   return dias === 1 ? 'Aguardando há 1 dia' : `Aguardando há ${dias} dias`
 }
 
+function textoDiasParaVencer(dias: number): string {
+  return dias === 1 ? 'Vence em 1 dia' : `Vence em ${dias} dias`
+}
+
+// Descrição do card de tempo até a decisão: média geral e quebra por resultado.
+function descricaoTempoDecisao(tempo: TempoDecisao): string {
+  if (tempo.geral.quantidade === 0) return 'Sem decisões registradas'
+  return (
+    `Média ${formatarDias(tempo.geral.mediaDias)} em ${tempo.geral.quantidade} decisões. ` +
+    `Aprovados: ${formatarDias(tempo.aprovados.medianaDias)}. ` +
+    `Reprovados: ${formatarDias(tempo.reprovados.medianaDias)}.`
+  )
+}
+
 // Item acionável de lista: número, título, cliente, status (rótulo + cor) e
 // total, com link para o detalhe. O status leva rótulo textual, nunca só cor.
 function ItemOrcamento({
   orcamento,
-  mostrarEspera = false,
+  detalhe,
 }: {
-  orcamento: OrcamentoDashboard
-  mostrarEspera?: boolean
+  orcamento: Pick<
+    OrcamentoDashboard,
+    'id' | 'numero' | 'titulo' | 'status' | 'clienteNome' | 'total'
+  >
+  // Texto extra da linha de metadados (ex.: "Aguardando há 3 dias").
+  detalhe?: string
 }): ReactElement {
   const estilos = useStyles()
   return (
@@ -208,9 +229,7 @@ function ItemOrcamento({
         <Text size={200} data-status={orcamento.status}>
           {ROTULO_STATUS[orcamento.status]}
         </Text>
-        {mostrarEspera && orcamento.diasAguardando !== null ? (
-          <Text size={200}>{textoDiasAguardando(orcamento.diasAguardando)}</Text>
-        ) : null}
+        {detalhe !== undefined ? <Text size={200}>{detalhe}</Text> : null}
       </div>
     </li>
   )
@@ -302,7 +321,7 @@ export function Dashboard(): ReactElement {
     )
   }
 
-  const { resumo, recentes, pendentes } = data
+  const { resumo, recentes, pendentes, vencendo, tempoDecisao } = data
   const total = totalDeOrcamentos(resumo)
 
   if (total === 0) {
@@ -379,8 +398,14 @@ export function Dashboard(): ReactElement {
           <CardKpi
             rotulo="Taxa de conversão"
             valor={formatarPercentual(resumo.taxaConversao)}
-            descricao="Aprovados sobre os que saíram de rascunho"
+            descricao="Aprovados sobre enviados, aprovados e reprovados"
             icone={<DataTrending24Regular aria-hidden />}
+          />
+          <CardKpi
+            rotulo="Tempo mediano até a decisão"
+            valor={formatarDias(tempoDecisao.geral.medianaDias)}
+            descricao={descricaoTempoDecisao(tempoDecisao)}
+            icone={<Clock24Regular aria-hidden />}
           />
         </div>
       </section>
@@ -467,12 +492,39 @@ export function Dashboard(): ReactElement {
           {pendentes.length > 0 ? (
             <ul className={estilos.lista} aria-labelledby="secao-aguardando">
               {pendentes.map((orcamento) => (
-                <ItemOrcamento key={orcamento.id} orcamento={orcamento} mostrarEspera />
+                <ItemOrcamento
+                  key={orcamento.id}
+                  orcamento={orcamento}
+                  detalhe={
+                    orcamento.diasAguardando === null
+                      ? undefined
+                      : textoDiasAguardando(orcamento.diasAguardando)
+                  }
+                />
               ))}
             </ul>
           ) : (
             <Text className={estilos.textoSecundario}>
               Nenhum orçamento aguardando decisão.
+            </Text>
+          )}
+        </div>
+
+        <div className={estilos.secao}>
+          <h2 id="secao-vencendo">{`Vencendo nos próximos ${DIAS_VENCIMENTO} dias`}</h2>
+          {vencendo.length > 0 ? (
+            <ul className={estilos.lista} aria-labelledby="secao-vencendo">
+              {vencendo.map((orcamento) => (
+                <ItemOrcamento
+                  key={orcamento.id}
+                  orcamento={orcamento}
+                  detalhe={textoDiasParaVencer(orcamento.diasParaVencer)}
+                />
+              ))}
+            </ul>
+          ) : (
+            <Text className={estilos.textoSecundario}>
+              Nenhum orçamento vence nesse período.
             </Text>
           )}
         </div>

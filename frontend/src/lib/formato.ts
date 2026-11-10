@@ -24,3 +24,14 @@ export function formatarPercentual(fracao: number | null): string {
     maximumFractionDigits: 1,
   }).format(fracao)
 }
+
+// Formata uma quantidade de dias com até 1 casa decimal e plural correto
+// ('1 dia', '5,5 dias'). Quando é `null` (sem decisões), exibe '—'.
+export function formatarDias(dias: number | null): string {
+  if (dias === null) return '—'
+  const numero = new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  }).format(dias)
+  return `${numero} ${dias === 1 ? 'dia' : 'dias'}`
+}
