@@ -17,6 +17,7 @@ import { criarEmpresasRouter } from './routes/empresas.routes.js'
 import { criarResponsaveisRouter } from './routes/responsaveis.routes.js'
 import { criarOrcamentosRouter } from './routes/orcamentos.routes.js'
 import { criarTemplatesRouter } from './routes/templates.routes.js'
+import { criarDashboardRouter } from './routes/dashboard.routes.js'
 import { criarPublicoRouter } from './routes/publico.routes.js'
 import { criarAuthService } from './services/auth.service.js'
 import { criarClienteService } from './services/cliente.service.js'
@@ -26,6 +27,8 @@ import { criarOrcamentoService } from './services/orcamento.service.js'
 import { criarVersionamentoService } from './services/versionamento.service.js'
 import { criarSnapshotService } from './services/snapshot.service.js'
 import { criarTemplateService } from './services/template.service.js'
+import { criarDashboardService } from './services/dashboard.service.js'
+import { criarDashboardRepository } from './repositories/dashboard.repository.js'
 import { criarHtmlRendererService } from './services/html-renderer.service.js'
 import { criarPdfService } from './services/pdf.service.js'
 import { criarAceiteService } from './services/aceite.service.js'
@@ -75,7 +78,14 @@ export function criarApp(): express.Express {
   // Limite geral das rotas autenticadas (B-8), antes dos routers de domínio.
   // /api/auth (limite de login próprio) e /api/publico (limite próprio) ficam fora.
   app.use(
-    ['/api/clientes', '/api/empresas', '/api/responsaveis', '/api/orcamentos', '/api/templates'],
+    [
+      '/api/clientes',
+      '/api/empresas',
+      '/api/responsaveis',
+      '/api/orcamentos',
+      '/api/templates',
+      '/api/dashboard',
+    ],
     criarApiRateLimit(),
   )
 
@@ -205,6 +215,11 @@ export function criarApp(): express.Express {
       reaberturaService,
     ),
   )
+
+  // Dashboard (leitura/agregação por tenant).
+  const dashboardRepo = criarDashboardRepository({ db })
+  const dashboardService = criarDashboardService({ dashboardRepo })
+  app.use('/api/dashboard', criarDashboardRouter(dashboardService, authService))
 
   // Rotas públicas (sem auth): visualização e aceite via token público.
   app.use('/api/publico', criarPublicoRouter(aceiteService))
