@@ -5,7 +5,9 @@ import {
 import type {
   DashboardRepository,
   FiltroCriados,
+  IntervaloDecisao,
   LinhaSerieStatus,
+  LinhaTempoDecisao,
   OrcamentoDashboard,
 } from '../repositories/dashboard.repository.js'
 import type { Granularidade } from '../schemas/dashboard.schema.js'
@@ -57,6 +59,32 @@ export interface PontoSerieStatus {
   porStatus: Record<OrcamentoStatus, TotalPorStatus>
 }
 
+export interface FiltroVencendoServico {
+  // Janela em dias a partir de agora.
+  dias: number
+  limite: number
+}
+
+// `expiraEm` é o vencimento efetivo. `diasParaVencer` é arredondado para cima
+// (faltando 2,1 dias vale 3); como só entram orçamentos ainda não vencidos, o
+// mínimo é 1.
+export interface OrcamentoVencendo extends OrcamentoDashboard {
+  diasParaVencer: number
+}
+
+export interface EstatisticaDecisao {
+  quantidade: number
+  // Dias (1 casa decimal); null quando não há decisões.
+  mediaDias: number | null
+  medianaDias: number | null
+}
+
+export interface TempoDecisao {
+  geral: EstatisticaDecisao
+  aprovados: EstatisticaDecisao
+  reprovados: EstatisticaDecisao
+}
+
 export interface OrcamentoDashboardPublico extends OrcamentoDashboard {
   // Dias inteiros desde o envio da versão vigente; null se não houver envio.
   diasAguardando: number | null
@@ -94,6 +122,22 @@ export interface DashboardService {
   aprovadosPorPeriodo(ctx: DashboardContexto, filtro: FiltroCriados): Promise<PontoSerieStatus[]>
   recentes(ctx: DashboardContexto, limite: number): Promise<OrcamentoDashboardPublico[]>
   pendentes(ctx: DashboardContexto, limite: number): Promise<OrcamentoDashboardPublico[]>
+  vencendo(ctx: DashboardContexto, filtro: FiltroVencendoServico): Promise<OrcamentoVencendo[]>
+  tempoDecisao(ctx: DashboardContexto, intervalo: IntervaloDecisao): Promise<TempoDecisao>
+}
+
+// Arredonda a 1 casa decimal (dias).
+function umaCasa(valor: number): number {
+  return Math.round(valor * 10) / 10
+}
+
+function estatistica(linha: LinhaTempoDecisao | undefined): EstatisticaDecisao {
+  if (linha === undefined) return { quantidade: 0, mediaDias: null, medianaDias: null }
+  return {
+    quantidade: linha.quantidade,
+    mediaDias: umaCasa(linha.mediaDias),
+    medianaDias: umaCasa(linha.medianaDias),
+  }
 }
 
 // Agrupa as linhas (período x status) em um ponto por período, na ordem recebida
@@ -201,6 +245,40 @@ export function criarDashboardService({
     ): Promise<PontoSerieStatus[]> {
       const linhas = await dashboardRepo.aprovadosPorPeriodo(ctx.tenantId, filtro)
       return agruparPorPeriodo(linhas, filtro.granularidade)
+    },
+
+    async vencendo(
+      ctx: DashboardContexto,
+      filtro: FiltroVencendoServico,
+    ): Promise<OrcamentoVencendo[]> {
+      const agora = relogio()
+      const ate = new Date(agora.getTime() + filtro.dias * MS_POR_DIA)
+      const itens = await dashboardRepo.vencendo(ctx.tenantId, {
+        agora,
+        ate,
+        limite: filtro.limite,
+      })
+      return itens.map((item) => ({
+        ...item,
+        diasParaVencer: Math.max(
+          1,
+          Math.ceil(((item.expiraEm?.getTime() ?? agora.getTime()) - agora.getTime()) / MS_POR_DIA),
+        ),
+      }))
+    },
+
+    async tempoDecisao(
+      ctx: DashboardContexto,
+      intervalo: IntervaloDecisao,
+    ): Promise<TempoDecisao> {
+      const linhas = await dashboardRepo.tempoDecisao(ctx.tenantId, intervalo)
+      const por = (resultado: LinhaTempoDecisao['resultado']) =>
+        linhas.find((linha) => linha.resultado === resultado)
+      return {
+        geral: estatistica(por(null)),
+        aprovados: estatistica(por('aprovado')),
+        reprovados: estatistica(por('reprovado')),
+      }
     },
 
     async recentes(ctx: DashboardContexto, limite: number): Promise<OrcamentoDashboardPublico[]> {

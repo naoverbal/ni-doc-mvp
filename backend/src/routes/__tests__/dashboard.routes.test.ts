@@ -50,6 +50,8 @@ function makeDashboardService(overrides?: Partial<DashboardService>): DashboardS
     aprovadosPorPeriodo: vi.fn().mockResolvedValue([]),
     recentes: vi.fn().mockResolvedValue([]),
     pendentes: vi.fn().mockResolvedValue([]),
+    vencendo: vi.fn().mockResolvedValue([]),
+    tempoDecisao: vi.fn().mockResolvedValue({}),
     ...overrides,
   }
 }
@@ -152,6 +154,65 @@ describe('rotas /api/dashboard', () => {
     expect(service.enviadosPorPeriodo).not.toHaveBeenCalled()
     expect(service.aprovadosPorPeriodo).not.toHaveBeenCalled()
   })
+
+  it('GET /vencendo usa janela de 7 dias e limite 5 por padrão e aceita ajustes', async () => {
+    const service = makeDashboardService()
+    const app = makeApp(service, makeAuthService())
+
+    await request(app).get('/api/dashboard/vencendo').set('Cookie', 'session=abc')
+    expect(service.vencendo).toHaveBeenLastCalledWith(
+      { tenantId: 'tenant-1' },
+      { dias: 7, limite: 5 },
+    )
+
+    await request(app).get('/api/dashboard/vencendo?dias=30&limite=10').set('Cookie', 'session=abc')
+    expect(service.vencendo).toHaveBeenLastCalledWith(
+      { tenantId: 'tenant-1' },
+      { dias: 30, limite: 10 },
+    )
+  })
+
+  it.each(['dias=0', 'dias=91', 'dias=abc', 'limite=0', 'limite=51'])(
+    'GET /vencendo retorna 400 para %s',
+    async (query) => {
+      const service = makeDashboardService()
+      const res = await request(makeApp(service, makeAuthService()))
+        .get(`/api/dashboard/vencendo?${query}`)
+        .set('Cookie', 'session=abc')
+
+      expect(res.status).toBe(400)
+      expect(service.vencendo).not.toHaveBeenCalled()
+    },
+  )
+
+  it('GET /tempo-decisao repassa o intervalo opcional', async () => {
+    const service = makeDashboardService()
+    const app = makeApp(service, makeAuthService())
+
+    await request(app).get('/api/dashboard/tempo-decisao').set('Cookie', 'session=abc')
+    expect(service.tempoDecisao).toHaveBeenLastCalledWith({ tenantId: 'tenant-1' }, {})
+
+    await request(app)
+      .get('/api/dashboard/tempo-decisao?de=2025-06-01&ate=2025-06-30')
+      .set('Cookie', 'session=abc')
+    expect(service.tempoDecisao).toHaveBeenLastCalledWith(
+      { tenantId: 'tenant-1' },
+      { de: '2025-06-01', ate: '2025-06-30' },
+    )
+  })
+
+  it.each(['de=2025-05-01&ate=2025-04-01', 'de=2025-02-30'])(
+    'GET /tempo-decisao retorna 400 para %s',
+    async (query) => {
+      const service = makeDashboardService()
+      const res = await request(makeApp(service, makeAuthService()))
+        .get(`/api/dashboard/tempo-decisao?${query}`)
+        .set('Cookie', 'session=abc')
+
+      expect(res.status).toBe(400)
+      expect(service.tempoDecisao).not.toHaveBeenCalled()
+    },
+  )
 
   it.each(['recentes', 'pendentes'] as const)('GET /%s usa limite padrão 5', async (rota) => {
     const service = makeDashboardService()

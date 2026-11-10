@@ -3,7 +3,12 @@ import type { Request } from 'express'
 import type { ZodType } from 'zod'
 import type { AuthService } from '../services/auth.service.js'
 import type { DashboardService, DashboardContexto } from '../services/dashboard.service.js'
-import { criadosQuerySchema, limiteQuerySchema } from '../schemas/dashboard.schema.js'
+import {
+  criadosQuerySchema,
+  intervaloQuerySchema,
+  limiteQuerySchema,
+  vencendoQuerySchema,
+} from '../schemas/dashboard.schema.js'
 import { criarMiddlewareAuth } from '../middlewares/auth.js'
 import { setTenant } from '../middlewares/tenant.js'
 import { AppError } from '../errors/app-error.js'
@@ -66,6 +71,26 @@ export function criarDashboardRouter(
     try {
       const filtro = lerQuery(criadosQuerySchema, req)
       res.json(await dashboardService.aprovadosPorPeriodo(construirContexto(req), filtro))
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // GET /api/dashboard/vencendo?dias=&limite= — `enviado` que vence na janela.
+  router.get('/vencendo', async (req, res, next) => {
+    try {
+      const filtro = lerQuery(vencendoQuerySchema, req)
+      res.json(await dashboardService.vencendo(construirContexto(req), filtro))
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  // GET /api/dashboard/tempo-decisao?de=&ate= — tempo do envio até a decisão.
+  router.get('/tempo-decisao', async (req, res, next) => {
+    try {
+      const intervalo = lerQuery(intervaloQuerySchema, req)
+      res.json(await dashboardService.tempoDecisao(construirContexto(req), intervalo))
     } catch (err) {
       next(err)
     }

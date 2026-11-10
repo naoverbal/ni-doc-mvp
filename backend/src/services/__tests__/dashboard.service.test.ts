@@ -13,11 +13,94 @@ function makeRepo(overrides?: Partial<DashboardRepository>): DashboardRepository
     aprovadosPorPeriodo: vi.fn().mockResolvedValue([]),
     recentes: vi.fn().mockResolvedValue([]),
     pendentes: vi.fn().mockResolvedValue([]),
+    vencendo: vi.fn().mockResolvedValue([]),
+    tempoDecisao: vi.fn().mockResolvedValue([]),
     ...overrides,
   }
 }
 
 const ctx = { tenantId: 'tenant-1' }
+
+describe('dashboardService.vencendo', () => {
+  const agora = new Date('2025-06-10T15:00:00Z')
+  const base: OrcamentoDashboard = {
+    id: 'o-1',
+    numero: 'ORC-1',
+    titulo: 'Obra',
+    status: 'enviado',
+    clienteId: 'c-1',
+    clienteNome: 'Cliente Um',
+    total: 100,
+    criadoEm: new Date('2025-05-01T00:00:00Z'),
+    enviadoEm: new Date('2025-05-02T00:00:00Z'),
+    expiraEm: new Date('2025-06-12T03:00:00Z'),
+  }
+
+  it('consulta a janela [agora, agora + dias] e arredonda os dias para cima', async () => {
+    const repo = makeRepo({
+      vencendo: vi.fn().mockResolvedValue([
+        base,
+        // Falta menos de um dia: vale 1.
+        { ...base, id: 'o-2', expiraEm: new Date('2025-06-10T18:00:00Z') },
+      ]),
+    })
+    const service = criarDashboardService({ dashboardRepo: repo, relogio: () => agora })
+
+    const itens = await service.vencendo(ctx, { dias: 7, limite: 5 })
+
+    expect(repo.vencendo).toHaveBeenCalledWith('tenant-1', {
+      agora,
+      ate: new Date('2025-06-17T15:00:00Z'),
+      limite: 5,
+    })
+    // 2025-06-12T03:00Z - 2025-06-10T15:00Z = 1,5 dia → 2.
+    expect(itens[0]?.diasParaVencer).toBe(2)
+    expect(itens[1]?.diasParaVencer).toBe(1)
+  })
+})
+
+describe('dashboardService.tempoDecisao', () => {
+  it('monta geral, aprovados e reprovados com 1 casa decimal', async () => {
+    const repo = makeRepo({
+      tempoDecisao: vi.fn().mockResolvedValue([
+        { resultado: null, quantidade: 4, mediaDias: 5.4999, medianaDias: 5 },
+        { resultado: 'aprovado', quantidade: 3, mediaDias: 5.3333, medianaDias: 4 },
+        { resultado: 'reprovado', quantidade: 1, mediaDias: 6, medianaDias: 6 },
+      ]),
+    })
+    const service = criarDashboardService({ dashboardRepo: repo })
+    const intervalo = { de: '2025-06-01', ate: '2025-06-30' }
+
+    const tempo = await service.tempoDecisao(ctx, intervalo)
+
+    expect(repo.tempoDecisao).toHaveBeenCalledWith('tenant-1', intervalo)
+    expect(tempo.geral).toEqual({ quantidade: 4, mediaDias: 5.5, medianaDias: 5 })
+    expect(tempo.aprovados).toEqual({ quantidade: 3, mediaDias: 5.3, medianaDias: 4 })
+    expect(tempo.reprovados).toEqual({ quantidade: 1, mediaDias: 6, medianaDias: 6 })
+  })
+
+  it('devolve null nas médias de quem não tem decisões', async () => {
+    const repo = makeRepo({
+      tempoDecisao: vi.fn().mockResolvedValue([
+        { resultado: null, quantidade: 2, mediaDias: 3, medianaDias: 3 },
+        { resultado: 'aprovado', quantidade: 2, mediaDias: 3, medianaDias: 3 },
+      ]),
+    })
+    const service = criarDashboardService({ dashboardRepo: repo })
+
+    const tempo = await service.tempoDecisao(ctx, {})
+
+    expect(tempo.reprovados).toEqual({ quantidade: 0, mediaDias: null, medianaDias: null })
+  })
+
+  it('devolve tudo nulo sem decisões', async () => {
+    const service = criarDashboardService({ dashboardRepo: makeRepo() })
+
+    const tempo = await service.tempoDecisao(ctx, {})
+
+    expect(tempo.geral).toEqual({ quantidade: 0, mediaDias: null, medianaDias: null })
+  })
+})
 
 describe('dashboardService.enviadosPorPeriodo / aprovadosPorPeriodo', () => {
   const filtro = { granularidade: 'mes' as const, de: '2025-03-01', ate: '2025-04-30' }
