@@ -193,6 +193,10 @@ descreve('RLS por request (integração, papel ni_doc_app)', () => {
     const client = await adminPool.connect()
     try {
       await client.query('SET row_security = off')
+      // eventos_auditoria.tenant_id é RESTRICT (migration 022): remove a auditoria de teste antes.
+      await client.query('DELETE FROM eventos_auditoria WHERE tenant_id = ANY($1::uuid[])', [
+        [tenantA, tenantB],
+      ])
       await client.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [[tenantA, tenantB]])
     } finally {
       client.release()

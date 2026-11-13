@@ -25,5 +25,8 @@ export async function removerTenants(pool: Consultavel, ids: string[]): Promise<
     [ids],
   )
   await pool.query('DELETE FROM orcamentos WHERE tenant_id = ANY($1::uuid[])', [ids])
+  // `eventos_auditoria.tenant_id` é RESTRICT (migration 022): apagar o tenant não leva a
+  // auditoria junto. Em banco de teste (pool admin) removemos a dos tenants de teste antes.
+  await pool.query('DELETE FROM eventos_auditoria WHERE tenant_id = ANY($1::uuid[])', [ids])
   await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [ids])
 }
