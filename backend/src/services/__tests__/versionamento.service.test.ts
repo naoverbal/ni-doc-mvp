@@ -233,11 +233,13 @@ function makeDeps(overrides?: {
 
   const pdfService = {
     gerarPdf: vi.fn().mockResolvedValue({
+      criado: true,
       buffer: Buffer.from('%PDF-1.7'),
       caminho: '/var/ni-doc/pdfs/ORC-2026-0001-v1.pdf',
       hash: 'abc123',
     }),
     buscarPdf: vi.fn(),
+    removerPdf: vi.fn().mockResolvedValue(undefined),
     ...overrides?.pdfService,
   } as unknown as PdfService
 
@@ -360,6 +362,64 @@ describe('VersionamentoService', () => {
     // A imagem `qrcode` é adicionada sem descartar imagens já existentes do layout.
     expect(renderArg.layout.imagens.qrcode).toMatch(/^data:image\/png;base64,/)
     expect(renderArg.layout.imagens.logo).toBe('data:image/png;base64,LOGO')
+  })
+
+  it('gera o PDF do envio com substituirExistente (sob o lock, arquivo preexistente é órfão)', async () => {
+    const deps = makeDeps()
+    const service = criarVersionamentoService(deps)
+
+    await service.enviar(ctx, 'orcamento-1')
+
+    expect(deps.pdfService.gerarPdf).toHaveBeenCalledWith(
+      expect.objectContaining({ substituirExistente: true }),
+    )
+    expect(deps.pdfService.removerPdf).not.toHaveBeenCalled()
+  })
+
+  it('quando a transação do envio falha DEPOIS de gerar o PDF, apaga o arquivo que esta tentativa criou', async () => {
+    const base = criarVersaoEnviarMock()
+    const deps = makeDeps({
+      orcamentoVersaoRepo: {
+        criarVersaoEnviar: vi.fn(async (input: CriarVersaoEnviarInput) => {
+          await base(input) // roda gerarPdfDaVersao (PDF gravado em disco)
+          throw new Error('falha ao gravar auditoria') // ...e a transação reverte
+        }),
+      },
+    })
+    const service = criarVersionamentoService(deps)
+
+    await expect(service.enviar(ctx, 'orcamento-1')).rejects.toThrow('falha ao gravar auditoria')
+
+    expect(deps.pdfService.removerPdf).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      numero: 'ORC-2026-0001',
+      versao: 1,
+    })
+  })
+
+  it('quando a transação falha mas o PDF não foi criado por esta tentativa, não apaga nada', async () => {
+    const base = criarVersaoEnviarMock()
+    const deps = makeDeps({
+      pdfService: {
+        gerarPdf: vi.fn().mockResolvedValue({
+          criado: false,
+          buffer: Buffer.from('%PDF-1.7'),
+          caminho: '/var/ni-doc/pdfs/ORC-2026-0001-v1.pdf',
+          hash: 'abc123',
+        }),
+      },
+      orcamentoVersaoRepo: {
+        criarVersaoEnviar: vi.fn(async (input: CriarVersaoEnviarInput) => {
+          await base(input)
+          throw new Error('falha')
+        }),
+      },
+    })
+    const service = criarVersionamentoService(deps)
+
+    await expect(service.enviar(ctx, 'orcamento-1')).rejects.toThrow('falha')
+
+    expect(deps.pdfService.removerPdf).not.toHaveBeenCalled()
   })
 
   it('é imutável: delega a geração ao pdfService.gerarPdf sem regenerar por conta própria', async () => {

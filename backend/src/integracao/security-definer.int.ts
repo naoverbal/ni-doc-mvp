@@ -25,13 +25,14 @@ async function funcoesDefiner(): Promise<FuncaoDefiner[]> {
 }
 
 describe('funções SECURITY DEFINER', () => {
-  it('quando lista as funções do schema public, então existem as 9 esperadas', async () => {
+  it('quando lista as funções do schema public, então existem as 10 esperadas', async () => {
     const nomes = (await funcoesDefiner()).map((f) => f.nome)
     expect(nomes).toEqual([
       'rls_criar_sessao',
       'rls_expirar_orcamentos_vencidos',
       'rls_invalidar_sessao',
       'rls_limpar_sessoes_expiradas',
+      'rls_listar_pdfs_expirados',
       'rls_sessao_por_id',
       'rls_tocar_sessao',
       'rls_usuario_por_email_hash',

@@ -34,6 +34,9 @@ export interface AceitePublico {
   userAgent: string | null
   hashDocumento: string
   justificativa: string | null
+  // Comprovante PDF (null em reprovação, ou enquanto ainda não foi gerado).
+  comprovantePdfPath: string | null
+  comprovantePdfHash: string | null
   criadoEm: Date
 }
 
@@ -57,6 +60,13 @@ export interface OrcamentoAceiteRepository {
     auditoria?: AuditoriaNaTransacao<AceitePublico>,
   ): Promise<AceitePublico>
   buscarPorVersao(versaoId: string): Promise<AceitePublico | null>
+  // Grava a referência do comprovante PDF (caminho + hash). Roda DEPOIS do commit
+  // do aceite (o PDF é chamada externa e fica fora da transação). Grava uma única
+  // vez: se já houver comprovante, não altera nada e devolve false.
+  registrarComprovante(
+    aceiteId: string,
+    comprovante: { caminho: string; hash: string },
+  ): Promise<boolean>
 }
 
 // -----------------------------------------------------------------------------
@@ -71,6 +81,8 @@ interface OrcamentoAceiteRow {
   user_agent: string | null
   hash_documento: string
   justificativa: string | null
+  comprovante_pdf_path: string | null
+  comprovante_pdf_hash: string | null
   criado_em: Date
 }
 
@@ -84,6 +96,8 @@ function mapRowAceite(row: OrcamentoAceiteRow): AceitePublico {
     userAgent: row.user_agent,
     hashDocumento: row.hash_documento,
     justificativa: row.justificativa,
+    comprovantePdfPath: row.comprovante_pdf_path ?? null,
+    comprovantePdfHash: row.comprovante_pdf_hash ?? null,
     criadoEm: row.criado_em,
   }
 }
@@ -97,6 +111,8 @@ const COLUNAS_ACEITE = [
   'user_agent',
   'hash_documento',
   'justificativa',
+  'comprovante_pdf_path',
+  'comprovante_pdf_hash',
   'criado_em',
 ] as const
 
@@ -218,6 +234,19 @@ export function criarOrcamentoAceiteRepository(deps: {
       auditoria?: AuditoriaNaTransacao<AceitePublico>,
     ): Promise<AceitePublico> {
       return registrarDecisao(input, 'reprovado', 'Orçamento já decidido', auditoria)
+    },
+
+    async registrarComprovante(
+      aceiteId: string,
+      comprovante: { caminho: string; hash: string },
+    ): Promise<boolean> {
+      const resultado = await db
+        .updateTable('orcamento_aceites')
+        .set({ comprovante_pdf_path: comprovante.caminho, comprovante_pdf_hash: comprovante.hash })
+        .where('id', '=', aceiteId)
+        .where('comprovante_pdf_path', 'is', null)
+        .executeTakeFirst()
+      return Number(resultado.numUpdatedRows) > 0
     },
 
     async buscarPorVersao(versaoId: string): Promise<AceitePublico | null> {

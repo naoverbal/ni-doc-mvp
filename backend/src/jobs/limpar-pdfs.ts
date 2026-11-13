@@ -4,7 +4,8 @@ import type { Kysely } from 'kysely'
 // Importa o namespace e usa o export nomeado `pino`, espelhando `lib/email.ts`.
 import * as pinoModule from 'pino'
 import type { Database } from '../types/database.js'
-import { db as dbPadrao } from '../config/database.js'
+import { sql } from 'kysely'
+import { db as dbPadrao, executarComTenant } from '../config/database.js'
 import { env } from '../config/env.js'
 import {
   executarComAuditoria,
@@ -21,10 +22,11 @@ const pino = pinoModule.pino
 //
 // Decisões de design:
 //  - MANUTENÇÃO CROSS-TENANT: diferente dos fluxos de request, o job varre
-//    versões de TODOS os tenants. Por isso NÃO roda sob o escopo de
-//    `app.current_tenant`; usa o papel de banco que o `migrate`/`seed` usam
-//    (privilegiado, sem RLS) e resolve o `tenant_id` de cada versão via join com
-//    `orcamentos` para registrar a auditoria no tenant correto.
+//    versões de TODOS os tenants. A LISTAGEM usa a função SECURITY DEFINER
+//    `rls_listar_pdfs_expirados` (migration 015, somente leitura): com o papel de
+//    aplicação e sem tenant o RLS escondia todas as linhas. A ESCRITA (zerar a
+//    referência + auditoria) roda sob o escopo do tenant de cada versão
+//    (`executarComTenant`), então o RLS continua valendo para quem grava.
 //  - FATOR TESTÁVEL: a lógica vive em `criarLimparPdfsJob({ ... })`, com
 //    repositório, filesystem, serviço de auditoria e relógio INJETADOS. Assim o
 //    job roda nos testes sem banco, sem disco e sem agendador. O agendamento de
@@ -82,6 +84,9 @@ export interface LimparPdfsJobDeps {
   fs: LimparPdfsFileSystem
   // Relógio injetável (default: `Date.now`). Permite fixar o tempo nos testes.
   agora?: () => Date
+  // Escopo de tenant (RLS) para a escrita de cada versão. Default: passthrough
+  // (testes unitários); o wiring real injeta `executarComTenant`.
+  escopoTenant?: <T>(tenantId: string, fn: () => Promise<T>) => Promise<T>
   logger?: Pick<pinoModule.Logger, 'info' | 'warn' | 'error'>
 }
 
@@ -95,6 +100,7 @@ function umAnoAntes(data: Date): Date {
 export function criarLimparPdfsJob(deps: LimparPdfsJobDeps): LimparPdfsJob {
   const { repo, fs } = deps
   const agora = deps.agora ?? (() => new Date())
+  const escopoTenant = deps.escopoTenant ?? ((_tenantId, fn) => fn())
   const logger = deps.logger ?? pino({ name: 'limpar-pdfs' })
 
   return {
@@ -115,14 +121,16 @@ export function criarLimparPdfsJob(deps: LimparPdfsJobDeps): LimparPdfsJob {
         //    Se falhar, nada mudou (o arquivo segue em disco e a referência
         //    permanece) e o item é reprocessado na próxima execução.
         try {
-          await repo.limparReferenciaPdf(pdf.versaoId, () => ({
-            tenantId: pdf.tenantId,
-            acao: 'limpar_pdf',
-            entidade: 'orcamento_versoes',
-            entidadeId: pdf.versaoId,
-            estadoAnterior: { pdfPath: pdf.pdfPath },
-            estadoNovo: { pdfPath: null },
-          }))
+          await escopoTenant(pdf.tenantId, () =>
+            repo.limparReferenciaPdf(pdf.versaoId, () => ({
+              tenantId: pdf.tenantId,
+              acao: 'limpar_pdf',
+              entidade: 'orcamento_versoes',
+              entidadeId: pdf.versaoId,
+              estadoAnterior: { pdfPath: pdf.pdfPath },
+              estadoNovo: { pdfPath: null },
+            })),
+          )
         } catch (erro) {
           falhas += 1
           logger.warn(
@@ -172,24 +180,12 @@ interface PdfExpiradoRow {
 export function criarLimparPdfsRepositorio(db: Kysely<Database>): LimparPdfsRepositorio {
   return {
     async listarPdfsExpirados(dataLimite: Date): Promise<PdfExpirado[]> {
-      const rows = (await db
-        .selectFrom('orcamento_versoes as v')
-        .innerJoin('orcamentos as o', 'o.id', 'v.orcamento_id')
-        .select([
-          'v.id as versao_id',
-          'v.orcamento_id as orcamento_id',
-          'o.tenant_id as tenant_id',
-          'o.numero as numero',
-          'v.versao as versao',
-          'v.pdf_path as pdf_path',
-          'v.enviado_em as enviado_em',
-        ])
-        .where('v.pdf_path', 'is not', null)
-        .where('v.enviado_em', '<', dataLimite)
-        .orderBy('v.enviado_em', 'asc')
-        .execute()) as unknown as PdfExpiradoRow[]
+      const resultado = await sql<PdfExpiradoRow>`
+        SELECT versao_id, orcamento_id, tenant_id, numero, versao, pdf_path, enviado_em
+        FROM rls_listar_pdfs_expirados(${dataLimite})
+      `.execute(db)
 
-      return rows.map((row) => ({
+      return resultado.rows.map((row) => ({
         versaoId: row.versao_id,
         orcamentoId: row.orcamento_id,
         tenantId: row.tenant_id,
@@ -224,7 +220,8 @@ export function criarLimparPdfsRepositorio(db: Kysely<Database>): LimparPdfsRepo
 export function criarLimparPdfsJobPadrao(db: Kysely<Database> = dbPadrao): LimparPdfsJob {
   return criarLimparPdfsJob({
     repo: criarLimparPdfsRepositorio(db),
-    fs: { rm: (caminho) => fsRm(caminho) },
+    fs: { rm: (caminho) => fsRm(caminho, { force: true }) },
+    escopoTenant: executarComTenant,
   })
 }
 
@@ -243,11 +240,15 @@ export function agendarLimparPdfsDiario(
   job: LimparPdfsJob = criarLimparPdfsJobPadrao(),
 ): NodeJS.Timeout {
   const logger = pino({ name: 'limpar-pdfs' })
-  const timer = setInterval(() => {
+  const rodar = (): void => {
     void job.executar().catch((erro: unknown) => {
       logger.error({ erro }, 'execução agendada da limpeza de PDFs falhou')
     })
-  }, UM_DIA_MS)
+  }
+  // Roda também na partida: com deploys frequentes, um timer só de 24h nunca
+  // dispararia.
+  rodar()
+  const timer = setInterval(rodar, UM_DIA_MS)
   // Não impede o processo de encerrar se for a única coisa pendente.
   timer.unref()
   return timer

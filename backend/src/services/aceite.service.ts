@@ -346,6 +346,13 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
       })
       comprovantePdfPath = comprovante.caminho
       comprovantePdfHash = comprovante.hash
+      // Grava a referência (caminho + hash) do comprovante no aceite — antes só
+      // voltava na resposta. Roda após o commit do aceite (o PDF é chamada
+      // externa e fica fora da transação). Grava uma única vez.
+      await aceiteRepo.registrarComprovante(aceite.id, {
+        caminho: comprovante.caminho,
+        hash: comprovante.hash,
+      })
     }
 
     // Notifica o operador responsável por e-mail (RF-022.2/.3), em melhor

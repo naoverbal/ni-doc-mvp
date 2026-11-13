@@ -74,6 +74,8 @@ function aceitePublico(overrides: Partial<AceitePublico> = {}): AceitePublico {
     userAgent: 'agent',
     hashDocumento: HASH,
     justificativa: null,
+    comprovantePdfPath: null,
+    comprovantePdfHash: null,
     criadoEm: new Date('2026-02-01'),
     ...overrides,
   }
@@ -103,6 +105,7 @@ function makeDeps(overrides?: {
     aprovarAceite: vi.fn().mockResolvedValue(aceitePublico()),
     reprovarAceite: vi.fn().mockResolvedValue(aceitePublico()),
     buscarPorVersao: vi.fn().mockResolvedValue(null),
+    registrarComprovante: vi.fn().mockResolvedValue(true),
     ...overrides?.aceiteRepo,
   } as unknown as OrcamentoAceiteRepository
 
@@ -254,6 +257,21 @@ describe('AceiteService', () => {
       })
     })
 
+    it('grava a referência do comprovante (caminho + hash) no aceite, depois de gerar o PDF', async () => {
+      const deps = makeDeps()
+      const service = criarAceiteService(deps)
+      await service.aprovarViaCliente({ token: tokenValido })
+      expect(deps.aceiteRepo.registrarComprovante).toHaveBeenCalledWith('aceite-1', {
+        caminho: '/pdfs/ORC-2026-0001-aceite-v1.pdf',
+        hash: 'comprovante-hash',
+      })
+    })
+    it('NÃO grava referência de comprovante na reprovação (não há PDF)', async () => {
+      const deps = makeDeps()
+      const service = criarAceiteService(deps)
+      await service.reprovarViaCliente({ token: tokenValido })
+      expect(deps.aceiteRepo.registrarComprovante).not.toHaveBeenCalled()
+    })
     it('gera comprovante mesmo sem IP/UA (campos opcionais vazios no HTML)', async () => {
       const deps = makeDeps()
       const service = criarAceiteService(deps)

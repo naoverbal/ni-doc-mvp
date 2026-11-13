@@ -1,8 +1,12 @@
+import { createHash } from 'node:crypto'
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { PostgresDialect, Kysely } from 'kysely'
 import request from 'supertest'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { criarLimparPdfsJob, criarLimparPdfsRepositorio } from '../jobs/limpar-pdfs.js'
 import type { Database } from '../types/database.js'
+import { PDFS_DIR_TESTE } from './config-banco.js'
 import { emailsEnviados } from './espioes.js'
 import {
   adminPool,
@@ -216,6 +220,59 @@ describe('orçamento — enviar (versão + status + PDF + auditoria)', () => {
     const ok = await post(c, `/api/orcamentos/${rascunho.id}/enviar`)
     expect(ok.status).toBe(201)
     expect(ok.body.versao).toBe(1)
+  })
+})
+
+describe('PDF do envio vs. transação (arquivo em disco acompanha o rollback)', () => {
+  const sha256 = (b: Buffer) => createHash('sha256').update(b).digest('hex')
+  const caminhoDoPdf = (tenantId: string, numero: string) =>
+    join(PDFS_DIR_TESTE, tenantId, `${numero}-v1.pdf`)
+  const existe = (caminho: string) =>
+    access(caminho).then(
+      () => true,
+      () => false,
+    )
+
+  it('quando a transação do envio reverte depois de gerar o PDF, então o arquivo gerado por essa tentativa é apagado do disco', async () => {
+    const c = await criarCenario()
+    const rascunho = await criarRascunho(c)
+    const caminho = caminhoDoPdf(c.tenant.id, rascunho.numero)
+
+    const resposta = await comAuditoriaFalhando(c.tenant.id, () =>
+      post(c, `/api/orcamentos/${rascunho.id}/enviar`),
+    )
+
+    expect(resposta.status).toBe(500)
+    expect(await contarVersoes(rascunho.id)).toBe(0)
+    expect(await existe(caminho)).toBe(false)
+
+    // O reenvio gera o PDF normalmente e o hash do banco bate com o arquivo.
+    const ok = await post(c, `/api/orcamentos/${rascunho.id}/enviar`)
+    expect(ok.status).toBe(201)
+    expect(await existe(caminho)).toBe(true)
+    expect(ok.body.pdfHash).toBe(sha256(await readFile(caminho)))
+  })
+
+  it('quando já existe um PDF órfão no mesmo nome (ex.: queda do processo no envio anterior), então o envio NÃO o herda: regenera o PDF da versão commitada', async () => {
+    const c = await criarCenario()
+    const rascunho = await criarRascunho(c)
+    const caminho = caminhoDoPdf(c.tenant.id, rascunho.numero)
+    const orfao = Buffer.from('%PDF-1.4 ORFAO com QR Code de um token que nunca existiu')
+    await mkdir(join(PDFS_DIR_TESTE, c.tenant.id), { recursive: true })
+    await writeFile(caminho, orfao)
+
+    const ok = await post(c, `/api/orcamentos/${rascunho.id}/enviar`)
+
+    expect(ok.status).toBe(201)
+    const gravado = await readFile(caminho)
+    expect(gravado.equals(orfao)).toBe(false)
+    expect(gravado.toString()).toContain('%PDF-1.4 simulado')
+    expect(ok.body.pdfHash).toBe(sha256(gravado))
+    const { rows } = await adminPool.query<{ pdf_hash: string }>(
+      'SELECT pdf_hash FROM orcamento_versoes WHERE id = $1',
+      [ok.body.id],
+    )
+    expect(rows[0]?.pdf_hash).toBe(sha256(gravado))
   })
 })
 

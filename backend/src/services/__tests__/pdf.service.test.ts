@@ -84,6 +84,53 @@ describe('pdf.service', () => {
     })
   })
 
+  describe('órfãos do envio (substituirExistente, criado, removerPdf)', () => {
+    const base = { tenantId: TENANT_A, html: '<html></html>', numero: 'ORC-2026-0001', versao: 1 }
+
+    it('informa criado=true quando grava o arquivo e criado=false quando reaproveita o existente', async () => {
+      const primeiro = await service.gerarPdf(base)
+      const segundo = await service.gerarPdf(base)
+
+      expect(primeiro.criado).toBe(true)
+      expect(segundo.criado).toBe(false)
+    })
+
+    it('com substituirExistente, descarta o arquivo órfão e gera o PDF de novo', async () => {
+      const orfao = Buffer.from('PDF-ORFAO-com-QR-de-outro-token')
+      await mkdir(join(pdfsDir, TENANT_A), { recursive: true })
+      const caminho = join(pdfsDir, TENANT_A, 'ORC-2026-0001-v1.pdf')
+      await writeFile(caminho, orfao)
+
+      const resultado = await service.gerarPdf({ ...base, substituirExistente: true })
+
+      expect(resultado.criado).toBe(true)
+      expect(renderizarPdf).toHaveBeenCalledTimes(1)
+      expect(resultado.buffer.equals(PDF_FAKE)).toBe(true)
+      expect((await readFile(caminho)).equals(PDF_FAKE)).toBe(true)
+      expect(resultado.hash).toBe(createHash('sha256').update(PDF_FAKE).digest('hex'))
+    })
+
+    it('sem substituirExistente, o arquivo preexistente continua sendo reaproveitado (imutabilidade)', async () => {
+      const oficial = Buffer.from('PDF-OFICIAL')
+      await mkdir(join(pdfsDir, TENANT_A), { recursive: true })
+      await writeFile(join(pdfsDir, TENANT_A, 'ORC-2026-0001-v1.pdf'), oficial)
+
+      const resultado = await service.gerarPdf(base)
+
+      expect(renderizarPdf).not.toHaveBeenCalled()
+      expect(resultado.buffer.equals(oficial)).toBe(true)
+      expect(resultado.criado).toBe(false)
+    })
+
+    it('removerPdf apaga o arquivo e não falha se ele não existe', async () => {
+      const gerado = await service.gerarPdf(base)
+
+      await service.removerPdf(base)
+      await expect(access(gerado.caminho)).rejects.toThrow()
+      await expect(service.removerPdf(base)).resolves.toBeUndefined()
+    })
+  })
+
   describe('escrita atômica', () => {
     it('quando a gravação do PDF falha no meio, então o arquivo final não existe e uma nova chamada gera o PDF de novo', async () => {
       // Filesystem real, exceto pela PRIMEIRA escrita: grava só metade dos bytes
