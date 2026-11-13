@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: nidoc
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -36,7 +36,7 @@ services:
     env_file:
       - .env
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'
     volumes:
       - ./backend/src:/app/src
       - ./pdfs:/app/pdfs
@@ -53,7 +53,7 @@ services:
     environment:
       VITE_PROXY_TARGET: http://backend:3000
     ports:
-      - '5173:5173'
+      - '127.0.0.1:5173:5173'
     volumes:
       - ./frontend/src:/app/src
     networks:
