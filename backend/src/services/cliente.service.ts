@@ -6,7 +6,6 @@ import type {
   ClientePublico,
   ClienteRepository,
 } from '../repositories/cliente.repository.js'
-import type { AuditoriaService } from './auditoria.service.js'
 
 export interface ClienteContexto {
   tenantId: string
@@ -35,7 +34,6 @@ export interface ClienteService {
 
 interface ClienteServiceDeps {
   clienteRepo: ClienteRepository
-  auditoriaService: AuditoriaService
 }
 
 function validarDocumento(tipoPessoa: 'PF' | 'PJ', documento: string): void {
@@ -47,7 +45,7 @@ function validarDocumento(tipoPessoa: 'PF' | 'PJ', documento: string): void {
 }
 
 export function criarClienteService(deps: ClienteServiceDeps): ClienteService {
-  const { clienteRepo, auditoriaService } = deps
+  const { clienteRepo } = deps
 
   return {
     async criar(ctx: ClienteContexto, dados: CriarClienteDados): Promise<ClientePublico> {
@@ -59,28 +57,28 @@ export function criarClienteService(deps: ClienteServiceDeps): ClienteService {
         throw new AppError(409, 'Já existe um cliente com este documento neste tenant')
       }
 
-      const cliente = await clienteRepo.criar({
-        tenantId: ctx.tenantId,
-        tipoPessoa: dados.tipoPessoa,
-        nome: dados.nome,
-        documento: dados.documento,
-        email: dados.email,
-        telefone: dados.telefone,
-        endereco: dados.endereco,
-        observacoes: dados.observacoes,
-      })
-
-      await auditoriaService.registrar({
-        tenantId: ctx.tenantId,
-        usuarioId: ctx.usuarioId,
-        acao: 'criar',
-        entidade: 'clientes',
-        entidadeId: cliente.id,
-        ip: ctx.ip,
-        userAgent: ctx.userAgent,
-      })
-
-      return cliente
+      // Auditoria gravada pelo repositório na MESMA transação do cadastro.
+      return clienteRepo.criar(
+        {
+          tenantId: ctx.tenantId,
+          tipoPessoa: dados.tipoPessoa,
+          nome: dados.nome,
+          documento: dados.documento,
+          email: dados.email,
+          telefone: dados.telefone,
+          endereco: dados.endereco,
+          observacoes: dados.observacoes,
+        },
+        (cliente) => ({
+          tenantId: ctx.tenantId,
+          usuarioId: ctx.usuarioId,
+          acao: 'criar',
+          entidade: 'clientes',
+          entidadeId: cliente.id,
+          ip: ctx.ip,
+          userAgent: ctx.userAgent,
+        }),
+      )
     },
 
     async buscar(ctx: ClienteContexto, termo: string): Promise<ClientePublico[]> {
@@ -102,12 +100,8 @@ export function criarClienteService(deps: ClienteServiceDeps): ClienteService {
     ): Promise<ClientePublico> {
       // Atualiza apenas o cadastro do cliente. Versões já emitidas preservam o
       // snapshot do cliente no momento da emissão e não são afetadas (RF-010.4).
-      const atualizado = await clienteRepo.atualizar(ctx.tenantId, id, dados)
-      if (!atualizado) {
-        throw new AppError(404, 'Cliente não encontrado')
-      }
-
-      await auditoriaService.registrar({
+      // Auditoria gravada pelo repositório na MESMA transação da atualização.
+      const atualizado = await clienteRepo.atualizar(ctx.tenantId, id, dados, () => ({
         tenantId: ctx.tenantId,
         usuarioId: ctx.usuarioId,
         acao: 'atualizar',
@@ -116,7 +110,10 @@ export function criarClienteService(deps: ClienteServiceDeps): ClienteService {
         estadoNovo: dados,
         ip: ctx.ip,
         userAgent: ctx.userAgent,
-      })
+      }))
+      if (!atualizado) {
+        throw new AppError(404, 'Cliente não encontrado')
+      }
 
       return atualizado
     },
@@ -127,9 +124,8 @@ export function criarClienteService(deps: ClienteServiceDeps): ClienteService {
         throw new AppError(404, 'Cliente não encontrado')
       }
 
-      await clienteRepo.desativar(ctx.tenantId, id)
-
-      await auditoriaService.registrar({
+      // Auditoria gravada pelo repositório na MESMA transação da desativação.
+      await clienteRepo.desativar(ctx.tenantId, id, () => ({
         tenantId: ctx.tenantId,
         usuarioId: ctx.usuarioId,
         acao: 'desativar',
@@ -137,7 +133,7 @@ export function criarClienteService(deps: ClienteServiceDeps): ClienteService {
         entidadeId: id,
         ip: ctx.ip,
         userAgent: ctx.userAgent,
-      })
+      }))
     },
   }
 }

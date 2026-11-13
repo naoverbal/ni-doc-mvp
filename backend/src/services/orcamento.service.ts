@@ -12,7 +12,6 @@ import type {
 import type { ClienteRepository } from '../repositories/cliente.repository.js'
 import type { EmpresaRepository } from '../repositories/empresa.repository.js'
 import type { ResponsavelRepository } from '../repositories/responsavel.repository.js'
-import type { AuditoriaService } from './auditoria.service.js'
 
 export interface OrcamentoContexto {
   tenantId: string
@@ -58,11 +57,10 @@ interface OrcamentoServiceDeps {
   clienteRepo: ClienteRepository
   empresaRepo: EmpresaRepository
   responsavelRepo: ResponsavelRepository
-  auditoriaService: AuditoriaService
 }
 
 export function criarOrcamentoService(deps: OrcamentoServiceDeps): OrcamentoService {
-  const { orcamentoRepo, clienteRepo, empresaRepo, responsavelRepo, auditoriaService } = deps
+  const { orcamentoRepo, clienteRepo, empresaRepo, responsavelRepo } = deps
 
   // As FKs do Postgres ignoram o RLS: um id de outro tenant satisfaz a FK. Por
   // isso cada referência é lida pelos repositórios (filtrados por tenant e sob
@@ -118,40 +116,41 @@ export function criarOrcamentoService(deps: OrcamentoServiceDeps): OrcamentoServ
       await validarReferencias(ctx.tenantId, dados)
 
       // O repositório é o dono do cálculo de totais (via orcamento-calculo).
-      const orcamento = await orcamentoRepo.criar({
-        tenantId: ctx.tenantId,
-        clienteId: dados.clienteId,
-        empresaClienteId: dados.empresaClienteId,
-        usuarioId: ctx.usuarioId,
-        titulo: dados.titulo,
-        descricao: dados.descricao,
-        validadeDias: dados.validadeDias,
-        prazoEntregaDias: dados.prazoEntregaDias,
-        descontoGlobalTipo: dados.descontoGlobalTipo,
-        descontoGlobalValor: dados.descontoGlobalValor,
-        observacoes: dados.observacoes,
-        condicoesPagamentoTexto: dados.condicoesPagamentoTexto,
-        condicoesPagamento: dados.condicoesPagamento,
-        itens: dados.itens,
-      })
-
-      await auditoriaService.registrar({
-        tenantId: ctx.tenantId,
-        usuarioId: ctx.usuarioId,
-        acao: 'criar',
-        entidade: 'orcamentos',
-        entidadeId: orcamento.id,
-        estadoNovo: {
-          titulo: orcamento.titulo,
-          prazoEntregaDias: orcamento.prazoEntregaDias,
-          condicoesPagamento: orcamento.condicoesPagamento,
-          total: orcamento.total,
+      // A auditoria é gravada pelo repositório na MESMA transação do orçamento,
+      // dos itens e das condições: se ela falhar, nada é criado.
+      return orcamentoRepo.criar(
+        {
+          tenantId: ctx.tenantId,
+          clienteId: dados.clienteId,
+          empresaClienteId: dados.empresaClienteId,
+          usuarioId: ctx.usuarioId,
+          titulo: dados.titulo,
+          descricao: dados.descricao,
+          validadeDias: dados.validadeDias,
+          prazoEntregaDias: dados.prazoEntregaDias,
+          descontoGlobalTipo: dados.descontoGlobalTipo,
+          descontoGlobalValor: dados.descontoGlobalValor,
+          observacoes: dados.observacoes,
+          condicoesPagamentoTexto: dados.condicoesPagamentoTexto,
+          condicoesPagamento: dados.condicoesPagamento,
+          itens: dados.itens,
         },
-        ip: ctx.ip,
-        userAgent: ctx.userAgent,
-      })
-
-      return orcamento
+        (orcamento) => ({
+          tenantId: ctx.tenantId,
+          usuarioId: ctx.usuarioId,
+          acao: 'criar',
+          entidade: 'orcamentos',
+          entidadeId: orcamento.id,
+          estadoNovo: {
+            titulo: orcamento.titulo,
+            prazoEntregaDias: orcamento.prazoEntregaDias,
+            condicoesPagamento: orcamento.condicoesPagamento,
+            total: orcamento.total,
+          },
+          ip: ctx.ip,
+          userAgent: ctx.userAgent,
+        }),
+      )
     },
 
     async buscarPorId(ctx: OrcamentoContexto, id: string): Promise<OrcamentoComItens> {
@@ -185,12 +184,8 @@ export function criarOrcamentoService(deps: OrcamentoServiceDeps): OrcamentoServ
 
       await validarReferencias(ctx.tenantId, dados)
 
-      const atualizado = await orcamentoRepo.atualizar(ctx.tenantId, id, dados)
-      if (!atualizado) {
-        throw new AppError(404, 'Orçamento não encontrado')
-      }
-
-      await auditoriaService.registrar({
+      // Auditoria gravada pelo repositório na mesma transação da edição.
+      const atualizado = await orcamentoRepo.atualizar(ctx.tenantId, id, dados, (novo) => ({
         tenantId: ctx.tenantId,
         usuarioId: ctx.usuarioId,
         acao: 'atualizar',
@@ -205,14 +200,17 @@ export function criarOrcamentoService(deps: OrcamentoServiceDeps): OrcamentoServ
           total: existente.total,
         },
         estadoNovo: {
-          titulo: atualizado.titulo,
-          prazoEntregaDias: atualizado.prazoEntregaDias,
-          condicoesPagamento: atualizado.condicoesPagamento,
-          total: atualizado.total,
+          titulo: novo.titulo,
+          prazoEntregaDias: novo.prazoEntregaDias,
+          condicoesPagamento: novo.condicoesPagamento,
+          total: novo.total,
         },
         ip: ctx.ip,
         userAgent: ctx.userAgent,
-      })
+      }))
+      if (!atualizado) {
+        throw new AppError(404, 'Orçamento não encontrado')
+      }
 
       return atualizado
     },
@@ -227,33 +225,35 @@ export function criarOrcamentoService(deps: OrcamentoServiceDeps): OrcamentoServ
         throw new AppError(409, 'Só é possível excluir orçamentos em rascunho')
       }
 
-      const resultado = await orcamentoRepo.deletar(ctx.tenantId, id)
+      // Auditoria gravada pelo repositório na mesma transação da exclusão/restauração.
+      const resultado = await orcamentoRepo.deletar(ctx.tenantId, id, (r) =>
+        r.resultado === 'removido'
+          ? {
+              tenantId: ctx.tenantId,
+              usuarioId: ctx.usuarioId,
+              acao: 'deletar',
+              entidade: 'orcamentos',
+              entidadeId: id,
+              ip: ctx.ip,
+              userAgent: ctx.userAgent,
+            }
+          : {
+              // Rascunho reaberto: nada foi apagado; o orçamento voltou ao status de origem.
+              tenantId: ctx.tenantId,
+              usuarioId: ctx.usuarioId,
+              acao: 'descartar_reabertura',
+              entidade: 'orcamentos',
+              entidadeId: id,
+              estadoAnterior: { status: 'rascunho' },
+              estadoNovo: { status: r.statusRestaurado, restauradoDaUltimaVersao: true },
+              ip: ctx.ip,
+              userAgent: ctx.userAgent,
+            },
+      )
 
       if (resultado.resultado === 'removido') {
-        await auditoriaService.registrar({
-          tenantId: ctx.tenantId,
-          usuarioId: ctx.usuarioId,
-          acao: 'deletar',
-          entidade: 'orcamentos',
-          entidadeId: id,
-          ip: ctx.ip,
-          userAgent: ctx.userAgent,
-        })
         return null
       }
-
-      // Rascunho reaberto: nada foi apagado; o orçamento voltou ao status de origem.
-      await auditoriaService.registrar({
-        tenantId: ctx.tenantId,
-        usuarioId: ctx.usuarioId,
-        acao: 'descartar_reabertura',
-        entidade: 'orcamentos',
-        entidadeId: id,
-        estadoAnterior: { status: 'rascunho' },
-        estadoNovo: { status: resultado.statusRestaurado, restauradoDaUltimaVersao: true },
-        ip: ctx.ip,
-        userAgent: ctx.userAgent,
-      })
 
       const restaurado = await orcamentoRepo.buscarPorId(ctx.tenantId, id)
       if (!restaurado) {

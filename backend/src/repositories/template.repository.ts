@@ -1,6 +1,7 @@
 import type { Kysely, Transaction } from 'kysely'
 import { sql } from 'kysely'
 import type { Database } from '../types/database.js'
+import { inserirEventoAuditoria, type AuditoriaNaTransacao } from './auditoria.repository.js'
 
 // -----------------------------------------------------------------------------
 // Layout do template. O schema real do JSON é definido pelo editor visual
@@ -44,7 +45,11 @@ export interface TemplateRepository {
   // Cria a versão 1 (layout padrão) e a ativa; usado no bootstrap do tenant.
   criarTemplatePadrao(tenantId: string): Promise<TemplatePublico>
   // Cria uma NOVA versão (max + 1) e atualiza o ponteiro ativo; append-only.
-  salvar(input: SalvarTemplateInput): Promise<TemplatePublico>
+  // `auditoria` (opcional) é gravada na mesma transação: se falhar, nada persiste.
+  salvar(
+    input: SalvarTemplateInput,
+    auditoria?: AuditoriaNaTransacao<TemplatePublico>,
+  ): Promise<TemplatePublico>
   // Versão atualmente ativa (join via tenants_template_ativo).
   buscarAtivo(tenantId: string): Promise<TemplatePublico | null>
   // Versão específica (filtrada por tenant_id — defesa em profundidade).
@@ -90,6 +95,7 @@ export function criarTemplateRepository(deps: { db: Kysely<Database> }): Templat
   async function inserirVersao(
     tenantId: string,
     layoutJson: LayoutTemplate,
+    auditoria?: AuditoriaNaTransacao<TemplatePublico>,
   ): Promise<TemplatePublico> {
     return db.transaction().execute(async (trx: Transaction<Database>) => {
       await sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`.execute(trx)
@@ -119,7 +125,9 @@ export function criarTemplateRepository(deps: { db: Kysely<Database> }): Templat
         .onConflict((oc) => oc.column('tenant_id').doUpdateSet({ template_id: templateId }))
         .execute()
 
-      return mapRowTemplate(row as TemplateRow)
+      const criado = mapRowTemplate(row as TemplateRow)
+      if (auditoria) await inserirEventoAuditoria(trx, auditoria(criado))
+      return criado
     })
   }
 
@@ -128,8 +136,11 @@ export function criarTemplateRepository(deps: { db: Kysely<Database> }): Templat
       return inserirVersao(tenantId, LAYOUT_PADRAO)
     },
 
-    async salvar(input: SalvarTemplateInput): Promise<TemplatePublico> {
-      return inserirVersao(input.tenantId, input.layoutJson)
+    async salvar(
+      input: SalvarTemplateInput,
+      auditoria?: AuditoriaNaTransacao<TemplatePublico>,
+    ): Promise<TemplatePublico> {
+      return inserirVersao(input.tenantId, input.layoutJson, auditoria)
     },
 
     async buscarAtivo(tenantId: string): Promise<TemplatePublico | null> {

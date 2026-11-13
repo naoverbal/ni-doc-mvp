@@ -2,6 +2,7 @@ import type { Kysely, Transaction } from 'kysely'
 import { sql } from 'kysely'
 import type { Database } from '../types/database.js'
 import { AppError } from '../errors/app-error.js'
+import { inserirEventoAuditoria, type AuditoriaNaTransacao } from './auditoria.repository.js'
 import { calcularSubtotal, calcularTotal, calcularTotalItem } from '../lib/orcamento-calculo.js'
 import { calcularHashConteudo } from '../lib/orcamento-hash.js'
 import { dataCivilNoFuso } from '../lib/validade.js'
@@ -172,13 +173,20 @@ export type ResultadoDeletar =
   | { resultado: 'removido' }
   | { resultado: 'restaurado'; statusRestaurado: StatusReabrivel }
 
+// Todas as operações de escrita abaixo aceitam `auditoria` opcional: o evento é
+// gravado na MESMA transação da operação. Se a gravação do evento falhar, a
+// operação inteira reverte (tudo ou nada).
 export interface OrcamentoRepository {
-  criar(input: CriarOrcamentoInput): Promise<OrcamentoComItens>
+  criar(
+    input: CriarOrcamentoInput,
+    auditoria?: AuditoriaNaTransacao<OrcamentoComItens>,
+  ): Promise<OrcamentoComItens>
   buscarPorId(tenantId: string, id: string): Promise<OrcamentoComItens | null>
   atualizar(
     tenantId: string,
     id: string,
     dados: AtualizarOrcamentoInput,
+    auditoria?: AuditoriaNaTransacao<OrcamentoComItens>,
   ): Promise<OrcamentoComItens | null>
   listarPorTenant(tenantId: string, filtro?: ListarOrcamentosFiltro): Promise<ListaOrcamentos>
   // Exclui um rascunho. Rascunho NUNCA enviado é removido de verdade
@@ -186,19 +194,31 @@ export interface OrcamentoRepository {
   // orçamento volta ao status de origem (reprovado | cancelado | expirado) com o
   // conteúdo da última versão enviada (`restaurado`). Tudo em transação, com lock
   // de linha: exclusões concorrentes serializam e a perdedora recebe 404/409.
-  deletar(tenantId: string, id: string): Promise<ResultadoDeletar>
+  deletar(
+    tenantId: string,
+    id: string,
+    auditoria?: AuditoriaNaTransacao<ResultadoDeletar>,
+  ): Promise<ResultadoDeletar>
   // Reabre (reprovado | cancelado | expirado → rascunho) em transação, travando a
   // linha e relendo o status: reaberturas concorrentes serializam e só uma vence.
   // 404 se não existir no tenant; 409 se o status não permitir. Renova
   // `data_emissao` para a data civil da reabertura (mantém `validade_dias`) e
   // guarda o status de origem. Devolve o status anterior.
-  reabrir(tenantId: string, id: string): Promise<{ statusAnterior: StatusReabrivel }>
+  reabrir(
+    tenantId: string,
+    id: string,
+    auditoria?: AuditoriaNaTransacao<{ statusAnterior: StatusReabrivel }>,
+  ): Promise<{ statusAnterior: StatusReabrivel }>
   // Cancela (enviado | aprovado → cancelado) em transação, travando a linha
   // (`FOR UPDATE`) e relendo o status: cancelamentos concorrentes serializam e só
   // um vence. 404 se não existir no tenant; 409 se o status não permitir. Só o
   // status muda (versões, aceites e comprovantes ficam intactos). Devolve o
   // status anterior.
-  cancelar(tenantId: string, id: string): Promise<{ statusAnterior: OrcamentoStatus }>
+  cancelar(
+    tenantId: string,
+    id: string,
+    auditoria?: AuditoriaNaTransacao<{ statusAnterior: OrcamentoStatus }>,
+  ): Promise<{ statusAnterior: OrcamentoStatus }>
 }
 
 // -----------------------------------------------------------------------------
@@ -730,7 +750,10 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
   }
 
   return {
-    async criar(input: CriarOrcamentoInput): Promise<OrcamentoComItens> {
+    async criar(
+      input: CriarOrcamentoInput,
+      auditoria?: AuditoriaNaTransacao<OrcamentoComItens>,
+    ): Promise<OrcamentoComItens> {
       const subtotal = calcularSubtotal(
         input.itens.map((item) => ({
           quantidade: item.quantidade,
@@ -789,7 +812,9 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
           const itens = await inserirItens(trx, orcamentoId, input.itens)
           const condicoes = await inserirCondicoes(trx, orcamentoId, input.condicoesPagamento ?? [])
 
-          return mapRowOrcamento(orcamentoRow as OrcamentoRow, itens, condicoes)
+          const criado = mapRowOrcamento(orcamentoRow as OrcamentoRow, itens, condicoes)
+          if (auditoria) await inserirEventoAuditoria(trx, auditoria(criado))
+          return criado
         })
       } catch (erro) {
         if (ehConteudoDuplicado(erro)) throw erroConteudoDuplicado()
@@ -816,6 +841,7 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
       tenantId: string,
       id: string,
       dados: AtualizarOrcamentoInput,
+      auditoria?: AuditoriaNaTransacao<OrcamentoComItens>,
     ): Promise<OrcamentoComItens | null> {
       const subtotal = calcularSubtotal(
         dados.itens.map((item) => ({
@@ -905,7 +931,9 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
             condicoes = (rows as OrcamentoCondicaoPagamentoRow[]).map(mapRowCondicaoPagamento)
           }
 
-          return mapRowOrcamento(orcamentoRow as OrcamentoRow, itens, condicoes)
+          const atualizado = mapRowOrcamento(orcamentoRow as OrcamentoRow, itens, condicoes)
+          if (auditoria) await inserirEventoAuditoria(trx, auditoria(atualizado))
+          return atualizado
         })
       } catch (erro) {
         if (ehConteudoDuplicado(erro)) throw erroConteudoDuplicado()
@@ -954,7 +982,11 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
       }
     },
 
-    async deletar(tenantId: string, id: string): Promise<ResultadoDeletar> {
+    async deletar(
+      tenantId: string,
+      id: string,
+      auditoria?: AuditoriaNaTransacao<ResultadoDeletar>,
+    ): Promise<ResultadoDeletar> {
       return db.transaction().execute(async (trx) => {
         const row = await trx
           .selectFrom('orcamentos')
@@ -978,17 +1010,28 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
             .where('tenant_id', '=', tenantId)
             .where('id', '=', id)
             .execute()
-          return { resultado: 'removido' }
+          const removido: ResultadoDeletar = { resultado: 'removido' }
+          if (auditoria) await inserirEventoAuditoria(trx, auditoria(removido))
+          return removido
         }
 
         // Rascunho reaberto: o histórico é preservado e o orçamento volta ao
         // status de origem, com o conteúdo da última versão enviada.
         await restaurarUltimaVersao(trx, tenantId, id, row.status_reaberto_de)
-        return { resultado: 'restaurado', statusRestaurado: row.status_reaberto_de }
+        const restaurado: ResultadoDeletar = {
+          resultado: 'restaurado',
+          statusRestaurado: row.status_reaberto_de,
+        }
+        if (auditoria) await inserirEventoAuditoria(trx, auditoria(restaurado))
+        return restaurado
       })
     },
 
-    async reabrir(tenantId: string, id: string): Promise<{ statusAnterior: StatusReabrivel }> {
+    async reabrir(
+      tenantId: string,
+      id: string,
+      auditoria?: AuditoriaNaTransacao<{ statusAnterior: StatusReabrivel }>,
+    ): Promise<{ statusAnterior: StatusReabrivel }> {
       return db.transaction().execute(async (trx) => {
         const row = await trx
           .selectFrom('orcamentos')
@@ -1024,11 +1067,17 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
           .where('id', '=', id)
           .execute()
 
-        return { statusAnterior }
+        const resultado = { statusAnterior }
+        if (auditoria) await inserirEventoAuditoria(trx, auditoria(resultado))
+        return resultado
       })
     },
 
-    async cancelar(tenantId: string, id: string): Promise<{ statusAnterior: OrcamentoStatus }> {
+    async cancelar(
+      tenantId: string,
+      id: string,
+      auditoria?: AuditoriaNaTransacao<{ statusAnterior: OrcamentoStatus }>,
+    ): Promise<{ statusAnterior: OrcamentoStatus }> {
       return db.transaction().execute(async (trx) => {
         const row = await trx
           .selectFrom('orcamentos')
@@ -1054,7 +1103,9 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
           .where('id', '=', id)
           .execute()
 
-        return { statusAnterior }
+        const resultado = { statusAnterior }
+        if (auditoria) await inserirEventoAuditoria(trx, auditoria(resultado))
+        return resultado
       })
     },
   }

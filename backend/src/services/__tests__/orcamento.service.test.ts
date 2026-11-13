@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
+import { eventoAuditoriaDe } from '../../__tests__/auditoria-teste.js'
 import { criarOrcamentoService } from '../orcamento.service.js'
 import type {
   ListaOrcamentos,
@@ -139,6 +140,7 @@ describe('OrcamentoService', () => {
           clienteId: 'cliente-1',
           titulo: 'Projeto X',
         }),
+        expect.any(Function),
       )
     })
 
@@ -208,13 +210,18 @@ describe('OrcamentoService', () => {
 
       await service.criar(ctx, dadosValidos)
 
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({
-          acao: 'criar',
-          entidade: 'orcamentos',
-          entidadeId: 'orcamento-1',
-        }),
-      )
+      // A auditoria é entregue ao repositório e gravada na MESMA transação do
+      // orçamento; o service não grava mais por conta própria.
+      expect(
+        eventoAuditoriaDe(deps.orcamentoRepo.criar as Mock, orcamentoMock('rascunho')),
+      ).toMatchObject({
+        tenantId: 'tenant-1',
+        usuarioId: 'user-1',
+        acao: 'criar',
+        entidade: 'orcamentos',
+        entidadeId: 'orcamento-1',
+      })
+      expect(deps.auditoriaService.registrar).not.toHaveBeenCalled()
     })
 
     it('repassa prazoEntregaDias e condições de pagamento ao repositório', async () => {
@@ -226,6 +233,7 @@ describe('OrcamentoService', () => {
 
       expect(deps.orcamentoRepo.criar).toHaveBeenCalledWith(
         expect.objectContaining({ prazoEntregaDias: 5, condicoesPagamento }),
+        expect.any(Function),
       )
     })
 
@@ -235,8 +243,7 @@ describe('OrcamentoService', () => {
 
       await service.criar(ctx, dadosValidos)
 
-      const registrar = vi.mocked(deps.auditoriaService.registrar)
-      const evento = registrar.mock.calls[0]?.[0]
+      const evento = eventoAuditoriaDe(deps.orcamentoRepo.criar as Mock, orcamentoMock('rascunho'))
       expect(evento?.acao).toBe('criar')
       expect(evento?.estadoNovo).toHaveProperty('prazoEntregaDias')
       expect(evento?.estadoNovo).toHaveProperty('condicoesPagamento')
@@ -312,13 +319,16 @@ describe('OrcamentoService', () => {
       const result = await service.atualizar(ctx, 'orcamento-1', { titulo: 'Novo', itens })
 
       expect(result.id).toBe('orcamento-1')
-      expect(deps.orcamentoRepo.atualizar).toHaveBeenCalledWith('tenant-1', 'orcamento-1', {
-        titulo: 'Novo',
-        itens,
-      })
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({ acao: 'atualizar', entidade: 'orcamentos' }),
+      expect(deps.orcamentoRepo.atualizar).toHaveBeenCalledWith(
+        'tenant-1',
+        'orcamento-1',
+        { titulo: 'Novo', itens },
+        expect.any(Function),
       )
+      expect(
+        eventoAuditoriaDe(deps.orcamentoRepo.atualizar as Mock, orcamentoMock('rascunho')),
+      ).toMatchObject({ acao: 'atualizar', entidade: 'orcamentos' })
+      expect(deps.auditoriaService.registrar).not.toHaveBeenCalled()
     })
 
     it('audita estado anterior e novo cobrindo prazo e condições', async () => {
@@ -327,8 +337,10 @@ describe('OrcamentoService', () => {
 
       await service.atualizar(ctx, 'orcamento-1', { titulo: 'Novo', itens })
 
-      const registrar = vi.mocked(deps.auditoriaService.registrar)
-      const evento = registrar.mock.calls[0]?.[0]
+      const evento = eventoAuditoriaDe(
+        deps.orcamentoRepo.atualizar as Mock,
+        orcamentoMock('rascunho'),
+      )
       expect(evento?.acao).toBe('atualizar')
       expect(evento?.estadoAnterior).toHaveProperty('prazoEntregaDias')
       expect(evento?.estadoAnterior).toHaveProperty('condicoesPagamento')
@@ -380,12 +392,15 @@ describe('OrcamentoService', () => {
       const resultado = await service.deletar(ctx, 'orcamento-1')
 
       expect(resultado).toBe(restaurado)
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({
-          acao: 'descartar_reabertura',
-          estadoNovo: expect.objectContaining({ status: 'reprovado' }),
+      expect(
+        eventoAuditoriaDe(deps.orcamentoRepo.deletar as Mock, {
+          resultado: 'restaurado',
+          statusRestaurado: 'reprovado',
         }),
-      )
+      ).toMatchObject({
+        acao: 'descartar_reabertura',
+        estadoNovo: expect.objectContaining({ status: 'reprovado' }),
+      })
     })
 
     it('deleta quando o status é rascunho e audita', async () => {
@@ -395,10 +410,14 @@ describe('OrcamentoService', () => {
       const resultado = await service.deletar(ctx, 'orcamento-1')
 
       expect(resultado).toBeNull()
-      expect(deps.orcamentoRepo.deletar).toHaveBeenCalledWith('tenant-1', 'orcamento-1')
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({ acao: 'deletar', entidade: 'orcamentos' }),
+      expect(deps.orcamentoRepo.deletar).toHaveBeenCalledWith(
+        'tenant-1',
+        'orcamento-1',
+        expect.any(Function),
       )
+      expect(
+        eventoAuditoriaDe(deps.orcamentoRepo.deletar as Mock, { resultado: 'removido' }),
+      ).toMatchObject({ acao: 'deletar', entidade: 'orcamentos' })
     })
 
     it('lança AppError(404) quando o orçamento não existe', async () => {

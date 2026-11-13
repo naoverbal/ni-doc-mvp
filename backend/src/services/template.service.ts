@@ -4,7 +4,6 @@ import type {
   TemplatePublico,
   TemplateRepository,
 } from '../repositories/template.repository.js'
-import type { AuditoriaService } from './auditoria.service.js'
 
 export interface TemplateContexto {
   tenantId: string
@@ -26,11 +25,10 @@ export interface TemplateService {
 
 interface TemplateServiceDeps {
   templateRepo: TemplateRepository
-  auditoriaService: AuditoriaService
 }
 
 export function criarTemplateService(deps: TemplateServiceDeps): TemplateService {
-  const { templateRepo, auditoriaService } = deps
+  const { templateRepo } = deps
 
   return {
     async criarTemplatePadrao(tenantId: string): Promise<TemplatePublico> {
@@ -40,9 +38,9 @@ export function criarTemplateService(deps: TemplateServiceDeps): TemplateService
     },
 
     async salvar(ctx: TemplateContexto, layoutJson: LayoutTemplate): Promise<TemplatePublico> {
-      const template = await templateRepo.salvar({ tenantId: ctx.tenantId, layoutJson })
-
-      await auditoriaService.registrar({
+      // Auditoria gravada pelo repositório na MESMA transação da nova versão e do
+      // ponteiro do template ativo.
+      return templateRepo.salvar({ tenantId: ctx.tenantId, layoutJson }, (template) => ({
         tenantId: ctx.tenantId,
         usuarioId: ctx.usuarioId,
         acao: 'atualizar',
@@ -51,9 +49,7 @@ export function criarTemplateService(deps: TemplateServiceDeps): TemplateService
         estadoNovo: { versao: template.versao },
         ip: ctx.ip,
         userAgent: ctx.userAgent,
-      })
-
-      return template
+      }))
     },
 
     async buscarAtivo(ctx: TemplateContexto): Promise<TemplatePublico> {

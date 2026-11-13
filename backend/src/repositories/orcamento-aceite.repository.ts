@@ -2,6 +2,7 @@ import type { Kysely, Transaction } from 'kysely'
 import { sql } from 'kysely'
 import type { Database } from '../types/database.js'
 import { AppError } from '../errors/app-error.js'
+import { inserirEventoAuditoria, type AuditoriaNaTransacao } from './auditoria.repository.js'
 
 // -----------------------------------------------------------------------------
 // Repositório dos aceites de orçamento (tabela orcamento_aceites). Dono do SQL
@@ -41,13 +42,20 @@ export interface OrcamentoAceiteRepository {
   // orçamento ligado à versão, rejeita se o orçamento já estiver `aprovado`
   // (duplicado → 409) ou se a versão/orçamento não existir (409), insere o
   // aceite e marca `orcamentos.status = 'aprovado'` filtrando por tenant_id.
-  aprovarAceite(input: RegistrarAceiteInput): Promise<AceitePublico>
+  // `auditoria` (opcional) é gravada na mesma transação: se falhar, nada persiste.
+  aprovarAceite(
+    input: RegistrarAceiteInput,
+    auditoria?: AuditoriaNaTransacao<AceitePublico>,
+  ): Promise<AceitePublico>
   // Espelha `aprovarAceite` para a REPROVAÇÃO (tarefa 42): mesma transação
   // atômica, mesma evidência (IP/UA/hash/justificativa) e a mesma rede de
   // segurança `UNIQUE (versao_id)`, mas marca `orcamentos.status = 'reprovado'`.
   // Rejeita (409) se o orçamento já tiver sido decidido (`aprovado`/`reprovado`)
   // ou se a versão/orçamento não existir.
-  reprovarAceite(input: RegistrarAceiteInput): Promise<AceitePublico>
+  reprovarAceite(
+    input: RegistrarAceiteInput,
+    auditoria?: AuditoriaNaTransacao<AceitePublico>,
+  ): Promise<AceitePublico>
   buscarPorVersao(versaoId: string): Promise<AceitePublico | null>
 }
 
@@ -132,6 +140,7 @@ export function criarOrcamentoAceiteRepository(deps: {
     input: RegistrarAceiteInput,
     novoStatus: 'aprovado' | 'reprovado',
     mensagemConflito: string,
+    auditoria?: AuditoriaNaTransacao<AceitePublico>,
   ): Promise<AceitePublico> {
     return db.transaction().execute(async (trx) => {
       const lido = await lerStatusOrcamento(trx, input.tenantId, input.versaoId)
@@ -190,17 +199,25 @@ export function criarOrcamentoAceiteRepository(deps: {
         )
         .execute()
 
-      return mapRowAceite(row as OrcamentoAceiteRow)
+      const aceite = mapRowAceite(row as OrcamentoAceiteRow)
+      if (auditoria) await inserirEventoAuditoria(trx, auditoria(aceite))
+      return aceite
     })
   }
 
   return {
-    async aprovarAceite(input: RegistrarAceiteInput): Promise<AceitePublico> {
-      return registrarDecisao(input, 'aprovado', 'Orçamento já aprovado')
+    async aprovarAceite(
+      input: RegistrarAceiteInput,
+      auditoria?: AuditoriaNaTransacao<AceitePublico>,
+    ): Promise<AceitePublico> {
+      return registrarDecisao(input, 'aprovado', 'Orçamento já aprovado', auditoria)
     },
 
-    async reprovarAceite(input: RegistrarAceiteInput): Promise<AceitePublico> {
-      return registrarDecisao(input, 'reprovado', 'Orçamento já decidido')
+    async reprovarAceite(
+      input: RegistrarAceiteInput,
+      auditoria?: AuditoriaNaTransacao<AceitePublico>,
+    ): Promise<AceitePublico> {
+      return registrarDecisao(input, 'reprovado', 'Orçamento já decidido', auditoria)
     },
 
     async buscarPorVersao(versaoId: string): Promise<AceitePublico | null> {

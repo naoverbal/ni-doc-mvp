@@ -1,5 +1,6 @@
 import type { Kysely } from 'kysely'
 import type { Database } from '../types/database.js'
+import { executarComAuditoria, type AuditoriaNaTransacao } from './auditoria.repository.js'
 import { criptografar, descriptografar } from '../lib/crypto.js'
 
 export interface CriarResponsavelInput {
@@ -29,7 +30,11 @@ export interface ResponsavelPublico {
 }
 
 export interface ResponsavelRepository {
-  criar(input: CriarResponsavelInput): Promise<ResponsavelPublico>
+  // `auditoria` (opcional): evento gravado na MESMA transação; se falhar, nada persiste.
+  criar(
+    input: CriarResponsavelInput,
+    auditoria?: AuditoriaNaTransacao<ResponsavelPublico>,
+  ): Promise<ResponsavelPublico>
   buscarPorId(tenantId: string, id: string): Promise<ResponsavelPublico | null>
   // Busca vários responsáveis do tenant numa única consulta (`id IN (...)`).
   // Ids inexistentes simplesmente não aparecem no resultado.
@@ -39,8 +44,9 @@ export interface ResponsavelRepository {
     tenantId: string,
     id: string,
     dados: AtualizarResponsavelInput,
+    auditoria?: AuditoriaNaTransacao<ResponsavelPublico>,
   ): Promise<ResponsavelPublico | null>
-  desativar(tenantId: string, id: string): Promise<void>
+  desativar(tenantId: string, id: string, auditoria?: AuditoriaNaTransacao<void>): Promise<void>
 }
 
 interface ResponsavelRow {
@@ -84,20 +90,25 @@ const COLUNAS_PUBLICAS = [
 
 export function criarResponsavelRepository(db: Kysely<Database>): ResponsavelRepository {
   return {
-    async criar(input: CriarResponsavelInput): Promise<ResponsavelPublico> {
-      const row = await db
-        .insertInto('responsaveis_tecnicos')
-        .values({
-          tenant_id: input.tenantId,
-          nome: input.nome,
-          registro_profissional: input.registroProfissional ?? null,
-          email_encrypted: input.email !== undefined ? criptografar(input.email) : null,
-          telefone_encrypted: input.telefone !== undefined ? criptografar(input.telefone) : null,
-        })
-        .returning(COLUNAS_PUBLICAS)
-        .executeTakeFirstOrThrow()
+    async criar(
+      input: CriarResponsavelInput,
+      auditoria?: AuditoriaNaTransacao<ResponsavelPublico>,
+    ): Promise<ResponsavelPublico> {
+      return executarComAuditoria(db, auditoria, async (executor) => {
+        const row = await executor
+          .insertInto('responsaveis_tecnicos')
+          .values({
+            tenant_id: input.tenantId,
+            nome: input.nome,
+            registro_profissional: input.registroProfissional ?? null,
+            email_encrypted: input.email !== undefined ? criptografar(input.email) : null,
+            telefone_encrypted: input.telefone !== undefined ? criptografar(input.telefone) : null,
+          })
+          .returning(COLUNAS_PUBLICAS)
+          .executeTakeFirstOrThrow()
 
-      return mapRowToPublico(row as ResponsavelRow)
+        return mapRowToPublico(row as ResponsavelRow)
+      })
     },
 
     async buscarPorId(tenantId: string, id: string): Promise<ResponsavelPublico | null> {
@@ -143,6 +154,7 @@ export function criarResponsavelRepository(db: Kysely<Database>): ResponsavelRep
       tenantId: string,
       id: string,
       dados: AtualizarResponsavelInput,
+      auditoria?: AuditoriaNaTransacao<ResponsavelPublico>,
     ): Promise<ResponsavelPublico | null> {
       const set: Record<string, unknown> = { atualizado_em: new Date() }
 
@@ -152,25 +164,33 @@ export function criarResponsavelRepository(db: Kysely<Database>): ResponsavelRep
       if (dados.email !== undefined) set['email_encrypted'] = criptografar(dados.email)
       if (dados.telefone !== undefined) set['telefone_encrypted'] = criptografar(dados.telefone)
 
-      const row = await db
-        .updateTable('responsaveis_tecnicos')
-        .set(set)
-        .where('tenant_id', '=', tenantId)
-        .where('id', '=', id)
-        .returning(COLUNAS_PUBLICAS)
-        .executeTakeFirst()
+      return executarComAuditoria(db, auditoria, async (executor) => {
+        const row = await executor
+          .updateTable('responsaveis_tecnicos')
+          .set(set)
+          .where('tenant_id', '=', tenantId)
+          .where('id', '=', id)
+          .returning(COLUNAS_PUBLICAS)
+          .executeTakeFirst()
 
-      if (!row) return null
-      return mapRowToPublico(row as ResponsavelRow)
+        if (!row) return null
+        return mapRowToPublico(row as ResponsavelRow)
+      })
     },
 
-    async desativar(tenantId: string, id: string): Promise<void> {
-      await db
-        .updateTable('responsaveis_tecnicos')
-        .set({ ativo: false, atualizado_em: new Date() })
-        .where('tenant_id', '=', tenantId)
-        .where('id', '=', id)
-        .executeTakeFirst()
+    async desativar(
+      tenantId: string,
+      id: string,
+      auditoria?: AuditoriaNaTransacao<void>,
+    ): Promise<void> {
+      await executarComAuditoria(db, auditoria, async (executor) => {
+        await executor
+          .updateTable('responsaveis_tecnicos')
+          .set({ ativo: false, atualizado_em: new Date() })
+          .where('tenant_id', '=', tenantId)
+          .where('id', '=', id)
+          .executeTakeFirst()
+      })
     },
   }
 }

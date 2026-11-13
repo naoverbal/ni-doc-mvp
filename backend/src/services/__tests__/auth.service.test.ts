@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
+import { eventoAuditoriaDe } from '../../__tests__/auditoria-teste.js'
 import { criarAuthService } from '../auth.service.js'
 import { AppError } from '../../errors/app-error.js'
 import type {
@@ -94,9 +95,12 @@ describe('AuthService', () => {
 
       await service.login({ email: 'ana@exemplo.com', senha: 'senha123' })
 
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({ acao: 'login', entidade: 'usuarios' }),
-      )
+      expect(eventoAuditoriaDe(deps.sessaoRepo.criar as Mock)).toMatchObject({
+        tenantId: 'tenant-1',
+        usuarioId: 'user-1',
+        acao: 'login',
+        entidade: 'usuarios',
+      })
     })
 
     it('lança AppError(401) se email não encontrado', async () => {
@@ -147,7 +151,7 @@ describe('AuthService', () => {
 
       await service.logout('sessao-id-1')
 
-      expect(deps.sessaoRepo.invalidar).toHaveBeenCalledWith('sessao-id-1')
+      expect(deps.sessaoRepo.invalidar).toHaveBeenCalledWith('sessao-id-1', expect.any(Function))
     })
 
     it('registra evento de auditoria no logout', async () => {
@@ -156,9 +160,45 @@ describe('AuthService', () => {
 
       await service.logout('sessao-id-1')
 
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({ acao: 'logout' }),
+      expect(eventoAuditoriaDe(deps.sessaoRepo.invalidar as Mock)).toMatchObject({
+        tenantId: 'tenant-1',
+        usuarioId: 'user-1',
+        acao: 'logout',
+      })
+    })
+  })
+
+  describe('atomicidade da auditoria (tudo ou nada)', () => {
+    it('login: se a gravação transacional falhar (auditoria), o login é recusado e propaga o erro', async () => {
+      vi.spyOn(senhaLib, 'verificarSenha').mockResolvedValue(true)
+      const deps = makeDeps({
+        sessaoRepo: { criar: vi.fn().mockRejectedValue(new Error('falha ao gravar auditoria')) },
+      })
+      const service = criarAuthService(deps)
+
+      await expect(service.login({ email: 'ana@exemplo.com', senha: 'senha123' })).rejects.toThrow(
+        'falha ao gravar auditoria',
       )
+    })
+
+    it('logout: sem usuário resolvido, apenas invalida a sessão (sem auditoria)', async () => {
+      const deps = makeDeps({ usuarioRepo: { buscarPorId: vi.fn().mockResolvedValue(null) } })
+      const service = criarAuthService(deps)
+
+      await service.logout('sessao-id-1')
+
+      expect(deps.sessaoRepo.invalidar).toHaveBeenCalledWith('sessao-id-1')
+    })
+
+    it('logout: se a invalidação transacional falhar (auditoria), propaga o erro', async () => {
+      const deps = makeDeps({
+        sessaoRepo: {
+          invalidar: vi.fn().mockRejectedValue(new Error('falha ao gravar auditoria')),
+        },
+      })
+      const service = criarAuthService(deps)
+
+      await expect(service.logout('sessao-id-1')).rejects.toThrow('falha ao gravar auditoria')
     })
   })
 

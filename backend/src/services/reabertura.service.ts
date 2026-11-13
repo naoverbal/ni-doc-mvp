@@ -3,7 +3,6 @@ import type {
   OrcamentoComItens,
   OrcamentoRepository,
 } from '../repositories/orcamento.repository.js'
-import type { AuditoriaService } from './auditoria.service.js'
 import type { ConfirmacaoSenha } from './confirmacao-senha.js'
 import type { OrcamentoContexto } from './orcamento.service.js'
 
@@ -37,12 +36,11 @@ export interface ReaberturaService {
 
 interface ReaberturaServiceDeps {
   orcamentoRepo: OrcamentoRepository
-  auditoriaService: AuditoriaService
   confirmacaoSenha: ConfirmacaoSenha
 }
 
 export function criarReaberturaService(deps: ReaberturaServiceDeps): ReaberturaService {
-  const { orcamentoRepo, auditoriaService, confirmacaoSenha } = deps
+  const { orcamentoRepo, confirmacaoSenha } = deps
 
   return {
     async reabrir(ctx, id, dados) {
@@ -59,9 +57,8 @@ export function criarReaberturaService(deps: ReaberturaServiceDeps): ReaberturaS
 
       await confirmacaoSenha.exigir(ctx, id, dados.senha, 'reabrir_senha_invalida')
 
-      const { statusAnterior } = await orcamentoRepo.reabrir(ctx.tenantId, id)
-
-      await auditoriaService.registrar({
+      // Auditoria gravada pelo repositório na mesma transação da reabertura.
+      await orcamentoRepo.reabrir(ctx.tenantId, id, ({ statusAnterior }) => ({
         tenantId: ctx.tenantId,
         usuarioId: ctx.usuarioId,
         acao: 'reabrir',
@@ -71,7 +68,7 @@ export function criarReaberturaService(deps: ReaberturaServiceDeps): ReaberturaS
         estadoNovo: { status: 'rascunho', justificativa },
         ip: ctx.ip,
         userAgent: ctx.userAgent,
-      })
+      }))
 
       return (
         (await orcamentoRepo.buscarPorId(ctx.tenantId, id)) ?? { ...existente, status: 'rascunho' }

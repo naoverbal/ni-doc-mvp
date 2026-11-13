@@ -1,3 +1,5 @@
+import type { Mock } from 'vitest'
+import { eventoAuditoriaDe } from '../../__tests__/auditoria-teste.js'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { criarVersionamentoService } from '../versionamento.service.js'
 import type {
@@ -136,18 +138,23 @@ const templateMock: TemplatePublico = {
 // `pdfPath`/`pdfHash` resultantes na versão retornada. Se o callback rejeita, a
 // rejeição propaga (como o rollback real da trx faria).
 function criarVersaoEnviarMock() {
-  return vi.fn(async (input: CriarVersaoEnviarInput): Promise<OrcamentoVersaoPublica> => {
-    if (input.gerarPdfDaVersao) {
-      const { pdfPath, pdfHash } = await input.gerarPdfDaVersao({
-        versao: versaoPublicaMock.versao,
-        numero: input.numero,
-        tokenPublico: versaoPublicaMock.tokenPublico,
-        templateId: versaoPublicaMock.templateId,
-      })
-      return { ...versaoPublicaMock, pdfPath, pdfHash }
-    }
-    return versaoPublicaMock
-  })
+  return vi.fn(
+    async (
+      input: CriarVersaoEnviarInput,
+      _auditoria?: unknown,
+    ): Promise<OrcamentoVersaoPublica> => {
+      if (input.gerarPdfDaVersao) {
+        const { pdfPath, pdfHash } = await input.gerarPdfDaVersao({
+          versao: versaoPublicaMock.versao,
+          numero: input.numero,
+          tokenPublico: versaoPublicaMock.tokenPublico,
+          templateId: versaoPublicaMock.templateId,
+        })
+        return { ...versaoPublicaMock, pdfPath, pdfHash }
+      }
+      return versaoPublicaMock
+    },
+  )
 }
 
 function makeDeps(overrides?: {
@@ -288,6 +295,7 @@ describe('VersionamentoService', () => {
     )
     expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', orcamentoId: 'orcamento-1' }),
+      expect.any(Function),
     )
     expect(versao.versao).toBe(1)
     expect(versao.tokenPublico).toBe('uuid.hmac')
@@ -300,6 +308,7 @@ describe('VersionamentoService', () => {
     // Emissão 2026-01-01 + 30 dias = vencimento 31/01; expira 01/02 00:00 (UTC-3).
     expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).toHaveBeenCalledWith(
       expect.objectContaining({ expiraEm: new Date('2026-02-01T03:00:00.000Z') }),
+      expect.any(Function),
     )
   })
   it('lança AppError(400) e não persiste quando a validade já venceu', async () => {
@@ -333,6 +342,7 @@ describe('VersionamentoService', () => {
         numero: 'ORC-2026-0001',
         gerarPdfDaVersao: expect.any(Function),
       }),
+      expect.any(Function),
     )
     // A versão retornada carrega pdf_path e pdf_hash preenchidos.
     expect(versao.pdfPath).toBe('/var/ni-doc/pdfs/ORC-2026-0001-v1.pdf')
@@ -426,23 +436,26 @@ describe('VersionamentoService', () => {
     expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).not.toHaveBeenCalled()
   })
 
-  it('registra auditoria com acao=enviar após a persistência', async () => {
+  it('entrega a auditoria acao=enviar ao repositório (mesma transação do envio)', async () => {
     const deps = makeDeps()
     const service = criarVersionamentoService(deps)
 
     await service.enviar(ctx, 'orcamento-1')
 
-    expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tenantId: 'tenant-1',
-        usuarioId: 'user-1',
-        acao: 'enviar',
-        entidade: 'orcamentos',
-        entidadeId: 'orcamento-1',
-        ip: '1.2.3.4',
-        userAgent: 'jest',
-      }),
-    )
+    // Auditoria entregue ao repositório: gravada na MESMA transação da versão e
+    // do status `enviado` (se falhar, o envio inteiro é recusado).
+    expect(
+      eventoAuditoriaDe(deps.orcamentoVersaoRepo.criarVersaoEnviar as Mock, versaoPublicaMock),
+    ).toMatchObject({
+      tenantId: 'tenant-1',
+      usuarioId: 'user-1',
+      acao: 'enviar',
+      entidade: 'orcamentos',
+      entidadeId: 'orcamento-1',
+      ip: '1.2.3.4',
+      userAgent: 'jest',
+    })
+    expect(deps.auditoriaService.registrar).not.toHaveBeenCalled()
   })
 
   it('passa empresa null ao snapshot quando empresaClienteId é null (não busca empresa)', async () => {
@@ -559,7 +572,7 @@ describe('VersionamentoService', () => {
       expect(arg.html).toContain('/publico/orcamento/uuid.hmac')
     })
 
-    it('registra auditoria ANTES do envio do e-mail (envio é pós-persistência)', async () => {
+    it('a auditoria vai na transação do envio; o e-mail só sai depois da persistência', async () => {
       const email = { enviar: vi.fn().mockResolvedValue(true) } as unknown as Email
       const deps = makeDeps({
         email,
@@ -571,7 +584,7 @@ describe('VersionamentoService', () => {
 
       await service.enviar(ctx, 'orcamento-1')
 
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+      expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).toHaveBeenCalledTimes(1)
       expect(email.enviar).toHaveBeenCalledTimes(1)
     })
 
@@ -587,7 +600,7 @@ describe('VersionamentoService', () => {
 
       // Fluxo segue normal: versão persistida e auditoria registrada.
       expect(versao.versao).toBe(1)
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+      expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).toHaveBeenCalledTimes(1)
     })
 
     it('não envia e-mail quando o cliente não tem e-mail', async () => {
@@ -599,7 +612,7 @@ describe('VersionamentoService', () => {
       await service.enviar(ctx, 'orcamento-1')
 
       expect(email.enviar).not.toHaveBeenCalled()
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+      expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).toHaveBeenCalledTimes(1)
     })
 
     it('não quebra o fluxo quando o envio retorna false (melhor esforço)', async () => {
@@ -616,7 +629,7 @@ describe('VersionamentoService', () => {
 
       expect(versao.versao).toBe(1)
       expect(email.enviar).toHaveBeenCalledTimes(1)
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+      expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).toHaveBeenCalledTimes(1)
     })
   })
 })

@@ -6,9 +6,10 @@ import * as pinoModule from 'pino'
 import type { Database } from '../types/database.js'
 import { db as dbPadrao } from '../config/database.js'
 import { env } from '../config/env.js'
-import type { AuditoriaService } from '../services/auditoria.service.js'
-import { criarAuditoriaService } from '../services/auditoria.service.js'
-import { criarAuditoriaRepository } from '../repositories/auditoria.repository.js'
+import {
+  executarComAuditoria,
+  type AuditoriaNaTransacao,
+} from '../repositories/auditoria.repository.js'
 
 const pino = pinoModule.pino
 
@@ -28,11 +29,13 @@ const pino = pinoModule.pino
 //    repositório, filesystem, serviço de auditoria e relógio INJETADOS. Assim o
 //    job roda nos testes sem banco, sem disco e sem agendador. O agendamento de
 //    cron (`agendarLimparPdfsDiario`) é um envoltório fino e separado da lógica.
-//  - TOLERÂNCIA A FALHAS: a falha ao remover um arquivo (ex.: permissão, arquivo
-//    já ausente) NÃO interrompe o job — é logada e contabilizada; os demais
-//    seguem. Só os arquivos efetivamente removidos registram auditoria e têm a
-//    referência (`pdf_path`/`pdf_hash`) limpa no banco, mantendo a consistência
-//    entre o disco e o registro.
+//  - ATOMICIDADE + ORDEM: por versão, o banco vai primeiro — a limpeza da
+//    referência (`pdf_path`/`pdf_hash`) e a auditoria `limpar_pdf` gravam na MESMA
+//    transação (tudo ou nada). Só depois do commit o arquivo é removido do disco.
+//    Assim nunca existe "arquivo apagado com referência ainda no banco".
+//  - TOLERÂNCIA A FALHAS: falha numa versão (banco ou disco) NÃO interrompe o job
+//    — é logada e contabilizada; as demais seguem. Se o disco falhar depois do
+//    commit, o arquivo fica órfão (referência já limpa) e o caminho é logado.
 //  - RETENÇÃO = 1 ANO: a data-limite é "agora menos 1 ano"; versões com
 //    `enviado_em` anterior a ela são elegíveis. `enviado_em` é o marco de emissão
 //    do documento (quando o PDF passa a existir).
@@ -53,8 +56,9 @@ export interface PdfExpirado {
 export interface LimparPdfsRepositorio {
   // Versões cujo `enviado_em` é anterior a `dataLimite`, com PDF em disco.
   listarPdfsExpirados(dataLimite: Date): Promise<PdfExpirado[]>
-  // Zera `pdf_path`/`pdf_hash` da versão após a remoção do arquivo.
-  limparReferenciaPdf(versaoId: string): Promise<void>
+  // Zera `pdf_path`/`pdf_hash` da versão. A `auditoria` é gravada na MESMA
+  // transação do update: se qualquer um falhar, nenhum dos dois persiste.
+  limparReferenciaPdf(versaoId: string, auditoria?: AuditoriaNaTransacao<void>): Promise<void>
 }
 
 // Subconjunto mínimo de `node:fs/promises` usado pelo job (injeção nos testes).
@@ -76,7 +80,6 @@ export interface LimparPdfsJob {
 export interface LimparPdfsJobDeps {
   repo: LimparPdfsRepositorio
   fs: LimparPdfsFileSystem
-  auditoriaService: AuditoriaService
   // Relógio injetável (default: `Date.now`). Permite fixar o tempo nos testes.
   agora?: () => Date
   logger?: Pick<pinoModule.Logger, 'info' | 'warn' | 'error'>
@@ -90,7 +93,7 @@ function umAnoAntes(data: Date): Date {
 }
 
 export function criarLimparPdfsJob(deps: LimparPdfsJobDeps): LimparPdfsJob {
-  const { repo, fs, auditoriaService } = deps
+  const { repo, fs } = deps
   const agora = deps.agora ?? (() => new Date())
   const logger = deps.logger ?? pino({ name: 'limpar-pdfs' })
 
@@ -108,28 +111,39 @@ export function criarLimparPdfsJob(deps: LimparPdfsJobDeps): LimparPdfsJob {
           continue
         }
 
+        // 1) Banco primeiro: referência limpa + auditoria numa única transação.
+        //    Se falhar, nada mudou (o arquivo segue em disco e a referência
+        //    permanece) e o item é reprocessado na próxima execução.
+        try {
+          await repo.limparReferenciaPdf(pdf.versaoId, () => ({
+            tenantId: pdf.tenantId,
+            acao: 'limpar_pdf',
+            entidade: 'orcamento_versoes',
+            entidadeId: pdf.versaoId,
+            estadoAnterior: { pdfPath: pdf.pdfPath },
+            estadoNovo: { pdfPath: null },
+          }))
+        } catch (erro) {
+          falhas += 1
+          logger.warn(
+            { versaoId: pdf.versaoId, erro },
+            'falha ao limpar referência/auditoria do PDF; arquivo mantido, seguindo com os demais',
+          )
+          continue
+        }
+
+        // 2) Disco só depois do commit. Se falhar aqui, a referência já foi
+        //    limpa: o arquivo fica órfão e o caminho é logado para remoção manual.
         try {
           await fs.rm(pdf.pdfPath)
         } catch (erro) {
           falhas += 1
           logger.warn(
             { versaoId: pdf.versaoId, pdfPath: pdf.pdfPath, erro },
-            'falha ao remover PDF expirado; seguindo com os demais',
+            'referência limpa no banco, mas falhou ao remover o arquivo; remover manualmente',
           )
           continue
         }
-
-        // Só após a remoção bem-sucedida: registra auditoria no tenant do
-        // orçamento e limpa a referência no banco (disco e registro coerentes).
-        await auditoriaService.registrar({
-          tenantId: pdf.tenantId,
-          acao: 'limpar_pdf',
-          entidade: 'orcamento_versoes',
-          entidadeId: pdf.versaoId,
-          estadoAnterior: { pdfPath: pdf.pdfPath },
-          estadoNovo: { pdfPath: null },
-        })
-        await repo.limparReferenciaPdf(pdf.versaoId)
         removidos += 1
       }
 
@@ -186,12 +200,17 @@ export function criarLimparPdfsRepositorio(db: Kysely<Database>): LimparPdfsRepo
       }))
     },
 
-    async limparReferenciaPdf(versaoId: string): Promise<void> {
-      await db
-        .updateTable('orcamento_versoes')
-        .set({ pdf_path: null, pdf_hash: null })
-        .where('id', '=', versaoId)
-        .execute()
+    async limparReferenciaPdf(
+      versaoId: string,
+      auditoria?: AuditoriaNaTransacao<void>,
+    ): Promise<void> {
+      await executarComAuditoria(db, auditoria, async (executor) => {
+        await executor
+          .updateTable('orcamento_versoes')
+          .set({ pdf_path: null, pdf_hash: null })
+          .where('id', '=', versaoId)
+          .execute()
+      })
     },
   }
 }
@@ -203,11 +222,9 @@ export function criarLimparPdfsRepositorio(db: Kysely<Database>): LimparPdfsRepo
 // -----------------------------------------------------------------------------
 
 export function criarLimparPdfsJobPadrao(db: Kysely<Database> = dbPadrao): LimparPdfsJob {
-  const auditoriaService = criarAuditoriaService(criarAuditoriaRepository(db))
   return criarLimparPdfsJob({
     repo: criarLimparPdfsRepositorio(db),
     fs: { rm: (caminho) => fsRm(caminho) },
-    auditoriaService,
   })
 }
 
@@ -222,7 +239,9 @@ const UM_DIA_MS = 24 * 60 * 60 * 1000
  * Mantido fino e separado da lógica (`criarLimparPdfsJob`), que é a parte
  * testável. O agendamento em si não é coberto por teste unitário.
  */
-export function agendarLimparPdfsDiario(job: LimparPdfsJob = criarLimparPdfsJobPadrao()): NodeJS.Timeout {
+export function agendarLimparPdfsDiario(
+  job: LimparPdfsJob = criarLimparPdfsJobPadrao(),
+): NodeJS.Timeout {
   const logger = pino({ name: 'limpar-pdfs' })
   const timer = setInterval(() => {
     void job.executar().catch((erro: unknown) => {

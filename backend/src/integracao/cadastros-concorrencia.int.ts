@@ -1,10 +1,8 @@
 import request from 'supertest'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { db, executarComTenant } from '../config/database.js'
-import { criarAuditoriaRepository } from '../repositories/auditoria.repository.js'
 import { criarClienteRepository } from '../repositories/cliente.repository.js'
 import { criarEmpresaRepository } from '../repositories/empresa.repository.js'
-import { criarAuditoriaService } from '../services/auditoria.service.js'
 import { criarClienteService } from '../services/cliente.service.js'
 import { criarEmpresaService } from '../services/empresa.service.js'
 import { adminPool, criarCenario, encerrarConexoes, limparDados, type Cenario } from './helpers.js'
@@ -77,7 +75,6 @@ describe('cliente com o mesmo documento', () => {
     }
     const servico = criarClienteService({
       clienteRepo,
-      auditoriaService: criarAuditoriaService(criarAuditoriaRepository(db)),
     })
     const dados = {
       tipoPessoa: 'PF' as const,
@@ -131,7 +128,6 @@ describe('empresa com o mesmo CNPJ', () => {
     }
     const servico = criarEmpresaService({
       empresaRepo,
-      auditoriaService: criarAuditoriaService(criarAuditoriaRepository(db)),
     })
     const dados = {
       tipo: 'cliente_pj' as const,
