@@ -6,7 +6,6 @@ import type {
   EmpresaPublica,
   EmpresaRepository,
 } from '../repositories/empresa.repository.js'
-import type { AuditoriaService } from './auditoria.service.js'
 
 export interface EmpresaContexto {
   tenantId: string
@@ -39,11 +38,10 @@ export interface EmpresaService {
 
 interface EmpresaServiceDeps {
   empresaRepo: EmpresaRepository
-  auditoriaService: AuditoriaService
 }
 
 export function criarEmpresaService(deps: EmpresaServiceDeps): EmpresaService {
-  const { empresaRepo, auditoriaService } = deps
+  const { empresaRepo } = deps
 
   return {
     async criar(ctx: EmpresaContexto, dados: CriarEmpresaDados): Promise<EmpresaPublica> {
@@ -63,28 +61,28 @@ export function criarEmpresaService(deps: EmpresaServiceDeps): EmpresaService {
         }
       }
 
-      const empresa = await empresaRepo.criar({
-        tenantId: ctx.tenantId,
-        tipo: dados.tipo,
-        razaoSocial: dados.razaoSocial,
-        nomeFantasia: dados.nomeFantasia,
-        cnpj: dados.cnpj,
-        email: dados.email,
-        telefone: dados.telefone,
-        endereco: dados.endereco,
-      })
-
-      await auditoriaService.registrar({
-        tenantId: ctx.tenantId,
-        usuarioId: ctx.usuarioId,
-        acao: 'criar',
-        entidade: 'empresas',
-        entidadeId: empresa.id,
-        ip: ctx.ip,
-        userAgent: ctx.userAgent,
-      })
-
-      return empresa
+      // Auditoria gravada pelo repositório na MESMA transação do cadastro.
+      return empresaRepo.criar(
+        {
+          tenantId: ctx.tenantId,
+          tipo: dados.tipo,
+          razaoSocial: dados.razaoSocial,
+          nomeFantasia: dados.nomeFantasia,
+          cnpj: dados.cnpj,
+          email: dados.email,
+          telefone: dados.telefone,
+          endereco: dados.endereco,
+        },
+        (empresa) => ({
+          tenantId: ctx.tenantId,
+          usuarioId: ctx.usuarioId,
+          acao: 'criar',
+          entidade: 'empresas',
+          entidadeId: empresa.id,
+          ip: ctx.ip,
+          userAgent: ctx.userAgent,
+        }),
+      )
     },
 
     async buscar(
@@ -110,12 +108,8 @@ export function criarEmpresaService(deps: EmpresaServiceDeps): EmpresaService {
     ): Promise<EmpresaPublica> {
       // Atualiza apenas o cadastro da empresa. Versões já emitidas preservam o
       // snapshot da empresa no momento da emissão e não são afetadas (RF-011).
-      const atualizado = await empresaRepo.atualizar(ctx.tenantId, id, dados)
-      if (!atualizado) {
-        throw new AppError(404, 'Empresa não encontrada')
-      }
-
-      await auditoriaService.registrar({
+      // Auditoria gravada pelo repositório na MESMA transação da atualização.
+      const atualizado = await empresaRepo.atualizar(ctx.tenantId, id, dados, () => ({
         tenantId: ctx.tenantId,
         usuarioId: ctx.usuarioId,
         acao: 'atualizar',
@@ -124,7 +118,10 @@ export function criarEmpresaService(deps: EmpresaServiceDeps): EmpresaService {
         estadoNovo: dados,
         ip: ctx.ip,
         userAgent: ctx.userAgent,
-      })
+      }))
+      if (!atualizado) {
+        throw new AppError(404, 'Empresa não encontrada')
+      }
 
       return atualizado
     },
@@ -135,9 +132,8 @@ export function criarEmpresaService(deps: EmpresaServiceDeps): EmpresaService {
         throw new AppError(404, 'Empresa não encontrada')
       }
 
-      await empresaRepo.desativar(ctx.tenantId, id)
-
-      await auditoriaService.registrar({
+      // Auditoria gravada pelo repositório na MESMA transação da desativação.
+      await empresaRepo.desativar(ctx.tenantId, id, () => ({
         tenantId: ctx.tenantId,
         usuarioId: ctx.usuarioId,
         acao: 'desativar',
@@ -145,7 +141,7 @@ export function criarEmpresaService(deps: EmpresaServiceDeps): EmpresaService {
         entidadeId: id,
         ip: ctx.ip,
         userAgent: ctx.userAgent,
-      })
+      }))
     },
   }
 }

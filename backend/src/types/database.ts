@@ -214,6 +214,10 @@ export interface OrcamentoAceiteTable {
   user_agent: string | null
   hash_documento: string
   justificativa: string | null
+  // Comprovante PDF (migration 015): preenchido depois do commit do aceite, uma
+  // única vez. NULL em reprovações e em aceites anteriores à migration.
+  comprovante_pdf_path: Generated<string | null>
+  comprovante_pdf_hash: Generated<string | null>
   criado_em: GeneratedDate
 }
 

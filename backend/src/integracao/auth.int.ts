@@ -180,8 +180,13 @@ describe('sessão (GET /api/auth/me e POST /api/auth/logout)', () => {
   it('quando acessa /me com a sessão expirada, então responde 401 e limpa o cookie', async () => {
     const cookie = await entrar(operador)
     const idSessao = cookieDaSessao(cookie).split(';')[0]?.replace('session=', '')
+    // Sessão realmente expirada: criada no passado (8h de TTL) e vencida há 1 minuto.
+    // `criado_em` precisa recuar junto: o banco exige expira_em > criado_em (migration 020).
     await adminPool.query(
-      `UPDATE sessoes SET expira_em = NOW() - INTERVAL '1 minute' WHERE id = $1`,
+      `UPDATE sessoes
+          SET criado_em = NOW() - INTERVAL '9 hours',
+              expira_em = NOW() - INTERVAL '1 minute'
+        WHERE id = $1`,
       [idSessao],
     )
 

@@ -6,7 +6,6 @@ import type {
   OrcamentoRepository,
 } from '../repositories/orcamento.repository.js'
 import type { UsuarioRepository } from '../repositories/usuario.repository.js'
-import type { AuditoriaService } from './auditoria.service.js'
 import type { ConfirmacaoSenha } from './confirmacao-senha.js'
 import type { OrcamentoContexto } from './orcamento.service.js'
 
@@ -39,14 +38,13 @@ export interface CancelamentoService {
 interface CancelamentoServiceDeps {
   orcamentoRepo: OrcamentoRepository
   usuarioRepo: UsuarioRepository
-  auditoriaService: AuditoriaService
   confirmacaoSenha: ConfirmacaoSenha
   // OPCIONAL: ausente quando o SMTP não está configurado (nada é enviado).
   email?: Email
 }
 
 export function criarCancelamentoService(deps: CancelamentoServiceDeps): CancelamentoService {
-  const { orcamentoRepo, usuarioRepo, auditoriaService, confirmacaoSenha, email } = deps
+  const { orcamentoRepo, usuarioRepo, confirmacaoSenha, email } = deps
 
   // Notifica (melhor esforço) o operador responsável pelo orçamento. Não envia se
   // ele mesmo cancelou. `email.enviar` nunca lança.
@@ -95,9 +93,8 @@ export function criarCancelamentoService(deps: CancelamentoServiceDeps): Cancela
 
       await confirmacaoSenha.exigir(ctx, id, dados.senha, 'cancelar_senha_invalida')
 
-      const { statusAnterior } = await orcamentoRepo.cancelar(ctx.tenantId, id)
-
-      await auditoriaService.registrar({
+      // Auditoria gravada pelo repositório na mesma transação do cancelamento.
+      await orcamentoRepo.cancelar(ctx.tenantId, id, ({ statusAnterior }) => ({
         tenantId: ctx.tenantId,
         usuarioId: ctx.usuarioId,
         acao: 'cancelar',
@@ -107,7 +104,7 @@ export function criarCancelamentoService(deps: CancelamentoServiceDeps): Cancela
         estadoNovo: { status: 'cancelado', justificativa },
         ip: ctx.ip,
         userAgent: ctx.userAgent,
-      })
+      }))
 
       await notificar(ctx, existente, justificativa)
 

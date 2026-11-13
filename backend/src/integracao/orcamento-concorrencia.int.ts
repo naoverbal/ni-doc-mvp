@@ -1,7 +1,6 @@
 import request from 'supertest'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { db, executarComTenant } from '../config/database.js'
-import { criarAuditoriaRepository } from '../repositories/auditoria.repository.js'
 import { criarClienteRepository } from '../repositories/cliente.repository.js'
 import { criarEmpresaRepository } from '../repositories/empresa.repository.js'
 import {
@@ -15,7 +14,6 @@ import {
 } from '../repositories/orcamento-versao.repository.js'
 import { criarTemplateRepository } from '../repositories/template.repository.js'
 import { env } from '../config/env.js'
-import { criarAuditoriaService } from '../services/auditoria.service.js'
 import { criarHtmlRendererService } from '../services/html-renderer.service.js'
 import { criarOrcamentoService } from '../services/orcamento.service.js'
 import { criarPdfService } from '../services/pdf.service.js'
@@ -84,7 +82,6 @@ function servicoComIntervalo(concorrente: () => Promise<void>) {
     clienteRepo: criarClienteRepository(db),
     empresaRepo: criarEmpresaRepository(db),
     responsavelRepo: criarResponsavelRepository(db),
-    auditoriaService: criarAuditoriaService(criarAuditoriaRepository(db)),
   })
 }
 
@@ -176,7 +173,6 @@ function envioComIntervalo(concorrente: () => Promise<void>) {
     empresaRepo: criarEmpresaRepository(db),
     responsavelRepo: criarResponsavelRepository(db),
     snapshotService: criarSnapshotService(),
-    auditoriaService: criarAuditoriaService(criarAuditoriaRepository(db)),
     pdfService: criarPdfService({ pdfsDir: env.PDFS_DIR }),
     htmlRenderer: criarHtmlRendererService(),
     templateRepo: criarTemplateRepository({ db }),

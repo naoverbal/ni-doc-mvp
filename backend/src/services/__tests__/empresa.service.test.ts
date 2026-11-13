@@ -1,3 +1,5 @@
+import type { Mock } from 'vitest'
+import { eventoAuditoriaDe } from '../../__tests__/auditoria-teste.js'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { criarEmpresaService } from '../empresa.service.js'
 import { hashDocumento } from '../../lib/crypto.js'
@@ -75,9 +77,10 @@ describe('EmpresaService', () => {
 
       expect(deps.empresaRepo.buscarPorCnpjHash).not.toHaveBeenCalled()
       expect(deps.empresaRepo.criar).toHaveBeenCalledOnce()
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({ acao: 'criar', entidade: 'empresas' }),
-      )
+      expect(eventoAuditoriaDe(deps.empresaRepo.criar as Mock, { id: 'empresa-1' })).toMatchObject({
+        acao: 'criar',
+        entidade: 'empresas',
+      })
     })
 
     it('lança AppError(400) se CNPJ inválido', async () => {
@@ -134,9 +137,10 @@ describe('EmpresaService', () => {
         cnpj: CNPJ_VALIDO,
       })
 
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({ acao: 'criar', entidade: 'empresas' }),
-      )
+      expect(eventoAuditoriaDe(deps.empresaRepo.criar as Mock, { id: 'empresa-1' })).toMatchObject({
+        acao: 'criar',
+        entidade: 'empresas',
+      })
     })
   })
 
@@ -187,9 +191,14 @@ describe('EmpresaService', () => {
       const result = await service.atualizar(ctx, 'empresa-1', { razaoSocial: 'Acme S.A.' })
 
       expect(result.id).toBe('empresa-1')
-      expect(deps.empresaRepo.atualizar).toHaveBeenCalledWith('tenant-1', 'empresa-1', {
-        razaoSocial: 'Acme S.A.',
-      })
+      expect(deps.empresaRepo.atualizar).toHaveBeenCalledWith(
+        'tenant-1',
+        'empresa-1',
+        {
+          razaoSocial: 'Acme S.A.',
+        },
+        expect.any(Function),
+      )
     })
 
     it('lança AppError(404) quando empresa não existe', async () => {
@@ -211,9 +220,9 @@ describe('EmpresaService', () => {
 
       await service.atualizar(ctx, 'empresa-1', { razaoSocial: 'Acme S.A.' })
 
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({ acao: 'atualizar', entidade: 'empresas' }),
-      )
+      expect(
+        eventoAuditoriaDe(deps.empresaRepo.atualizar as Mock, { id: 'empresa-1' }),
+      ).toMatchObject({ acao: 'atualizar', entidade: 'empresas' })
     })
   })
 
@@ -224,10 +233,14 @@ describe('EmpresaService', () => {
 
       await service.desativar(ctx, 'empresa-1')
 
-      expect(deps.empresaRepo.desativar).toHaveBeenCalledWith('tenant-1', 'empresa-1')
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({ acao: 'desativar', entidade: 'empresas' }),
+      expect(deps.empresaRepo.desativar).toHaveBeenCalledWith(
+        'tenant-1',
+        'empresa-1',
+        expect.any(Function),
       )
+      expect(
+        eventoAuditoriaDe(deps.empresaRepo.desativar as Mock, { id: 'empresa-1' }),
+      ).toMatchObject({ acao: 'desativar', entidade: 'empresas' })
     })
 
     it('lança AppError(404) quando empresa não existe', async () => {

@@ -1,3 +1,5 @@
+import type { Mock } from 'vitest'
+import { eventoAuditoriaDe } from '../../__tests__/auditoria-teste.js'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { criarTemplateService } from '../template.service.js'
 import type {
@@ -74,10 +76,10 @@ describe('TemplateService', () => {
       const result = await service.salvar(ctx, layout)
 
       expect(result.id).toBe('template-1')
-      expect(deps.templateRepo.salvar).toHaveBeenCalledWith({
-        tenantId: 'tenant-1',
-        layoutJson: layout,
-      })
+      expect(deps.templateRepo.salvar).toHaveBeenCalledWith(
+        { tenantId: 'tenant-1', layoutJson: layout },
+        expect.any(Function),
+      )
     })
 
     it('registra auditoria com acao atualizar e entidade templates', async () => {
@@ -88,13 +90,15 @@ describe('TemplateService', () => {
 
       await service.salvar(ctx, layout)
 
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({
-          acao: 'atualizar',
-          entidade: 'templates',
-          entidadeId: 'template-2',
-        }),
-      )
+      // Auditoria entregue ao repositório (gravada na mesma transação da versão).
+      expect(
+        eventoAuditoriaDe(deps.templateRepo.salvar as Mock, templateMock(2, 'template-2')),
+      ).toMatchObject({
+        acao: 'atualizar',
+        entidade: 'templates',
+        entidadeId: 'template-2',
+      })
+      expect(deps.auditoriaService.registrar).not.toHaveBeenCalled()
     })
 
     it('retorna o TemplatePublico devolvido pelo repositório', async () => {
@@ -154,7 +158,7 @@ describe('TemplateService', () => {
   })
 
   describe('DoD — versionamento visível no serviço', () => {
-    it('ao salvar duas vezes repassa ambas as versões e audita cada salvamento', async () => {
+    it('ao salvar duas vezes repassa ambas as versões e entrega a auditoria de cada salvamento ao repositório', async () => {
       const deps = makeDeps({
         templateRepo: {
           salvar: vi
@@ -171,7 +175,7 @@ describe('TemplateService', () => {
 
       expect(v1.versao).toBe(1)
       expect(v2.versao).toBe(2)
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(2)
+      expect(deps.templateRepo.salvar).toHaveBeenCalledTimes(2)
 
       // v1 permanece acessível (salvar não a sobrescreve).
       const recuperada = await service.buscarPorId(ctx, 'template-1')

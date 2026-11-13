@@ -4,6 +4,7 @@ import { sql } from 'kysely'
 import type { Database } from '../types/database.js'
 import { AppError } from '../errors/app-error.js'
 import { gerarTokenPublico } from '../lib/token.js'
+import { inserirEventoAuditoria, type AuditoriaNaTransacao } from './auditoria.repository.js'
 import type { OrcamentoStatus } from './orcamento.repository.js'
 
 // -----------------------------------------------------------------------------
@@ -89,7 +90,12 @@ export interface VersaoSnapshotPorToken extends VersaoPorToken {
 }
 
 export interface OrcamentoVersaoRepository {
-  criarVersaoEnviar(input: CriarVersaoEnviarInput): Promise<OrcamentoVersaoPublica>
+  // `auditoria` (opcional) é gravada na mesma transação: se falhar, nem a versão
+  // nem a mudança de status persistem.
+  criarVersaoEnviar(
+    input: CriarVersaoEnviarInput,
+    auditoria?: AuditoriaNaTransacao<OrcamentoVersaoPublica>,
+  ): Promise<OrcamentoVersaoPublica>
   // Localiza a versão pelo token público (coluna UNIQUE). O token tem formato
   // `uuid.hmac` ligado ao id da versão; como o serviço não deriva o id do token,
   // a busca é pela coluna `token_publico`. Retorna null quando não existe.
@@ -244,7 +250,10 @@ export function criarOrcamentoVersaoRepository(deps: {
   const { db } = deps
 
   return {
-    async criarVersaoEnviar(input: CriarVersaoEnviarInput): Promise<OrcamentoVersaoPublica> {
+    async criarVersaoEnviar(
+      input: CriarVersaoEnviarInput,
+      auditoria?: AuditoriaNaTransacao<OrcamentoVersaoPublica>,
+    ): Promise<OrcamentoVersaoPublica> {
       return db.transaction().execute(async (trx) => {
         // Serializa o envio por orçamento: lock de linha e releitura do status
         // depois do lock. Um envio concorrente espera e, ao obter o lock, vê o
@@ -334,7 +343,9 @@ export function criarOrcamentoVersaoRepository(deps: {
           .where('id', '=', input.orcamentoId)
           .execute()
 
-        return mapRowVersao(row as OrcamentoVersaoRow)
+        const criada = mapRowVersao(row as OrcamentoVersaoRow)
+        if (auditoria) await inserirEventoAuditoria(trx, auditoria(criada))
+        return criada
       })
     },
 

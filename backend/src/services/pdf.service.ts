@@ -27,6 +27,14 @@ import { AppError } from '../errors/app-error.js'
 //    precisa estar no caminho: a numeração dos orçamentos é por tenant, então
 //    `ORC-2026-0001-v1.pdf` existe em vários tenants e, sem o diretório do tenant,
 //    o `gerarPdf` reaproveitaria o PDF de outro tenant (auditoria B-11).
+//  - ÓRFÃOS DO ENVIO: o PDF do envio é gerado DENTRO da transação (RF-016). Se ela
+//    reverte, o arquivo já está em disco, mas nenhuma versão o referencia. Duas
+//    defesas: (1) `substituirExistente` — sob o lock do envio nenhuma versão
+//    commitada usa aquele `{numero}-v{versao}`, então um arquivo ali é órfão por
+//    definição e é regenerado (senão o reenvio herdaria um PDF com o QR Code de um
+//    token que nunca existiu); (2) `criado` + `removerPdf` — quem gerou o arquivo
+//    pode apagá-lo se a transação falhar. O varredor (`jobs/varrer-pdfs-orfaos`)
+//    cobre o que sobra (queda do processo).
 //  - Meta de performance < 2s (RF-016.2) é responsabilidade do Puppeteer com
 //    Chromium real, validada em integração/manual (Tarefa 40), não aqui.
 // -----------------------------------------------------------------------------
@@ -53,9 +61,16 @@ export interface GerarPdfInput {
   numero: string
   // Número da versão (ex.: 1) — compõe o nome do arquivo.
   versao: number
+  // Só para quem garante (sob lock) que o arquivo existente é órfão: apaga o
+  // arquivo existente e gera de novo. Padrão false (imutabilidade preservada).
+  substituirExistente?: boolean
 }
 
 export interface GerarPdfResultado {
+  // true somente se ESTA chamada gravou o arquivo; false se reaproveitou um
+  // existente (ou perdeu a corrida de publicação). Quem pode desfazer a geração
+  // (rollback) só deve apagar o que criou.
+  criado: boolean
   buffer: Buffer
   // Caminho absoluto do arquivo gravado em disco.
   caminho: string
@@ -72,6 +87,8 @@ export interface BuscarPdfInput {
 export interface PdfService {
   gerarPdf(input: GerarPdfInput): Promise<GerarPdfResultado>
   buscarPdf(input: BuscarPdfInput): Promise<Buffer>
+  // Apaga o PDF (compensação de rollback / limpeza). Não falha se não existir.
+  removerPdf(input: BuscarPdfInput): Promise<void>
 }
 
 export interface PdfServiceDeps {
@@ -141,8 +158,12 @@ export function criarPdfService(deps: PdfServiceDeps): PdfService {
       // Imutabilidade: se já existe, não regenera nem sobrescreve — reusa os
       // bytes já gravados e apenas recomputa o hash.
       if (await existe(caminho)) {
-        const buffer = await fs.readFile(caminho)
-        return { buffer, caminho, hash: hash(buffer) }
+        if (!input.substituirExistente) {
+          const buffer = await fs.readFile(caminho)
+          return { criado: false, buffer, caminho, hash: hash(buffer) }
+        }
+        // Órfão confirmado pelo chamador (sob lock): descarta e regenera.
+        await fs.rm(caminho)
       }
 
       await fs.mkdir(diretorioDoTenant(input.tenantId), { recursive: true })
@@ -162,12 +183,16 @@ export function criarPdfService(deps: PdfServiceDeps): PdfService {
           if (!ehArquivoExistente(erro)) throw erro
           // Outra geração publicou primeiro: o documento oficial é o dela.
           const existente = await fs.readFile(caminho)
-          return { buffer: existente, caminho, hash: hash(existente) }
+          return { criado: false, buffer: existente, caminho, hash: hash(existente) }
         }
       } finally {
         await fs.rm(temporario).catch(() => undefined)
       }
-      return { buffer, caminho, hash: hash(buffer) }
+      return { criado: true, buffer, caminho, hash: hash(buffer) }
+    },
+
+    async removerPdf(input: BuscarPdfInput): Promise<void> {
+      await fs.rm(resolverCaminho(input.tenantId, input.numero, input.versao))
     },
 
     async buscarPdf(input: BuscarPdfInput): Promise<Buffer> {

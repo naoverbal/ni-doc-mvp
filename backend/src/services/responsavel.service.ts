@@ -4,7 +4,6 @@ import type {
   ResponsavelPublico,
   ResponsavelRepository,
 } from '../repositories/responsavel.repository.js'
-import type { AuditoriaService } from './auditoria.service.js'
 
 export interface ResponsavelContexto {
   tenantId: string
@@ -34,36 +33,35 @@ export interface ResponsavelService {
 
 interface ResponsavelServiceDeps {
   responsavelRepo: ResponsavelRepository
-  auditoriaService: AuditoriaService
 }
 
 export function criarResponsavelService(deps: ResponsavelServiceDeps): ResponsavelService {
-  const { responsavelRepo, auditoriaService } = deps
+  const { responsavelRepo } = deps
 
   return {
     async criar(
       ctx: ResponsavelContexto,
       dados: CriarResponsavelDados,
     ): Promise<ResponsavelPublico> {
-      const responsavel = await responsavelRepo.criar({
-        tenantId: ctx.tenantId,
-        nome: dados.nome,
-        registroProfissional: dados.registroProfissional,
-        email: dados.email,
-        telefone: dados.telefone,
-      })
-
-      await auditoriaService.registrar({
-        tenantId: ctx.tenantId,
-        usuarioId: ctx.usuarioId,
-        acao: 'criar',
-        entidade: 'responsaveis_tecnicos',
-        entidadeId: responsavel.id,
-        ip: ctx.ip,
-        userAgent: ctx.userAgent,
-      })
-
-      return responsavel
+      // Auditoria gravada pelo repositório na MESMA transação do cadastro.
+      return responsavelRepo.criar(
+        {
+          tenantId: ctx.tenantId,
+          nome: dados.nome,
+          registroProfissional: dados.registroProfissional,
+          email: dados.email,
+          telefone: dados.telefone,
+        },
+        (responsavel) => ({
+          tenantId: ctx.tenantId,
+          usuarioId: ctx.usuarioId,
+          acao: 'criar',
+          entidade: 'responsaveis_tecnicos',
+          entidadeId: responsavel.id,
+          ip: ctx.ip,
+          userAgent: ctx.userAgent,
+        }),
+      )
     },
 
     async buscar(ctx: ResponsavelContexto, termo: string): Promise<ResponsavelPublico[]> {
@@ -86,12 +84,8 @@ export function criarResponsavelService(deps: ResponsavelServiceDeps): Responsav
       // Atualiza apenas o cadastro do responsável técnico. Versões já emitidas
       // preservam o snapshot do responsável no momento da emissão e não são
       // afetadas (RF-012).
-      const atualizado = await responsavelRepo.atualizar(ctx.tenantId, id, dados)
-      if (!atualizado) {
-        throw new AppError(404, 'Responsável não encontrado')
-      }
-
-      await auditoriaService.registrar({
+      // Auditoria gravada pelo repositório na MESMA transação da atualização.
+      const atualizado = await responsavelRepo.atualizar(ctx.tenantId, id, dados, () => ({
         tenantId: ctx.tenantId,
         usuarioId: ctx.usuarioId,
         acao: 'atualizar',
@@ -100,7 +94,10 @@ export function criarResponsavelService(deps: ResponsavelServiceDeps): Responsav
         estadoNovo: dados,
         ip: ctx.ip,
         userAgent: ctx.userAgent,
-      })
+      }))
+      if (!atualizado) {
+        throw new AppError(404, 'Responsável não encontrado')
+      }
 
       return atualizado
     },
@@ -111,9 +108,8 @@ export function criarResponsavelService(deps: ResponsavelServiceDeps): Responsav
         throw new AppError(404, 'Responsável não encontrado')
       }
 
-      await responsavelRepo.desativar(ctx.tenantId, id)
-
-      await auditoriaService.registrar({
+      // Auditoria gravada pelo repositório na MESMA transação da desativação.
+      await responsavelRepo.desativar(ctx.tenantId, id, () => ({
         tenantId: ctx.tenantId,
         usuarioId: ctx.usuarioId,
         acao: 'desativar',
@@ -121,7 +117,7 @@ export function criarResponsavelService(deps: ResponsavelServiceDeps): Responsav
         entidadeId: id,
         ip: ctx.ip,
         userAgent: ctx.userAgent,
-      })
+      }))
     },
   }
 }

@@ -8,7 +8,6 @@ import type {
   ResponsavelRepository,
 } from '../repositories/responsavel.repository.js'
 import type { SnapshotService } from './snapshot.service.js'
-import type { AuditoriaService } from './auditoria.service.js'
 import type { PdfService } from './pdf.service.js'
 import type { HtmlRendererService } from './html-renderer.service.js'
 import type { LayoutTemplate, TemplateRepository } from '../repositories/template.repository.js'
@@ -62,7 +61,6 @@ interface VersionamentoServiceDeps {
   empresaRepo: EmpresaRepository
   responsavelRepo: ResponsavelRepository
   snapshotService: SnapshotService
-  auditoriaService: AuditoriaService
   pdfService: PdfService
   htmlRenderer: HtmlRendererService
   templateRepo: TemplateRepository
@@ -81,7 +79,6 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
     empresaRepo,
     responsavelRepo,
     snapshotService,
-    auditoriaService,
     pdfService,
     htmlRenderer,
     templateRepo,
@@ -137,11 +134,10 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
         ),
       ]
       const responsaveisPorId = new Map<string, ResponsavelPublico>()
-      for (const id of idsResponsaveis) {
-        const responsavel = await responsavelRepo.buscarPorId(ctx.tenantId, id)
-        if (responsavel) {
-          responsaveisPorId.set(id, responsavel)
-        }
+      // Uma consulta `IN (...)` em vez de uma por responsável.
+      const responsaveis = await responsavelRepo.buscarPorIds(ctx.tenantId, idsResponsaveis)
+      for (const responsavel of responsaveis) {
+        responsaveisPorId.set(responsavel.id, responsavel)
       }
 
       const snapshot = snapshotService.montar({
@@ -161,60 +157,89 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
         throw new AppError(409, 'Tenant não possui template ativo')
       }
 
-      const versao = await orcamentoVersaoRepo.criarVersaoEnviar({
-        tenantId: ctx.tenantId,
-        orcamentoId,
-        numero: orcamento.numero,
-        snapshot,
-        expiraEm,
-        // Snapshot e layout foram montados com estas leituras; o repositório as
-        // confere sob o lock e responde 409 se mudaram (edição/troca concorrente).
-        atualizadoEmLido: orcamento.atualizadoEm,
-        templateIdLido: template.id,
-        // Geração do PDF dentro da transação do repositório: renderiza o HTML
-        // (com o QR Code da URL pública embutido) e delega ao pdfService. Uma
-        // falha aqui propaga e a transação reverte o envio inteiro (RF-016).
-        gerarPdfDaVersao: async ({ versao, numero, tokenPublico }) => {
-          // URL pública relativa; a base URL absoluta é item de tarefa futura
-          // (não há env de base URL no escopo desta tarefa).
-          const urlPublica = `/publico/orcamento/${tokenPublico}`
-          const qrCodeDataUrl = await gerarQrCodeDataUrl(urlPublica)
+      // PDF gravado por ESTA tentativa (para desfazer se a transação reverter).
+      let pdfGerado = null as { numero: string; versao: number } | null
 
-          // Embute o QR nas imagens do layout sem descartar as existentes; o
-          // renderer resolve `{img:qrcode}`.
-          const imagensExistentes =
-            typeof template.layoutJson['imagens'] === 'object' &&
-            template.layoutJson['imagens'] !== null
-              ? (template.layoutJson['imagens'] as Record<string, unknown>)
-              : {}
-          const layoutComQr: LayoutTemplate = {
-            ...template.layoutJson,
-            imagens: { ...imagensExistentes, qrcode: qrCodeDataUrl },
-          }
-
-          const html = htmlRenderer.renderizar({
-            layout: layoutComQr,
+      let versao: Awaited<ReturnType<typeof orcamentoVersaoRepo.criarVersaoEnviar>>
+      try {
+        versao = await orcamentoVersaoRepo.criarVersaoEnviar(
+          {
+            tenantId: ctx.tenantId,
+            orcamentoId,
+            numero: orcamento.numero,
             snapshot,
-            numero,
-            versao,
-            // A URL pública também é impressa como TEXTO no documento, como
-            // alternativa equivalente ao QR Code (acessibilidade — RF-018).
-            urlPublica,
-          })
-          const pdf = await pdfService.gerarPdf({ tenantId: ctx.tenantId, html, numero, versao })
-          return { pdfPath: pdf.caminho, pdfHash: pdf.hash }
-        },
-      })
+            expiraEm,
+            // Snapshot e layout foram montados com estas leituras; o repositório as
+            // confere sob o lock e responde 409 se mudaram (edição/troca concorrente).
+            atualizadoEmLido: orcamento.atualizadoEm,
+            templateIdLido: template.id,
+            // Geração do PDF dentro da transação do repositório: renderiza o HTML
+            // (com o QR Code da URL pública embutido) e delega ao pdfService. Uma
+            // falha aqui propaga e a transação reverte o envio inteiro (RF-016).
+            gerarPdfDaVersao: async ({ versao, numero, tokenPublico }) => {
+              // URL pública relativa; a base URL absoluta é item de tarefa futura
+              // (não há env de base URL no escopo desta tarefa).
+              const urlPublica = `/publico/orcamento/${tokenPublico}`
+              const qrCodeDataUrl = await gerarQrCodeDataUrl(urlPublica)
 
-      await auditoriaService.registrar({
-        tenantId: ctx.tenantId,
-        usuarioId: ctx.usuarioId,
-        acao: 'enviar',
-        entidade: 'orcamentos',
-        entidadeId: orcamentoId,
-        ip: ctx.ip,
-        userAgent: ctx.userAgent,
-      })
+              // Embute o QR nas imagens do layout sem descartar as existentes; o
+              // renderer resolve `{img:qrcode}`.
+              const imagensExistentes =
+                typeof template.layoutJson['imagens'] === 'object' &&
+                template.layoutJson['imagens'] !== null
+                  ? (template.layoutJson['imagens'] as Record<string, unknown>)
+                  : {}
+              const layoutComQr: LayoutTemplate = {
+                ...template.layoutJson,
+                imagens: { ...imagensExistentes, qrcode: qrCodeDataUrl },
+              }
+
+              const html = htmlRenderer.renderizar({
+                layout: layoutComQr,
+                snapshot,
+                numero,
+                versao,
+                // A URL pública também é impressa como TEXTO no documento, como
+                // alternativa equivalente ao QR Code (acessibilidade — RF-018).
+                urlPublica,
+              })
+              // `substituirExistente`: sob o lock do envio nenhuma versão commitada
+              // usa este `{numero}-v{versao}`, então um arquivo já presente é órfão
+              // de uma tentativa revertida (e traria o QR Code de outro token).
+              const pdf = await pdfService.gerarPdf({
+                tenantId: ctx.tenantId,
+                html,
+                numero,
+                versao,
+                substituirExistente: true,
+              })
+              if (pdf.criado) pdfGerado = { numero, versao }
+              return { pdfPath: pdf.caminho, pdfHash: pdf.hash }
+            },
+          },
+          // Auditoria gravada na MESMA transação da versão e do status `enviado`: se
+          // ela falhar, o envio inteiro é recusado e nada persiste.
+          () => ({
+            tenantId: ctx.tenantId,
+            usuarioId: ctx.usuarioId,
+            acao: 'enviar',
+            entidade: 'orcamentos',
+            entidadeId: orcamentoId,
+            ip: ctx.ip,
+            userAgent: ctx.userAgent,
+          }),
+        )
+      } catch (erro) {
+        // Transação revertida (auditoria, insert, commit...): o arquivo gravado por
+        // esta tentativa não tem versão correspondente. Apaga em melhor esforço; o
+        // varredor de órfãos cobre o caso de o processo cair antes disto.
+        if (pdfGerado) {
+          await pdfService
+            .removerPdf({ tenantId: ctx.tenantId, ...pdfGerado })
+            .catch(() => undefined)
+        }
+        throw erro
+      }
 
       // Notifica o cliente por e-mail (RF-022.1), em melhor esforço: só quando o
       // serviço de e-mail está configurado e o cliente tem endereço. O `enviar`

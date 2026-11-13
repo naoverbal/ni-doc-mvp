@@ -1,3 +1,5 @@
+import type { Mock } from 'vitest'
+import { eventoAuditoriaDe } from '../../__tests__/auditoria-teste.js'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { criarAceiteService } from '../aceite.service.js'
 import type {
@@ -72,6 +74,8 @@ function aceitePublico(overrides: Partial<AceitePublico> = {}): AceitePublico {
     userAgent: 'agent',
     hashDocumento: HASH,
     justificativa: null,
+    comprovantePdfPath: null,
+    comprovantePdfHash: null,
     criadoEm: new Date('2026-02-01'),
     ...overrides,
   }
@@ -101,6 +105,7 @@ function makeDeps(overrides?: {
     aprovarAceite: vi.fn().mockResolvedValue(aceitePublico()),
     reprovarAceite: vi.fn().mockResolvedValue(aceitePublico()),
     buscarPorVersao: vi.fn().mockResolvedValue(null),
+    registrarComprovante: vi.fn().mockResolvedValue(true),
     ...overrides?.aceiteRepo,
   } as unknown as OrcamentoAceiteRepository
 
@@ -199,6 +204,7 @@ describe('AceiteService', () => {
           ip: '1.2.3.4',
           userAgent: 'agent',
         }),
+        expect.any(Function),
       )
       expect(resultado.metodo).toBe('cliente')
       expect(resultado.orcamentoId).toBe('orc-1')
@@ -239,18 +245,33 @@ describe('AceiteService', () => {
 
       await service.aprovarViaCliente({ token: tokenValido, ip: '1.2.3.4', userAgent: 'agent' })
 
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({
-          tenantId: 'tenant-1',
-          acao: 'aprovar',
-          entidade: 'orcamentos',
-          entidadeId: 'orc-1',
-          ip: '1.2.3.4',
-          userAgent: 'agent',
-        }),
-      )
+      expect(
+        eventoAuditoriaDe(deps.aceiteRepo.aprovarAceite as Mock, aceitePublico()),
+      ).toMatchObject({
+        tenantId: 'tenant-1',
+        acao: 'aprovar',
+        entidade: 'orcamentos',
+        entidadeId: 'orc-1',
+        ip: '1.2.3.4',
+        userAgent: 'agent',
+      })
     })
 
+    it('grava a referência do comprovante (caminho + hash) no aceite, depois de gerar o PDF', async () => {
+      const deps = makeDeps()
+      const service = criarAceiteService(deps)
+      await service.aprovarViaCliente({ token: tokenValido })
+      expect(deps.aceiteRepo.registrarComprovante).toHaveBeenCalledWith('aceite-1', {
+        caminho: '/pdfs/ORC-2026-0001-aceite-v1.pdf',
+        hash: 'comprovante-hash',
+      })
+    })
+    it('NÃO grava referência de comprovante na reprovação (não há PDF)', async () => {
+      const deps = makeDeps()
+      const service = criarAceiteService(deps)
+      await service.reprovarViaCliente({ token: tokenValido })
+      expect(deps.aceiteRepo.registrarComprovante).not.toHaveBeenCalled()
+    })
     it('gera comprovante mesmo sem IP/UA (campos opcionais vazios no HTML)', async () => {
       const deps = makeDeps()
       const service = criarAceiteService(deps)
@@ -259,6 +280,7 @@ describe('AceiteService', () => {
 
       expect(deps.aceiteRepo.aprovarAceite).toHaveBeenCalledWith(
         expect.objectContaining({ ip: undefined, userAgent: undefined }),
+        expect.any(Function),
       )
       expect(deps.pdfService.gerarPdf).toHaveBeenCalledTimes(1)
     })
@@ -287,9 +309,9 @@ describe('AceiteService', () => {
       const service = criarAceiteService(deps)
 
       // Token com HMAC que não valida contra o id da versão.
-      await expect(
-        service.aprovarViaCliente({ token: 'abc.deadbeef' }),
-      ).rejects.toMatchObject({ statusCode: 404 })
+      await expect(service.aprovarViaCliente({ token: 'abc.deadbeef' })).rejects.toMatchObject({
+        statusCode: 404,
+      })
       expect(deps.aceiteRepo.aprovarAceite).not.toHaveBeenCalled()
     })
 
@@ -329,7 +351,11 @@ describe('AceiteService', () => {
     it('propaga AppError(409) do repositório (constraint UNIQUE) e não registra auditoria', async () => {
       const deps = makeDeps({
         aceiteRepo: {
-          aprovarAceite: vi.fn().mockRejectedValue(new (await import('../../errors/app-error.js')).AppError(409, 'duplicado')),
+          aprovarAceite: vi
+            .fn()
+            .mockRejectedValue(
+              new (await import('../../errors/app-error.js')).AppError(409, 'duplicado'),
+            ),
           buscarPorVersao: vi.fn().mockResolvedValue(null),
         },
       })
@@ -398,6 +424,7 @@ describe('AceiteService', () => {
           justificativa: 'cliente confirmou por telefone',
           hashDocumento: HASH,
         }),
+        expect.any(Function),
       )
       expect(resultado.metodo).toBe('operador')
     })
@@ -423,15 +450,15 @@ describe('AceiteService', () => {
 
       await service.aceiteManual(inputManual)
 
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({
-          tenantId: 'tenant-1',
-          usuarioId: 'op-1',
-          acao: 'aceite_manual',
-          entidade: 'orcamentos',
-          entidadeId: 'orc-1',
-        }),
-      )
+      expect(
+        eventoAuditoriaDe(deps.aceiteRepo.aprovarAceite as Mock, aceitePublico()),
+      ).toMatchObject({
+        tenantId: 'tenant-1',
+        usuarioId: 'op-1',
+        acao: 'aceite_manual',
+        entidade: 'orcamentos',
+        entidadeId: 'orc-1',
+      })
     })
 
     it('lança AppError(404) quando o orçamento não existe', async () => {
@@ -564,9 +591,9 @@ describe('AceiteService', () => {
       const inexistente = makeDeps({
         orcamentoVersaoRepo: { buscarSnapshotPorToken: vi.fn().mockResolvedValue(null) },
       })
-      await expect(criarAceiteService(inexistente).obterPdfPorToken(tokenValido)).rejects.toMatchObject(
-        { statusCode: 404 },
-      )
+      await expect(
+        criarAceiteService(inexistente).obterPdfPorToken(tokenValido),
+      ).rejects.toMatchObject({ statusCode: 404 })
       const adulterado = makeDeps()
       await expect(
         criarAceiteService(adulterado).obterPdfPorToken('abc.deadbeef'),
@@ -654,6 +681,7 @@ describe('AceiteService', () => {
           userAgent: 'agent',
           justificativa: 'preço acima do orçado',
         }),
+        expect.any(Function),
       )
       expect(resultado.metodo).toBe('cliente')
       expect(resultado.orcamentoId).toBe('orc-1')
@@ -667,6 +695,7 @@ describe('AceiteService', () => {
 
       expect(deps.aceiteRepo.reprovarAceite).toHaveBeenCalledWith(
         expect.objectContaining({ justificativa: undefined }),
+        expect.any(Function),
       )
     })
 
@@ -685,16 +714,16 @@ describe('AceiteService', () => {
 
       await service.reprovarViaCliente({ token: tokenValido, ip: '1.2.3.4', userAgent: 'agent' })
 
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({
-          tenantId: 'tenant-1',
-          acao: 'reprovar',
-          entidade: 'orcamentos',
-          entidadeId: 'orc-1',
-          ip: '1.2.3.4',
-          userAgent: 'agent',
-        }),
-      )
+      expect(
+        eventoAuditoriaDe(deps.aceiteRepo.reprovarAceite as Mock, aceitePublico()),
+      ).toMatchObject({
+        tenantId: 'tenant-1',
+        acao: 'reprovar',
+        entidade: 'orcamentos',
+        entidadeId: 'orc-1',
+        ip: '1.2.3.4',
+        userAgent: 'agent',
+      })
     })
 
     it('lança AppError(404) quando o token não existe', async () => {
@@ -759,7 +788,9 @@ describe('AceiteService', () => {
 
       // Busca o orçamento (operador + cliente) e carrega os dados do operador.
       expect(deps.orcamentoRepo.buscarPorId).toHaveBeenCalledWith('tenant-1', 'orc-1')
-      expect((deps as { usuarioRepo: UsuarioRepository }).usuarioRepo.buscarPorId).toHaveBeenCalledWith('op-1')
+      expect(
+        (deps as { usuarioRepo: UsuarioRepository }).usuarioRepo.buscarPorId,
+      ).toHaveBeenCalledWith('op-1')
       expect(email.enviar).toHaveBeenCalledTimes(1)
       const arg = (email.enviar as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as {
         destinatario: string
@@ -823,7 +854,7 @@ describe('AceiteService', () => {
       // Fluxo intacto: aceite persistido, comprovante gerado e auditoria registrada.
       expect(resultado.metodo).toBe('cliente')
       expect(deps.pdfService.gerarPdf).toHaveBeenCalledTimes(1)
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+      expect(deps.aceiteRepo.aprovarAceite).toHaveBeenCalledTimes(1)
     })
 
     it('não envia e-mail quando o operador não tem endereço', async () => {
@@ -839,7 +870,7 @@ describe('AceiteService', () => {
       await service.aprovarViaCliente({ token: tokenValido })
 
       expect(email.enviar).not.toHaveBeenCalled()
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+      expect(deps.aceiteRepo.aprovarAceite).toHaveBeenCalledTimes(1)
     })
 
     it('não quebra o fluxo quando o envio retorna false (melhor esforço)', async () => {
@@ -851,7 +882,7 @@ describe('AceiteService', () => {
 
       expect(resultado.metodo).toBe('cliente')
       expect(email.enviar).toHaveBeenCalledTimes(1)
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+      expect(deps.aceiteRepo.aprovarAceite).toHaveBeenCalledTimes(1)
     })
   })
 })

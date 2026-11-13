@@ -203,7 +203,12 @@ describe('aprovação pelo cliente (POST /api/publico/orcamento/:token/aprovar)'
 
   it('quando a versão não tem hash de PDF, então responde 409 e nada é registrado', async () => {
     const { versao, orcamento } = await prepararEnviado()
-    await adminPool.query('UPDATE orcamento_versoes SET pdf_hash = NULL WHERE id = $1', [versao.id])
+    // Caminho e hash são zerados juntos (como faz o job limpar-pdfs); o banco exige o par
+    // (migration 020).
+    await adminPool.query(
+      'UPDATE orcamento_versoes SET pdf_path = NULL, pdf_hash = NULL WHERE id = $1',
+      [versao.id],
+    )
 
     const resposta = await publico.aprovar(versao.tokenPublico)
 

@@ -1,3 +1,5 @@
+import type { Mock } from 'vitest'
+import { eventoAuditoriaDe } from '../../__tests__/auditoria-teste.js'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { criarResponsavelService } from '../responsavel.service.js'
 import type {
@@ -24,6 +26,7 @@ function makeDeps(overrides?: {
   const responsavelRepo: ResponsavelRepository = {
     criar: vi.fn().mockResolvedValue(responsavelMock),
     buscarPorId: vi.fn().mockResolvedValue(responsavelMock),
+    buscarPorIds: vi.fn().mockResolvedValue([responsavelMock]),
     buscarPorNome: vi.fn().mockResolvedValue([responsavelMock]),
     atualizar: vi.fn().mockResolvedValue(responsavelMock),
     desativar: vi.fn().mockResolvedValue(undefined),
@@ -64,9 +67,9 @@ describe('ResponsavelService', () => {
 
       await service.criar(ctx, { nome: 'João Engenheiro' })
 
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({ acao: 'criar', entidade: 'responsaveis_tecnicos' }),
-      )
+      expect(
+        eventoAuditoriaDe(deps.responsavelRepo.criar as Mock, { id: 'responsavel-1' }),
+      ).toMatchObject({ acao: 'criar', entidade: 'responsaveis_tecnicos' })
     })
   })
 
@@ -113,9 +116,14 @@ describe('ResponsavelService', () => {
       const result = await service.atualizar(ctx, 'responsavel-1', { nome: 'João Souza' })
 
       expect(result.id).toBe('responsavel-1')
-      expect(deps.responsavelRepo.atualizar).toHaveBeenCalledWith('tenant-1', 'responsavel-1', {
-        nome: 'João Souza',
-      })
+      expect(deps.responsavelRepo.atualizar).toHaveBeenCalledWith(
+        'tenant-1',
+        'responsavel-1',
+        {
+          nome: 'João Souza',
+        },
+        expect.any(Function),
+      )
     })
 
     it('lança AppError(404) quando responsável não existe', async () => {
@@ -135,9 +143,9 @@ describe('ResponsavelService', () => {
 
       await service.atualizar(ctx, 'responsavel-1', { nome: 'João Souza' })
 
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({ acao: 'atualizar', entidade: 'responsaveis_tecnicos' }),
-      )
+      expect(
+        eventoAuditoriaDe(deps.responsavelRepo.atualizar as Mock, { id: 'responsavel-1' }),
+      ).toMatchObject({ acao: 'atualizar', entidade: 'responsaveis_tecnicos' })
     })
   })
 
@@ -148,10 +156,14 @@ describe('ResponsavelService', () => {
 
       await service.desativar(ctx, 'responsavel-1')
 
-      expect(deps.responsavelRepo.desativar).toHaveBeenCalledWith('tenant-1', 'responsavel-1')
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({ acao: 'desativar', entidade: 'responsaveis_tecnicos' }),
+      expect(deps.responsavelRepo.desativar).toHaveBeenCalledWith(
+        'tenant-1',
+        'responsavel-1',
+        expect.any(Function),
       )
+      expect(
+        eventoAuditoriaDe(deps.responsavelRepo.desativar as Mock, { id: 'responsavel-1' }),
+      ).toMatchObject({ acao: 'desativar', entidade: 'responsaveis_tecnicos' })
     })
 
     it('lança AppError(404) quando responsável não existe', async () => {

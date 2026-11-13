@@ -1,6 +1,7 @@
 import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
 import type { Database } from '../types/database.js'
+import { executarComAuditoria, type AuditoriaNaTransacao } from './auditoria.repository.js'
 
 export interface CriarSessaoInput {
   usuarioId: string
@@ -17,9 +18,14 @@ export interface SessaoAtiva {
 }
 
 export interface SessaoRepository {
-  criar(input: CriarSessaoInput): Promise<{ id: string; expiraEm: Date }>
+  // `auditoria` (opcional) é gravada na mesma transação da sessão: se falhar, a
+  // sessão não é criada/invalidada. Exige escopo de tenant ativo (RLS).
+  criar(
+    input: CriarSessaoInput,
+    auditoria?: AuditoriaNaTransacao<{ id: string; expiraEm: Date }>,
+  ): Promise<{ id: string; expiraEm: Date }>
   buscarPorId(id: string): Promise<SessaoAtiva | null>
-  invalidar(id: string): Promise<void>
+  invalidar(id: string, auditoria?: AuditoriaNaTransacao<void>): Promise<void>
   atualizarAtividade(id: string): Promise<void>
 }
 
@@ -31,19 +37,24 @@ export interface SessaoRepository {
 // busca/escrita estrita por chave contornando o RLS apenas nesses pontos.
 export function criarSessaoRepository(db: Kysely<Database>): SessaoRepository {
   return {
-    async criar(input: CriarSessaoInput): Promise<{ id: string; expiraEm: Date }> {
-      const resultado = await sql<{ id: string; expira_em: Date }>`
-        SELECT * FROM rls_criar_sessao(
-          ${input.usuarioId},
-          ${input.ip ?? null},
-          ${input.userAgent ?? null},
-          ${input.expiraEm}
-        )
-      `.execute(db)
+    async criar(
+      input: CriarSessaoInput,
+      auditoria?: AuditoriaNaTransacao<{ id: string; expiraEm: Date }>,
+    ): Promise<{ id: string; expiraEm: Date }> {
+      return executarComAuditoria(db, auditoria, async (executor) => {
+        const resultado = await sql<{ id: string; expira_em: Date }>`
+          SELECT * FROM rls_criar_sessao(
+            ${input.usuarioId},
+            ${input.ip ?? null},
+            ${input.userAgent ?? null},
+            ${input.expiraEm}
+          )
+        `.execute(executor)
 
-      const row = resultado.rows[0]
-      if (!row) throw new Error('Falha ao criar sessão')
-      return { id: row.id, expiraEm: row.expira_em }
+        const row = resultado.rows[0]
+        if (!row) throw new Error('Falha ao criar sessão')
+        return { id: row.id, expiraEm: row.expira_em }
+      })
     },
 
     async buscarPorId(id: string): Promise<SessaoAtiva | null> {
@@ -65,8 +76,10 @@ export function criarSessaoRepository(db: Kysely<Database>): SessaoRepository {
       }
     },
 
-    async invalidar(id: string): Promise<void> {
-      await sql`SELECT rls_invalidar_sessao(${id})`.execute(db)
+    async invalidar(id: string, auditoria?: AuditoriaNaTransacao<void>): Promise<void> {
+      await executarComAuditoria(db, auditoria, async (executor) => {
+        await sql`SELECT rls_invalidar_sessao(${id})`.execute(executor)
+      })
     },
 
     async atualizarAtividade(id: string): Promise<void> {

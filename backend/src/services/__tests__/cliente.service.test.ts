@@ -1,3 +1,5 @@
+import type { Mock } from 'vitest'
+import { eventoAuditoriaDe } from '../../__tests__/auditoria-teste.js'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { criarClienteService } from '../cliente.service.js'
 import { hashDocumento } from '../../lib/crypto.js'
@@ -124,9 +126,10 @@ describe('ClienteService', () => {
 
       await service.criar(ctx, { tipoPessoa: 'PF', nome: 'Maria', documento: CPF_VALIDO })
 
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({ acao: 'criar', entidade: 'clientes' }),
-      )
+      expect(eventoAuditoriaDe(deps.clienteRepo.criar as Mock, { id: 'cliente-1' })).toMatchObject({
+        acao: 'criar',
+        entidade: 'clientes',
+      })
     })
   })
 
@@ -173,9 +176,14 @@ describe('ClienteService', () => {
       const result = await service.atualizar(ctx, 'cliente-1', { nome: 'Maria Souza' })
 
       expect(result.id).toBe('cliente-1')
-      expect(deps.clienteRepo.atualizar).toHaveBeenCalledWith('tenant-1', 'cliente-1', {
-        nome: 'Maria Souza',
-      })
+      expect(deps.clienteRepo.atualizar).toHaveBeenCalledWith(
+        'tenant-1',
+        'cliente-1',
+        {
+          nome: 'Maria Souza',
+        },
+        expect.any(Function),
+      )
     })
 
     it('lança AppError(404) quando cliente não existe', async () => {
@@ -195,9 +203,9 @@ describe('ClienteService', () => {
 
       await service.atualizar(ctx, 'cliente-1', { nome: 'Maria Souza' })
 
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({ acao: 'atualizar', entidade: 'clientes' }),
-      )
+      expect(
+        eventoAuditoriaDe(deps.clienteRepo.atualizar as Mock, { id: 'cliente-1' }),
+      ).toMatchObject({ acao: 'atualizar', entidade: 'clientes' })
     })
   })
 
@@ -208,10 +216,14 @@ describe('ClienteService', () => {
 
       await service.desativar(ctx, 'cliente-1')
 
-      expect(deps.clienteRepo.desativar).toHaveBeenCalledWith('tenant-1', 'cliente-1')
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-        expect.objectContaining({ acao: 'desativar', entidade: 'clientes' }),
+      expect(deps.clienteRepo.desativar).toHaveBeenCalledWith(
+        'tenant-1',
+        'cliente-1',
+        expect.any(Function),
       )
+      expect(
+        eventoAuditoriaDe(deps.clienteRepo.desativar as Mock, { id: 'cliente-1' }),
+      ).toMatchObject({ acao: 'desativar', entidade: 'clientes' })
     })
 
     it('lança AppError(404) quando cliente não existe', async () => {

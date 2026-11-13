@@ -2,7 +2,6 @@ import { verificarSenha } from '../lib/senha.js'
 import { AppError } from '../errors/app-error.js'
 import type { UsuarioPublico, UsuarioRepository } from '../repositories/usuario.repository.js'
 import type { SessaoAtiva, SessaoRepository } from '../repositories/sessao.repository.js'
-import type { AuditoriaService } from './auditoria.service.js'
 
 export interface LoginInput {
   email: string
@@ -32,7 +31,6 @@ export interface AuthService {
 interface AuthServiceDeps {
   usuarioRepo: UsuarioRepository
   sessaoRepo: SessaoRepository
-  auditoriaService: AuditoriaService
   // Escopo de tenant (RLS). As rotas `/api/auth/*` não têm `setTenant`, mas a
   // auditoria de login/logout escreve em `eventos_auditoria` (tabela com RLS
   // forçado). Como o tenant do usuário já é conhecido nesse ponto, o registro de
@@ -42,9 +40,10 @@ interface AuthServiceDeps {
 }
 
 const OITO_HORAS_MS = 8 * 60 * 60 * 1000
+const INTERVALO_TOQUE_SESSAO_MS = 60 * 1000
 
 export function criarAuthService(deps: AuthServiceDeps): AuthService {
-  const { usuarioRepo, sessaoRepo, auditoriaService, escopoTenant = (_tenantId, fn) => fn() } = deps
+  const { usuarioRepo, sessaoRepo, escopoTenant = (_tenantId, fn) => fn() } = deps
 
   return {
     async login(input: LoginInput): Promise<LoginResult> {
@@ -62,23 +61,27 @@ export function criarAuthService(deps: AuthServiceDeps): AuthService {
       }
 
       const expiraEm = new Date(Date.now() + OITO_HORAS_MS)
-      const sessao = await sessaoRepo.criar({
-        usuarioId: usuario.id,
-        ip: input.ip,
-        userAgent: input.userAgent,
-        expiraEm,
-      })
-
-      await escopoTenant(usuario.tenantId, () =>
-        auditoriaService.registrar({
-          tenantId: usuario.tenantId,
-          usuarioId: usuario.id,
-          acao: 'login',
-          entidade: 'usuarios',
-          entidadeId: usuario.id,
-          ip: input.ip,
-          userAgent: input.userAgent,
-        }),
+      // Sessão + auditoria de login numa única transação, sob o escopo do tenant
+      // (RLS em `eventos_auditoria`): se a auditoria falhar, a sessão não é criada
+      // e o login é recusado.
+      const sessao = await escopoTenant(usuario.tenantId, () =>
+        sessaoRepo.criar(
+          {
+            usuarioId: usuario.id,
+            ip: input.ip,
+            userAgent: input.userAgent,
+            expiraEm,
+          },
+          () => ({
+            tenantId: usuario.tenantId,
+            usuarioId: usuario.id,
+            acao: 'login',
+            entidade: 'usuarios',
+            entidadeId: usuario.id,
+            ip: input.ip,
+            userAgent: input.userAgent,
+          }),
+        ),
       )
 
       return {
@@ -97,22 +100,25 @@ export function criarAuthService(deps: AuthServiceDeps): AuthService {
     async logout(sessaoId: string): Promise<void> {
       // Buscar sessão para obter tenantId/usuarioId para auditoria
       const sessao = await sessaoRepo.buscarPorId(sessaoId)
-      await sessaoRepo.invalidar(sessaoId)
+      const usuario = sessao ? await usuarioRepo.buscarPorId(sessao.usuarioId) : null
 
-      if (sessao) {
-        const usuario = await usuarioRepo.buscarPorId(sessao.usuarioId)
-        if (usuario) {
-          await escopoTenant(usuario.tenantId, () =>
-            auditoriaService.registrar({
-              tenantId: usuario.tenantId,
-              usuarioId: usuario.id,
-              acao: 'logout',
-              entidade: 'usuarios',
-              entidadeId: usuario.id,
-            }),
-          )
-        }
+      if (!usuario) {
+        // Sem usuário resolvido não há tenant para auditar: apenas invalida.
+        await sessaoRepo.invalidar(sessaoId)
+        return
       }
+
+      // Invalidação da sessão + auditoria de logout numa única transação, sob o
+      // escopo do tenant: se a auditoria falhar, a sessão continua válida.
+      await escopoTenant(usuario.tenantId, () =>
+        sessaoRepo.invalidar(sessaoId, () => ({
+          tenantId: usuario.tenantId,
+          usuarioId: usuario.id,
+          acao: 'logout',
+          entidade: 'usuarios',
+          entidadeId: usuario.id,
+        })),
+      )
     },
 
     async validarSessao(
@@ -128,7 +134,12 @@ export function criarAuthService(deps: AuthServiceDeps): AuthService {
       const usuario = await usuarioRepo.buscarPorId(sessao.usuarioId)
       if (!usuario) return null
 
-      await sessaoRepo.atualizarAtividade(sessaoId)
+      // Throttle: `ultima_atividade` só é regravada se o último registro tiver mais
+      // de 60s. Evita um UPDATE por requisição (linhas mortas e vacuum em
+      // `sessoes`). A expiração da sessão usa `expira_em`, não este carimbo.
+      if (Date.now() - sessao.ultimaAtividade.getTime() >= INTERVALO_TOQUE_SESSAO_MS) {
+        await sessaoRepo.atualizarAtividade(sessaoId)
+      }
 
       return { usuario, sessao }
     },

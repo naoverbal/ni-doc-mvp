@@ -1,6 +1,8 @@
 import { AppError } from '../errors/app-error.js'
 import { validarTokenPublico } from '../lib/token.js'
+import type { AuditoriaNaTransacao } from '../repositories/auditoria.repository.js'
 import type {
+  AceitePublico,
   OrcamentoAceiteRepository,
   RegistrarAceiteInput,
 } from '../repositories/orcamento-aceite.repository.js'
@@ -13,7 +15,6 @@ import type { OrcamentoRepository, OrcamentoStatus } from '../repositories/orcam
 import { estaExpirado } from '../lib/validade.js'
 import type { UsuarioRepository } from '../repositories/usuario.repository.js'
 import type { ClienteRepository } from '../repositories/cliente.repository.js'
-import type { AuditoriaService } from './auditoria.service.js'
 import type { PdfService } from './pdf.service.js'
 import type { HtmlRendererService } from './html-renderer.service.js'
 import type { Email } from '../lib/email.js'
@@ -126,7 +127,6 @@ interface AceiteServiceDeps {
   orcamentoVersaoRepo: OrcamentoVersaoRepository
   aceiteRepo: OrcamentoAceiteRepository
   orcamentoRepo: OrcamentoRepository
-  auditoriaService: AuditoriaService
   pdfService: PdfService
   htmlRenderer: HtmlRendererService
   // OPCIONAIS: usados apenas para notificar o operador por e-mail (RF-022.2/.3).
@@ -196,7 +196,6 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
     orcamentoVersaoRepo,
     aceiteRepo,
     orcamentoRepo,
-    auditoriaService,
     pdfService,
     htmlRenderer: _htmlRenderer,
     usuarioRepo,
@@ -267,7 +266,10 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
     hashDocumento: string
     aceiteInput: RegistrarAceiteInput
     acao: 'aprovar' | 'reprovar' | 'aceite_manual'
-    persistir: (input: RegistrarAceiteInput) => Promise<{
+    persistir: (
+      input: RegistrarAceiteInput,
+      auditoria: AuditoriaNaTransacao<AceitePublico>,
+    ) => Promise<{
       id: string
       versaoId: string
       metodo: 'cliente' | 'operador'
@@ -293,7 +295,10 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
     hashDocumento: string
     aceiteInput: RegistrarAceiteInput
     acao: 'aprovar' | 'reprovar' | 'aceite_manual'
-    persistir: (input: RegistrarAceiteInput) => Promise<{
+    persistir: (
+      input: RegistrarAceiteInput,
+      auditoria: AuditoriaNaTransacao<AceitePublico>,
+    ) => Promise<{
       id: string
       versaoId: string
       metodo: 'cliente' | 'operador'
@@ -307,7 +312,17 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
   }): Promise<AceiteRegistrado> {
     const { versao, hashDocumento } = args
 
-    const aceite = await args.persistir(args.aceiteInput)
+    // Aceite + novo status do orçamento + auditoria numa única transação (no
+    // repositório): se a auditoria falhar, a decisão é recusada e nada persiste.
+    const aceite = await args.persistir(args.aceiteInput, () => ({
+      tenantId: versao.tenantId,
+      usuarioId: args.usuarioId,
+      acao: args.acao,
+      entidade: 'orcamentos',
+      entidadeId: versao.orcamentoId,
+      ip: args.ip,
+      userAgent: args.userAgent,
+    }))
 
     // Comprovante PDF (RF-021): só na aprovação. O sufixo `-aceite` no número
     // evita colidir com o PDF do orçamento (`{numero}-v{versao}.pdf`).
@@ -331,17 +346,14 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
       })
       comprovantePdfPath = comprovante.caminho
       comprovantePdfHash = comprovante.hash
+      // Grava a referência (caminho + hash) do comprovante no aceite — antes só
+      // voltava na resposta. Roda após o commit do aceite (o PDF é chamada
+      // externa e fica fora da transação). Grava uma única vez.
+      await aceiteRepo.registrarComprovante(aceite.id, {
+        caminho: comprovante.caminho,
+        hash: comprovante.hash,
+      })
     }
-
-    await auditoriaService.registrar({
-      tenantId: versao.tenantId,
-      usuarioId: args.usuarioId,
-      acao: args.acao,
-      entidade: 'orcamentos',
-      entidadeId: versao.orcamentoId,
-      ip: args.ip,
-      userAgent: args.userAgent,
-    })
 
     // Notifica o operador responsável por e-mail (RF-022.2/.3), em melhor
     // esforço: só quando o serviço de e-mail e os repositórios de operador/cliente
@@ -426,7 +438,7 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
           userAgent: input.userAgent,
         },
         acao: 'aprovar',
-        persistir: (i) => aceiteRepo.aprovarAceite(i),
+        persistir: (i, a) => aceiteRepo.aprovarAceite(i, a),
         gerarComprovante: true,
         ip: input.ip,
         userAgent: input.userAgent,
@@ -462,7 +474,7 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
           userAgent: input.userAgent,
         },
         acao: 'reprovar',
-        persistir: (i) => aceiteRepo.reprovarAceite(i),
+        persistir: (i, a) => aceiteRepo.reprovarAceite(i, a),
         // Reprovação NÃO gera comprovante PDF — apenas registra o evento.
         gerarComprovante: false,
         ip: input.ip,
@@ -569,7 +581,7 @@ export function criarAceiteService(deps: AceiteServiceDeps): AceiteService {
           userAgent: input.userAgent,
         },
         acao: 'aceite_manual',
-        persistir: (i) => aceiteRepo.aprovarAceite(i),
+        persistir: (i, a) => aceiteRepo.aprovarAceite(i, a),
         gerarComprovante: true,
         usuarioId: input.usuarioId,
         ip: input.ip,

@@ -1,3 +1,5 @@
+import type { Mock } from 'vitest'
+import { eventoAuditoriaDe } from '../../__tests__/auditoria-teste.js'
 import { describe, it, expect, vi } from 'vitest'
 import { criarReaberturaService } from '../reabertura.service.js'
 import { criarConfirmacaoSenha } from '../confirmacao-senha.js'
@@ -33,13 +35,13 @@ async function montar(opcoes: { existente?: OrcamentoComItens | null } = {}) {
     registrar: vi.fn().mockResolvedValue(undefined),
   } as unknown as AuditoriaService
   const confirmacaoSenha = criarConfirmacaoSenha({ usuarioRepo, auditoriaService })
-  const service = criarReaberturaService({ orcamentoRepo, auditoriaService, confirmacaoSenha })
+  const service = criarReaberturaService({ orcamentoRepo, confirmacaoSenha })
   return { service, orcamentoRepo, auditoriaService }
 }
 
 describe('ReaberturaService', () => {
   it('reabre, audita com a justificativa aparada e devolve o orçamento relido', async () => {
-    const { service, orcamentoRepo, auditoriaService } = await montar()
+    const { service, orcamentoRepo } = await montar()
 
     const resultado = await service.reabrir(ctx, 'orc-1', {
       senha: 'senha-certa',
@@ -47,14 +49,15 @@ describe('ReaberturaService', () => {
     })
 
     expect(resultado.status).toBe('rascunho')
-    expect(orcamentoRepo.reabrir).toHaveBeenCalledWith('tenant-1', 'orc-1')
-    expect(auditoriaService.registrar).toHaveBeenCalledWith(
-      expect.objectContaining({
-        acao: 'reabrir',
-        estadoAnterior: { status: 'reprovado' },
-        estadoNovo: { status: 'rascunho', justificativa: 'Cliente voltou' },
-      }),
-    )
+    expect(orcamentoRepo.reabrir).toHaveBeenCalledWith('tenant-1', 'orc-1', expect.any(Function))
+    // Auditoria entregue ao repositório (gravada na mesma transação da reabertura).
+    expect(
+      eventoAuditoriaDe(orcamentoRepo.reabrir as Mock, { statusAnterior: 'reprovado' }),
+    ).toMatchObject({
+      acao: 'reabrir',
+      estadoAnterior: { status: 'reprovado' },
+      estadoNovo: { status: 'rascunho', justificativa: 'Cliente voltou' },
+    })
   })
 
   it('responde 400 sem justificativa, antes de qualquer consulta', async () => {

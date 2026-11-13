@@ -97,24 +97,23 @@ export function criarApp(): express.Express {
   const authService = criarAuthService({
     usuarioRepo,
     sessaoRepo,
-    auditoriaService,
     escopoTenant: executarComTenant,
   })
   app.use('/api/auth', criarAuthRouter(authService))
 
   // Cliente routes
   const clienteRepo = criarClienteRepository(db)
-  const clienteService = criarClienteService({ clienteRepo, auditoriaService })
+  const clienteService = criarClienteService({ clienteRepo })
   app.use('/api/clientes', criarClientesRouter(clienteService, authService))
 
   // Empresa routes
   const empresaRepo = criarEmpresaRepository(db)
-  const empresaService = criarEmpresaService({ empresaRepo, auditoriaService })
+  const empresaService = criarEmpresaService({ empresaRepo })
   app.use('/api/empresas', criarEmpresasRouter(empresaService, authService))
 
   // Responsável técnico routes
   const responsavelRepo = criarResponsavelRepository(db)
-  const responsavelService = criarResponsavelService({ responsavelRepo, auditoriaService })
+  const responsavelService = criarResponsavelService({ responsavelRepo })
   app.use('/api/responsaveis', criarResponsaveisRouter(responsavelService, authService))
 
   // Serviço de e-mail (RF-022): montado APENAS quando o SMTP está configurado
@@ -143,7 +142,6 @@ export function criarApp(): express.Express {
     clienteRepo,
     empresaRepo,
     responsavelRepo,
-    auditoriaService,
   })
   const orcamentoVersaoRepo = criarOrcamentoVersaoRepository({ db })
   const snapshotService = criarSnapshotService()
@@ -156,14 +154,13 @@ export function criarApp(): express.Express {
     empresaRepo,
     responsavelRepo,
     snapshotService,
-    auditoriaService,
     pdfService,
     htmlRenderer,
     templateRepo,
     email,
   })
   // Template routes
-  const templateService = criarTemplateService({ templateRepo, auditoriaService })
+  const templateService = criarTemplateService({ templateRepo })
   app.use('/api/templates', criarTemplatesRouter(templateService, authService))
 
   // Serviço de aceite (compartilhado entre a rota autenticada de aceite manual e
@@ -173,7 +170,6 @@ export function criarApp(): express.Express {
     orcamentoVersaoRepo,
     aceiteRepo,
     orcamentoRepo,
-    auditoriaService,
     pdfService,
     htmlRenderer,
     usuarioRepo,
@@ -191,7 +187,6 @@ export function criarApp(): express.Express {
   const cancelamentoService = criarCancelamentoService({
     orcamentoRepo,
     usuarioRepo,
-    auditoriaService,
     confirmacaoSenha,
     email,
   })
@@ -199,7 +194,6 @@ export function criarApp(): express.Express {
   // Reabertura de orçamento (confirmação de senha + justificativa).
   const reaberturaService = criarReaberturaService({
     orcamentoRepo,
-    auditoriaService,
     confirmacaoSenha,
   })
 

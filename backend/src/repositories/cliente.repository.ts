@@ -1,6 +1,7 @@
 import type { Kysely } from 'kysely'
 import type { Database } from '../types/database.js'
 import { AppError } from '../errors/app-error.js'
+import { executarComAuditoria, type AuditoriaNaTransacao } from './auditoria.repository.js'
 import { criptografar, descriptografar, hashDocumento } from '../lib/crypto.js'
 
 // UNIQUE (tenant_id, documento_hash) da migration 001: rede de segurança contra
@@ -46,7 +47,11 @@ export interface ClientePublico {
 }
 
 export interface ClienteRepository {
-  criar(input: CriarClienteInput): Promise<ClientePublico>
+  // `auditoria` (opcional): evento gravado na MESMA transação; se falhar, nada persiste.
+  criar(
+    input: CriarClienteInput,
+    auditoria?: AuditoriaNaTransacao<ClientePublico>,
+  ): Promise<ClientePublico>
   buscarPorDocumentoHash(tenantId: string, documentoHash: string): Promise<ClientePublico | null>
   buscarPorId(tenantId: string, id: string): Promise<ClientePublico | null>
   buscarPorNome(tenantId: string, termo: string): Promise<ClientePublico[]>
@@ -54,8 +59,9 @@ export interface ClienteRepository {
     tenantId: string,
     id: string,
     dados: AtualizarClienteInput,
+    auditoria?: AuditoriaNaTransacao<ClientePublico>,
   ): Promise<ClientePublico | null>
-  desativar(tenantId: string, id: string): Promise<void>
+  desativar(tenantId: string, id: string, auditoria?: AuditoriaNaTransacao<void>): Promise<void>
 }
 
 interface ClienteRow {
@@ -108,34 +114,41 @@ const COLUNAS_PUBLICAS = [
 
 export function criarClienteRepository(db: Kysely<Database>): ClienteRepository {
   return {
-    async criar(input: CriarClienteInput): Promise<ClientePublico> {
-      const documentoHash = hashDocumento(input.documento)
-      const documentoEncrypted = criptografar(input.documento)
+    async criar(
+      input: CriarClienteInput,
+      auditoria?: AuditoriaNaTransacao<ClientePublico>,
+    ): Promise<ClientePublico> {
+      return executarComAuditoria(db, auditoria, async (executor) => {
+        const documentoHash = hashDocumento(input.documento)
+        const documentoEncrypted = criptografar(input.documento)
 
-      try {
-        const row = await db
-          .insertInto('clientes')
-          .values({
-            tenant_id: input.tenantId,
-            tipo_pessoa: input.tipoPessoa,
-            nome: input.nome,
-            documento_hash: documentoHash,
-            documento_encrypted: documentoEncrypted,
-            email_encrypted: input.email !== undefined ? criptografar(input.email) : null,
-            telefone_encrypted: input.telefone !== undefined ? criptografar(input.telefone) : null,
-            endereco_encrypted: input.endereco !== undefined ? criptografar(input.endereco) : null,
-            observacoes: input.observacoes ?? null,
-          })
-          .returning(COLUNAS_PUBLICAS)
-          .executeTakeFirstOrThrow()
+        try {
+          const row = await executor
+            .insertInto('clientes')
+            .values({
+              tenant_id: input.tenantId,
+              tipo_pessoa: input.tipoPessoa,
+              nome: input.nome,
+              documento_hash: documentoHash,
+              documento_encrypted: documentoEncrypted,
+              email_encrypted: input.email !== undefined ? criptografar(input.email) : null,
+              telefone_encrypted:
+                input.telefone !== undefined ? criptografar(input.telefone) : null,
+              endereco_encrypted:
+                input.endereco !== undefined ? criptografar(input.endereco) : null,
+              observacoes: input.observacoes ?? null,
+            })
+            .returning(COLUNAS_PUBLICAS)
+            .executeTakeFirstOrThrow()
 
-        return mapRowToPublico(row as ClienteRow)
-      } catch (erro) {
-        if (ehDocumentoDuplicado(erro)) {
-          throw new AppError(409, 'Já existe um cliente com este documento neste tenant')
+          return mapRowToPublico(row as ClienteRow)
+        } catch (erro) {
+          if (ehDocumentoDuplicado(erro)) {
+            throw new AppError(409, 'Já existe um cliente com este documento neste tenant')
+          }
+          throw erro
         }
-        throw erro
-      }
+      })
     },
 
     async buscarPorDocumentoHash(
@@ -183,6 +196,7 @@ export function criarClienteRepository(db: Kysely<Database>): ClienteRepository 
       tenantId: string,
       id: string,
       dados: AtualizarClienteInput,
+      auditoria?: AuditoriaNaTransacao<ClientePublico>,
     ): Promise<ClientePublico | null> {
       const set: Record<string, unknown> = { atualizado_em: new Date() }
 
@@ -192,25 +206,33 @@ export function criarClienteRepository(db: Kysely<Database>): ClienteRepository 
       if (dados.endereco !== undefined) set['endereco_encrypted'] = criptografar(dados.endereco)
       if (dados.observacoes !== undefined) set['observacoes'] = dados.observacoes
 
-      const row = await db
-        .updateTable('clientes')
-        .set(set)
-        .where('tenant_id', '=', tenantId)
-        .where('id', '=', id)
-        .returning(COLUNAS_PUBLICAS)
-        .executeTakeFirst()
+      return executarComAuditoria(db, auditoria, async (executor) => {
+        const row = await executor
+          .updateTable('clientes')
+          .set(set)
+          .where('tenant_id', '=', tenantId)
+          .where('id', '=', id)
+          .returning(COLUNAS_PUBLICAS)
+          .executeTakeFirst()
 
-      if (!row) return null
-      return mapRowToPublico(row as ClienteRow)
+        if (!row) return null
+        return mapRowToPublico(row as ClienteRow)
+      })
     },
 
-    async desativar(tenantId: string, id: string): Promise<void> {
-      await db
-        .updateTable('clientes')
-        .set({ ativo: false, atualizado_em: new Date() })
-        .where('tenant_id', '=', tenantId)
-        .where('id', '=', id)
-        .executeTakeFirst()
+    async desativar(
+      tenantId: string,
+      id: string,
+      auditoria?: AuditoriaNaTransacao<void>,
+    ): Promise<void> {
+      await executarComAuditoria(db, auditoria, async (executor) => {
+        await executor
+          .updateTable('clientes')
+          .set({ ativo: false, atualizado_em: new Date() })
+          .where('tenant_id', '=', tenantId)
+          .where('id', '=', id)
+          .executeTakeFirst()
+      })
     },
   }
 }

@@ -1,11 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import {
   criarLimparPdfsJob,
   type PdfExpirado,
   type LimparPdfsRepositorio,
   type LimparPdfsFileSystem,
 } from '../limpar-pdfs.js'
-import type { AuditoriaService } from '../../services/auditoria.service.js'
+import { eventoAuditoriaDe } from '../../__tests__/auditoria-teste.js'
 
 // Logger silencioso para não poluir a saída dos testes.
 const loggerSilencioso = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
@@ -52,14 +52,6 @@ function makeFs(overrides?: Partial<LimparPdfsFileSystem>): LimparPdfsFileSystem
   }
 }
 
-function makeAuditoria(overrides?: Partial<AuditoriaService>): AuditoriaService {
-  return {
-    registrar: vi.fn().mockResolvedValue(undefined),
-    listar: vi.fn().mockResolvedValue([]),
-    ...overrides,
-  }
-}
-
 describe('criarLimparPdfsJob', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -70,7 +62,6 @@ describe('criarLimparPdfsJob', () => {
     const job = criarLimparPdfsJob({
       repo,
       fs: makeFs(),
-      auditoriaService: makeAuditoria(),
       agora: () => AGORA,
       logger: loggerSilencioso,
     })
@@ -90,7 +81,7 @@ describe('criarLimparPdfsJob', () => {
     ]
     const fs = makeFs()
     const repo = makeRepo({ listarPdfsExpirados: vi.fn().mockResolvedValue(pdfs) })
-    const job = criarLimparPdfsJob({ repo, fs, auditoriaService: makeAuditoria(), agora: () => AGORA, logger: loggerSilencioso })
+    const job = criarLimparPdfsJob({ repo, fs, agora: () => AGORA, logger: loggerSilencioso })
 
     const resultado = await job.executar()
 
@@ -100,22 +91,24 @@ describe('criarLimparPdfsJob', () => {
     expect(resultado.removidos).toBe(2)
   })
 
-  it('registra a remoção na auditoria com o tenant do orçamento', async () => {
-    const pdf = pdfExpirado({ tenantId: 'tenant-xyz', orcamentoId: 'orc-9', pdfPath: '/pdfs/x.pdf' })
-    const auditoria = makeAuditoria()
+  it('entrega a auditoria ao repositório (mesma transação da limpeza) com o tenant do orçamento', async () => {
+    const pdf = pdfExpirado({
+      tenantId: 'tenant-xyz',
+      orcamentoId: 'orc-9',
+      pdfPath: '/pdfs/x.pdf',
+    })
     const repo = makeRepo({ listarPdfsExpirados: vi.fn().mockResolvedValue([pdf]) })
     const job = criarLimparPdfsJob({
       repo,
       fs: makeFs(),
-      auditoriaService: auditoria,
       agora: () => AGORA,
       logger: loggerSilencioso,
     })
 
     await job.executar()
 
-    expect(auditoria.registrar).toHaveBeenCalledOnce()
-    const evento = (auditoria.registrar as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
+    expect(repo.limparReferenciaPdf).toHaveBeenCalledOnce()
+    const evento = eventoAuditoriaDe(repo.limparReferenciaPdf as Mock)
     expect(evento).toMatchObject({
       tenantId: 'tenant-xyz',
       acao: 'limpar_pdf',
@@ -124,29 +117,27 @@ describe('criarLimparPdfsJob', () => {
     })
   })
 
-  it('limpa a referência pdf_path/pdf_hash no banco após remover o arquivo', async () => {
+  it('limpa a referência pdf_path/pdf_hash no banco ANTES de remover o arquivo', async () => {
     const pdf = pdfExpirado({ versaoId: 'v-ref', pdfPath: '/pdfs/ref.pdf' })
     const repo = makeRepo({ listarPdfsExpirados: vi.fn().mockResolvedValue([pdf]) })
     const job = criarLimparPdfsJob({
       repo,
       fs: makeFs(),
-      auditoriaService: makeAuditoria(),
       agora: () => AGORA,
       logger: loggerSilencioso,
     })
 
     await job.executar()
 
-    expect(repo.limparReferenciaPdf).toHaveBeenCalledWith('v-ref')
+    expect(repo.limparReferenciaPdf).toHaveBeenCalledWith('v-ref', expect.any(Function))
   })
 
   it('não remove nada quando não há PDFs expirados', async () => {
     const fs = makeFs()
-    const auditoria = makeAuditoria()
+    const repo = makeRepo()
     const job = criarLimparPdfsJob({
-      repo: makeRepo(),
+      repo,
       fs,
-      auditoriaService: auditoria,
       agora: () => AGORA,
       logger: loggerSilencioso,
     })
@@ -154,7 +145,7 @@ describe('criarLimparPdfsJob', () => {
     const resultado = await job.executar()
 
     expect(fs.rm).not.toHaveBeenCalled()
-    expect(auditoria.registrar).not.toHaveBeenCalled()
+    expect(repo.limparReferenciaPdf).not.toHaveBeenCalled()
     expect(resultado.removidos).toBe(0)
   })
 
@@ -171,32 +162,70 @@ describe('criarLimparPdfsJob', () => {
         }
       }),
     })
-    const auditoria = makeAuditoria()
     const repo = makeRepo({ listarPdfsExpirados: vi.fn().mockResolvedValue(pdfs) })
-    const job = criarLimparPdfsJob({ repo, fs, auditoriaService: auditoria, agora: () => AGORA, logger: loggerSilencioso })
+    const job = criarLimparPdfsJob({ repo, fs, agora: () => AGORA, logger: loggerSilencioso })
 
     const resultado = await job.executar()
 
     // Os dois arquivos saudáveis foram removidos; o que falhou é contabilizado.
     expect(resultado.removidos).toBe(2)
     expect(resultado.falhas).toBe(1)
-    // Só os removidos com sucesso registram auditoria e limpam a referência.
-    expect(auditoria.registrar).toHaveBeenCalledTimes(2)
-    expect(repo.limparReferenciaPdf).toHaveBeenCalledTimes(2)
-    expect(repo.limparReferenciaPdf).not.toHaveBeenCalledWith('fail')
+    // O banco vai primeiro: as três referências foram limpas (com auditoria na
+    // mesma transação); a que falhou no disco fica órfã e é logada.
+    expect(repo.limparReferenciaPdf).toHaveBeenCalledTimes(3)
+  })
+
+  it('limpa o banco (referência + auditoria) ANTES de remover o arquivo do disco', async () => {
+    const ordem: string[] = []
+    const repo = makeRepo({
+      listarPdfsExpirados: vi.fn().mockResolvedValue([pdfExpirado({ versaoId: 'v1' })]),
+      limparReferenciaPdf: vi.fn(async () => {
+        ordem.push('banco')
+      }),
+    })
+    const fs = makeFs({
+      rm: vi.fn(async () => {
+        ordem.push('disco')
+      }),
+    })
+    const job = criarLimparPdfsJob({ repo, fs, agora: () => AGORA, logger: loggerSilencioso })
+
+    await job.executar()
+
+    expect(ordem).toEqual(['banco', 'disco'])
+  })
+
+  it('se a transação do banco (referência + auditoria) falhar, NÃO apaga o arquivo e segue com os demais', async () => {
+    const pdfs = [
+      pdfExpirado({ versaoId: 'falha-banco', pdfPath: '/pdfs/falha.pdf' }),
+      pdfExpirado({ versaoId: 'ok', pdfPath: '/pdfs/ok.pdf' }),
+    ]
+    const repo = makeRepo({
+      listarPdfsExpirados: vi.fn().mockResolvedValue(pdfs),
+      limparReferenciaPdf: vi.fn(async (versaoId: string) => {
+        if (versaoId === 'falha-banco') throw new Error('falha ao gravar auditoria')
+      }),
+    })
+    const fs = makeFs()
+    const job = criarLimparPdfsJob({ repo, fs, agora: () => AGORA, logger: loggerSilencioso })
+
+    const resultado = await job.executar()
+
+    expect(fs.rm).not.toHaveBeenCalledWith('/pdfs/falha.pdf')
+    expect(fs.rm).toHaveBeenCalledWith('/pdfs/ok.pdf')
+    expect(resultado).toEqual({ removidos: 1, falhas: 1 })
   })
 
   it('ignora versões sem pdf_path (nada a remover)', async () => {
     const pdfs = [pdfExpirado({ versaoId: 'sem-pdf', pdfPath: null })]
     const fs = makeFs()
-    const auditoria = makeAuditoria()
     const repo = makeRepo({ listarPdfsExpirados: vi.fn().mockResolvedValue(pdfs) })
-    const job = criarLimparPdfsJob({ repo, fs, auditoriaService: auditoria, agora: () => AGORA, logger: loggerSilencioso })
+    const job = criarLimparPdfsJob({ repo, fs, agora: () => AGORA, logger: loggerSilencioso })
 
     const resultado = await job.executar()
 
     expect(fs.rm).not.toHaveBeenCalled()
-    expect(auditoria.registrar).not.toHaveBeenCalled()
+    expect(repo.limparReferenciaPdf).not.toHaveBeenCalled()
     expect(resultado.removidos).toBe(0)
   })
 })

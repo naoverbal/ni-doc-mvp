@@ -1,3 +1,5 @@
+import type { Mock } from 'vitest'
+import { eventoAuditoriaDe } from '../../__tests__/auditoria-teste.js'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { criarVersionamentoService } from '../versionamento.service.js'
 import type {
@@ -136,18 +138,23 @@ const templateMock: TemplatePublico = {
 // `pdfPath`/`pdfHash` resultantes na versão retornada. Se o callback rejeita, a
 // rejeição propaga (como o rollback real da trx faria).
 function criarVersaoEnviarMock() {
-  return vi.fn(async (input: CriarVersaoEnviarInput): Promise<OrcamentoVersaoPublica> => {
-    if (input.gerarPdfDaVersao) {
-      const { pdfPath, pdfHash } = await input.gerarPdfDaVersao({
-        versao: versaoPublicaMock.versao,
-        numero: input.numero,
-        tokenPublico: versaoPublicaMock.tokenPublico,
-        templateId: versaoPublicaMock.templateId,
-      })
-      return { ...versaoPublicaMock, pdfPath, pdfHash }
-    }
-    return versaoPublicaMock
-  })
+  return vi.fn(
+    async (
+      input: CriarVersaoEnviarInput,
+      _auditoria?: unknown,
+    ): Promise<OrcamentoVersaoPublica> => {
+      if (input.gerarPdfDaVersao) {
+        const { pdfPath, pdfHash } = await input.gerarPdfDaVersao({
+          versao: versaoPublicaMock.versao,
+          numero: input.numero,
+          tokenPublico: versaoPublicaMock.tokenPublico,
+          templateId: versaoPublicaMock.templateId,
+        })
+        return { ...versaoPublicaMock, pdfPath, pdfHash }
+      }
+      return versaoPublicaMock
+    },
+  )
 }
 
 function makeDeps(overrides?: {
@@ -202,6 +209,11 @@ function makeDeps(overrides?: {
     buscarPorId: vi
       .fn()
       .mockImplementation((_t: string, id: string) => Promise.resolve(responsavelMock(id))),
+    buscarPorIds: vi
+      .fn()
+      .mockImplementation((_t: string, ids: string[]) =>
+        Promise.resolve(ids.map((id) => responsavelMock(id))),
+      ),
     buscarPorNome: vi.fn(),
     atualizar: vi.fn(),
     desativar: vi.fn(),
@@ -221,11 +233,13 @@ function makeDeps(overrides?: {
 
   const pdfService = {
     gerarPdf: vi.fn().mockResolvedValue({
+      criado: true,
       buffer: Buffer.from('%PDF-1.7'),
       caminho: '/var/ni-doc/pdfs/ORC-2026-0001-v1.pdf',
       hash: 'abc123',
     }),
     buscarPdf: vi.fn(),
+    removerPdf: vi.fn().mockResolvedValue(undefined),
     ...overrides?.pdfService,
   } as unknown as PdfService
 
@@ -283,6 +297,7 @@ describe('VersionamentoService', () => {
     )
     expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', orcamentoId: 'orcamento-1' }),
+      expect.any(Function),
     )
     expect(versao.versao).toBe(1)
     expect(versao.tokenPublico).toBe('uuid.hmac')
@@ -295,6 +310,7 @@ describe('VersionamentoService', () => {
     // Emissão 2026-01-01 + 30 dias = vencimento 31/01; expira 01/02 00:00 (UTC-3).
     expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).toHaveBeenCalledWith(
       expect.objectContaining({ expiraEm: new Date('2026-02-01T03:00:00.000Z') }),
+      expect.any(Function),
     )
   })
   it('lança AppError(400) e não persiste quando a validade já venceu', async () => {
@@ -328,6 +344,7 @@ describe('VersionamentoService', () => {
         numero: 'ORC-2026-0001',
         gerarPdfDaVersao: expect.any(Function),
       }),
+      expect.any(Function),
     )
     // A versão retornada carrega pdf_path e pdf_hash preenchidos.
     expect(versao.pdfPath).toBe('/var/ni-doc/pdfs/ORC-2026-0001-v1.pdf')
@@ -345,6 +362,64 @@ describe('VersionamentoService', () => {
     // A imagem `qrcode` é adicionada sem descartar imagens já existentes do layout.
     expect(renderArg.layout.imagens.qrcode).toMatch(/^data:image\/png;base64,/)
     expect(renderArg.layout.imagens.logo).toBe('data:image/png;base64,LOGO')
+  })
+
+  it('gera o PDF do envio com substituirExistente (sob o lock, arquivo preexistente é órfão)', async () => {
+    const deps = makeDeps()
+    const service = criarVersionamentoService(deps)
+
+    await service.enviar(ctx, 'orcamento-1')
+
+    expect(deps.pdfService.gerarPdf).toHaveBeenCalledWith(
+      expect.objectContaining({ substituirExistente: true }),
+    )
+    expect(deps.pdfService.removerPdf).not.toHaveBeenCalled()
+  })
+
+  it('quando a transação do envio falha DEPOIS de gerar o PDF, apaga o arquivo que esta tentativa criou', async () => {
+    const base = criarVersaoEnviarMock()
+    const deps = makeDeps({
+      orcamentoVersaoRepo: {
+        criarVersaoEnviar: vi.fn(async (input: CriarVersaoEnviarInput) => {
+          await base(input) // roda gerarPdfDaVersao (PDF gravado em disco)
+          throw new Error('falha ao gravar auditoria') // ...e a transação reverte
+        }),
+      },
+    })
+    const service = criarVersionamentoService(deps)
+
+    await expect(service.enviar(ctx, 'orcamento-1')).rejects.toThrow('falha ao gravar auditoria')
+
+    expect(deps.pdfService.removerPdf).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      numero: 'ORC-2026-0001',
+      versao: 1,
+    })
+  })
+
+  it('quando a transação falha mas o PDF não foi criado por esta tentativa, não apaga nada', async () => {
+    const base = criarVersaoEnviarMock()
+    const deps = makeDeps({
+      pdfService: {
+        gerarPdf: vi.fn().mockResolvedValue({
+          criado: false,
+          buffer: Buffer.from('%PDF-1.7'),
+          caminho: '/var/ni-doc/pdfs/ORC-2026-0001-v1.pdf',
+          hash: 'abc123',
+        }),
+      },
+      orcamentoVersaoRepo: {
+        criarVersaoEnviar: vi.fn(async (input: CriarVersaoEnviarInput) => {
+          await base(input)
+          throw new Error('falha')
+        }),
+      },
+    })
+    const service = criarVersionamentoService(deps)
+
+    await expect(service.enviar(ctx, 'orcamento-1')).rejects.toThrow('falha')
+
+    expect(deps.pdfService.removerPdf).not.toHaveBeenCalled()
   })
 
   it('é imutável: delega a geração ao pdfService.gerarPdf sem regenerar por conta própria', async () => {
@@ -421,23 +496,26 @@ describe('VersionamentoService', () => {
     expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).not.toHaveBeenCalled()
   })
 
-  it('registra auditoria com acao=enviar após a persistência', async () => {
+  it('entrega a auditoria acao=enviar ao repositório (mesma transação do envio)', async () => {
     const deps = makeDeps()
     const service = criarVersionamentoService(deps)
 
     await service.enviar(ctx, 'orcamento-1')
 
-    expect(deps.auditoriaService.registrar).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tenantId: 'tenant-1',
-        usuarioId: 'user-1',
-        acao: 'enviar',
-        entidade: 'orcamentos',
-        entidadeId: 'orcamento-1',
-        ip: '1.2.3.4',
-        userAgent: 'jest',
-      }),
-    )
+    // Auditoria entregue ao repositório: gravada na MESMA transação da versão e
+    // do status `enviado` (se falhar, o envio inteiro é recusado).
+    expect(
+      eventoAuditoriaDe(deps.orcamentoVersaoRepo.criarVersaoEnviar as Mock, versaoPublicaMock),
+    ).toMatchObject({
+      tenantId: 'tenant-1',
+      usuarioId: 'user-1',
+      acao: 'enviar',
+      entidade: 'orcamentos',
+      entidadeId: 'orcamento-1',
+      ip: '1.2.3.4',
+      userAgent: 'jest',
+    })
+    expect(deps.auditoriaService.registrar).not.toHaveBeenCalled()
   })
 
   it('passa empresa null ao snapshot quando empresaClienteId é null (não busca empresa)', async () => {
@@ -487,8 +565,9 @@ describe('VersionamentoService', () => {
 
     await service.enviar(ctx, 'orcamento-1')
 
-    // 2 ids distintos não-nulos → 2 buscas (não 3; e o null é ignorado).
-    expect(deps.responsavelRepo.buscarPorId).toHaveBeenCalledTimes(2)
+    // 2 ids distintos não-nulos → 1 única busca com os 2 ids (o null é ignorado).
+    expect(deps.responsavelRepo.buscarPorIds).toHaveBeenCalledTimes(1)
+    expect(deps.responsavelRepo.buscarPorIds).toHaveBeenCalledWith('tenant-1', ['resp-1', 'resp-2'])
     const montarArg = (deps.snapshotService.montar as ReturnType<typeof vi.fn>).mock
       .calls[0]?.[0] as { responsaveisPorId: Map<string, ResponsavelPublico> }
     expect(montarArg.responsaveisPorId.size).toBe(2)
@@ -502,7 +581,7 @@ describe('VersionamentoService', () => {
           .fn()
           .mockResolvedValue(orcamentoMock({ itens: [itemMock({ responsavelId: 'resp-x' })] })),
       },
-      responsavelRepo: { buscarPorId: vi.fn().mockResolvedValue(null) },
+      responsavelRepo: { buscarPorIds: vi.fn().mockResolvedValue([]) },
     })
     const service = criarVersionamentoService(deps)
 
@@ -553,7 +632,7 @@ describe('VersionamentoService', () => {
       expect(arg.html).toContain('/publico/orcamento/uuid.hmac')
     })
 
-    it('registra auditoria ANTES do envio do e-mail (envio é pós-persistência)', async () => {
+    it('a auditoria vai na transação do envio; o e-mail só sai depois da persistência', async () => {
       const email = { enviar: vi.fn().mockResolvedValue(true) } as unknown as Email
       const deps = makeDeps({
         email,
@@ -565,7 +644,7 @@ describe('VersionamentoService', () => {
 
       await service.enviar(ctx, 'orcamento-1')
 
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+      expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).toHaveBeenCalledTimes(1)
       expect(email.enviar).toHaveBeenCalledTimes(1)
     })
 
@@ -581,7 +660,7 @@ describe('VersionamentoService', () => {
 
       // Fluxo segue normal: versão persistida e auditoria registrada.
       expect(versao.versao).toBe(1)
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+      expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).toHaveBeenCalledTimes(1)
     })
 
     it('não envia e-mail quando o cliente não tem e-mail', async () => {
@@ -593,7 +672,7 @@ describe('VersionamentoService', () => {
       await service.enviar(ctx, 'orcamento-1')
 
       expect(email.enviar).not.toHaveBeenCalled()
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+      expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).toHaveBeenCalledTimes(1)
     })
 
     it('não quebra o fluxo quando o envio retorna false (melhor esforço)', async () => {
@@ -610,7 +689,7 @@ describe('VersionamentoService', () => {
 
       expect(versao.versao).toBe(1)
       expect(email.enviar).toHaveBeenCalledTimes(1)
-      expect(deps.auditoriaService.registrar).toHaveBeenCalledTimes(1)
+      expect(deps.orcamentoVersaoRepo.criarVersaoEnviar).toHaveBeenCalledTimes(1)
     })
   })
 })
