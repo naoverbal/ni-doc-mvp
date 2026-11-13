@@ -58,6 +58,79 @@ export interface ListarOrcamentosFiltro {
 }
 
 // -----------------------------------------------------------------------------
+// Dashboard (GET /api/dashboard/*). Espelha dashboard.service do backend; as
+// agregações vêm prontas do servidor, pelo status ATUAL de cada orçamento.
+// -----------------------------------------------------------------------------
+
+export type GranularidadeDashboard = 'semana' | 'mes' | 'ano'
+
+export interface TotalPorStatus {
+  quantidade: number
+  valor: number
+}
+
+export interface ResumoDashboard {
+  porStatus: Record<OrcamentoStatus, TotalPorStatus>
+  valorEmAberto: number
+  valorEnviado: number
+  valorAprovado: number
+  // Fração 0..1; null quando não há base de cálculo.
+  taxaConversao: number | null
+}
+
+export interface PontoCriados {
+  // Chave canônica ordenável ('2025-03', '2025-W03', '2025').
+  chave: string
+  rotulo: string
+  quantidade: number
+}
+
+// Ponto das séries por evento (enviados / aprovados). `quantidade` e `valor`
+// somam todos os orçamentos do período do evento; `porStatus` detalha pelo
+// status ATUAL, então um cancelamento posterior aparece no período de origem.
+export interface PontoSerieStatus extends PontoCriados {
+  valor: number
+  porStatus: Record<OrcamentoStatus, TotalPorStatus>
+}
+
+export type TipoSerieDashboard = 'criados' | 'enviados' | 'aprovados'
+
+export interface EstatisticaDecisao {
+  quantidade: number
+  // Dias, 1 casa decimal; null quando não há decisões.
+  mediaDias: number | null
+  medianaDias: number | null
+}
+
+// Tempo do envio até a decisão. Aprovado depois cancelado conta como aprovado.
+export interface TempoDecisao {
+  geral: EstatisticaDecisao
+  aprovados: EstatisticaDecisao
+  reprovados: EstatisticaDecisao
+}
+
+export interface OrcamentoDashboard {
+  id: string
+  numero: string
+  titulo: string
+  status: OrcamentoStatus
+  clienteId: string
+  clienteNome: string
+  total: number
+  criadoEm: string
+  enviadoEm: string | null
+  expiraEm: string | null
+  // Dias inteiros desde o envio da versão vigente; null se nunca foi enviado.
+  diasAguardando: number | null
+}
+
+// Item de GET /dashboard/vencendo: `expiraEm` é o vencimento efetivo e
+// `diasParaVencer` é arredondado para cima (mínimo 1).
+export interface OrcamentoVencendo extends Omit<OrcamentoDashboard, 'diasAguardando'> {
+  diasParaVencer: number
+}
+
+// -----------------------------------------------------------------------------
 // Entidades de referência para o editor (RF-006, RF-010, RF-012). Espelham os
 // *Publico do backend; apenas os campos usados pela UI do editor são tipados.
 // -----------------------------------------------------------------------------

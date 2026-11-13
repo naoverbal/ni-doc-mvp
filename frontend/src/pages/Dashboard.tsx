@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type ReactElement } from 'react'
+import { useId, useState, type ReactElement } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
 import {
   Button,
@@ -8,6 +8,12 @@ import {
   SkeletonItem,
   Spinner,
   Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
   TabList,
   Text,
   makeStyles,
@@ -17,6 +23,7 @@ import {
 } from '@fluentui/react-components'
 import {
   CheckmarkCircle24Regular,
+  Clock24Regular,
   DataTrending24Regular,
   DismissCircle24Regular,
   DocumentAdd24Regular,
@@ -26,21 +33,49 @@ import {
 } from '@fluentui/react-icons'
 import { DonutChart, VerticalBarChart } from '@fluentui/react-charts'
 import { CardKpi } from '@/components/dashboard/CardKpi'
-import { useDashboardOrcamentos } from '@/hooks/useDashboardOrcamentos'
-import {
-  aguardandoHaMaisTempo,
-  agruparCriadosPorPeriodo,
-  contarPorStatus,
-  distribuicaoPorStatus,
-  recentes,
-  taxaConversao,
-  valorEmAberto,
-  valorEnviado,
-  type Granularidade,
-} from '@/lib/dashboard-metricas'
-import { formatarMoeda, formatarPercentual } from '@/lib/formato'
+import { useDashboard, useDashboardSerie } from '@/hooks/useDashboard'
+import { DIAS_VENCIMENTO } from '@/lib/dashboard-config'
+import { formatarDias, formatarMoeda, formatarPercentual } from '@/lib/formato'
 import { ROTULO_STATUS } from '@/lib/orcamento-status'
-import type { OrcamentoResumo } from '@/types/api'
+import type {
+  GranularidadeDashboard,
+  OrcamentoDashboard,
+  OrcamentoStatus,
+  PontoCriados,
+  PontoSerieStatus,
+  ResumoDashboard,
+  TempoDecisao,
+  TipoSerieDashboard,
+} from '@/types/api'
+
+const TITULO_SERIE: Record<TipoSerieDashboard, string> = {
+  criados: 'Orçamentos criados',
+  enviados: 'Orçamentos enviados',
+  aprovados: 'Orçamentos aprovados',
+}
+
+const DESCRICAO_SERIE: Record<TipoSerieDashboard, string> = {
+  criados: 'Agrupados pela data de criação.',
+  enviados:
+    'Agrupados pela data do envio. Cancelamentos e expirações posteriores aparecem no período do envio.',
+  aprovados:
+    'Agrupados pela data da aprovação. Cancelamentos posteriores aparecem no período da aprovação.',
+}
+
+// Distingue pontos com valor e detalhamento por status dos pontos só de contagem.
+function temDetalhePorStatus(ponto: PontoCriados | PontoSerieStatus): ponto is PontoSerieStatus {
+  return 'porStatus' in ponto
+}
+
+// Ordem fixa dos status na distribuição (donut e legenda).
+const ORDEM_STATUS: OrcamentoStatus[] = [
+  'rascunho',
+  'enviado',
+  'aprovado',
+  'reprovado',
+  'expirado',
+  'cancelado',
+]
 
 const useStyles = makeStyles({
   pagina: {
@@ -135,26 +170,51 @@ const useStyles = makeStyles({
   },
 })
 
-// Métricas derivadas das funções puras; memoizadas por lista de orçamentos.
-function useMetricas(orcamentos: OrcamentoResumo[]) {
-  return useMemo(() => {
-    const contagem = contarPorStatus(orcamentos)
-    return {
-      contagem,
-      total: orcamentos.length,
-      emAberto: valorEmAberto(orcamentos),
-      enviado: valorEnviado(orcamentos),
-      taxa: taxaConversao(orcamentos),
-      distribuicao: distribuicaoPorStatus(orcamentos),
-      maisRecentes: recentes(orcamentos),
-      aguardando: aguardandoHaMaisTempo(orcamentos),
-    }
-  }, [orcamentos])
+// Fatias do donut: só os status com quantidade > 0, com rótulo textual (o status
+// nunca é comunicado só por cor).
+function fatiasDeStatus(resumo: ResumoDashboard): Array<{ legend: string; data: number }> {
+  return ORDEM_STATUS.filter((status) => resumo.porStatus[status].quantidade > 0).map((status) => ({
+    legend: ROTULO_STATUS[status],
+    data: resumo.porStatus[status].quantidade,
+  }))
 }
 
-// Item acionável de lista: número, título, status (rótulo + cor) e total, com
-// link para o detalhe. O status leva rótulo textual, nunca só cor.
-function ItemOrcamento({ orcamento }: { orcamento: OrcamentoResumo }): ReactElement {
+function totalDeOrcamentos(resumo: ResumoDashboard): number {
+  return ORDEM_STATUS.reduce((soma, status) => soma + resumo.porStatus[status].quantidade, 0)
+}
+
+function textoDiasAguardando(dias: number): string {
+  if (dias === 0) return 'Enviado hoje'
+  return dias === 1 ? 'Aguardando há 1 dia' : `Aguardando há ${dias} dias`
+}
+
+function textoDiasParaVencer(dias: number): string {
+  return dias === 1 ? 'Vence em 1 dia' : `Vence em ${dias} dias`
+}
+
+// Descrição do card de tempo até a decisão: média geral e quebra por resultado.
+function descricaoTempoDecisao(tempo: TempoDecisao): string {
+  if (tempo.geral.quantidade === 0) return 'Sem decisões registradas'
+  return (
+    `Média ${formatarDias(tempo.geral.mediaDias)} em ${tempo.geral.quantidade} decisões. ` +
+    `Aprovados: ${formatarDias(tempo.aprovados.medianaDias)}. ` +
+    `Reprovados: ${formatarDias(tempo.reprovados.medianaDias)}.`
+  )
+}
+
+// Item acionável de lista: número, título, cliente, status (rótulo + cor) e
+// total, com link para o detalhe. O status leva rótulo textual, nunca só cor.
+function ItemOrcamento({
+  orcamento,
+  detalhe,
+}: {
+  orcamento: Pick<
+    OrcamentoDashboard,
+    'id' | 'numero' | 'titulo' | 'status' | 'clienteNome' | 'total'
+  >
+  // Texto extra da linha de metadados (ex.: "Aguardando há 3 dias").
+  detalhe?: string
+}): ReactElement {
   const estilos = useStyles()
   return (
     <li className={estilos.itemLista}>
@@ -165,30 +225,69 @@ function ItemOrcamento({ orcamento }: { orcamento: OrcamentoResumo }): ReactElem
         <Text weight="semibold">{formatarMoeda(orcamento.total)}</Text>
       </div>
       <div className={estilos.itemMeta}>
+        <Text size={200}>{orcamento.clienteNome}</Text>
         <Text size={200} data-status={orcamento.status}>
           {ROTULO_STATUS[orcamento.status]}
         </Text>
+        {detalhe !== undefined ? <Text size={200}>{detalhe}</Text> : null}
       </div>
     </li>
   )
 }
 
+// Detalhamento por período das séries de envio e aprovação: quantidade, valor e
+// o impacto de cancelamentos (e expirações) no período de origem. Também serve
+// de alternativa textual ao gráfico.
+function TabelaSerie({
+  titulo,
+  pontos,
+  mostrarExpirados,
+}: {
+  titulo: string
+  pontos: PontoSerieStatus[]
+  mostrarExpirados: boolean
+}): ReactElement {
+  return (
+    <Table aria-label={`${titulo}: detalhamento por período`} size="small">
+      <TableHeader>
+        <TableRow>
+          <TableHeaderCell>Período</TableHeaderCell>
+          <TableHeaderCell>Orçamentos</TableHeaderCell>
+          <TableHeaderCell>Valor</TableHeaderCell>
+          <TableHeaderCell>Cancelados depois</TableHeaderCell>
+          {mostrarExpirados ? <TableHeaderCell>Expirados</TableHeaderCell> : null}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {pontos.map((ponto) => (
+          <TableRow key={ponto.chave}>
+            <TableCell>{ponto.rotulo}</TableCell>
+            <TableCell>{ponto.quantidade}</TableCell>
+            <TableCell>{formatarMoeda(ponto.valor)}</TableCell>
+            <TableCell>{ponto.porStatus.cancelado.quantidade}</TableCell>
+            {mostrarExpirados ? <TableCell>{ponto.porStatus.expirado.quantidade}</TableCell> : null}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
 export function Dashboard(): ReactElement {
   const estilos = useStyles()
-  const [granularidade, setGranularidade] = useState<Granularidade>('mes')
+  const [granularidade, setGranularidade] = useState<GranularidadeDashboard>('mes')
+  const [tipoSerie, setTipoSerie] = useState<TipoSerieDashboard>('criados')
   const serieId = useId()
 
-  const { data, isLoading, isError } = useDashboardOrcamentos()
-  const orcamentos = useMemo(() => data ?? [], [data])
-  const metricas = useMetricas(orcamentos)
-
-  const serie = useMemo(
-    () => agruparCriadosPorPeriodo(orcamentos, granularidade),
-    [orcamentos, granularidade],
-  )
+  const { data, isLoading, isError } = useDashboard()
+  const serie = useDashboardSerie(tipoSerie, granularidade)
 
   function aoSelecionarGranularidade(_evento: SelectTabEvent, dados: SelectTabData): void {
-    setGranularidade(dados.value as Granularidade)
+    setGranularidade(dados.value as GranularidadeDashboard)
+  }
+
+  function aoSelecionarSerie(_evento: SelectTabEvent, dados: SelectTabData): void {
+    setTipoSerie(dados.value as TipoSerieDashboard)
   }
 
   if (isLoading) {
@@ -207,7 +306,7 @@ export function Dashboard(): ReactElement {
     )
   }
 
-  if (isError) {
+  if (isError || !data) {
     return (
       <main id="conteudo">
         <h1>Painel de orçamentos</h1>
@@ -222,7 +321,10 @@ export function Dashboard(): ReactElement {
     )
   }
 
-  if (orcamentos.length === 0) {
+  const { resumo, recentes, pendentes, vencendo, tempoDecisao } = data
+  const total = totalDeOrcamentos(resumo)
+
+  if (total === 0) {
     return (
       <main id="conteudo">
         <h1>Painel de orçamentos</h1>
@@ -242,12 +344,11 @@ export function Dashboard(): ReactElement {
     )
   }
 
-  const fatiasDonut = metricas.distribuicao.map((fatia) => ({
-    legend: fatia.legenda,
-    data: fatia.valor,
-  }))
+  const fatiasDonut = fatiasDeStatus(resumo)
 
-  const pontosSerie = serie.map((ponto) => ({ x: ponto.rotulo, y: ponto.quantidade }))
+  const pontos = serie.data ?? []
+  const pontosSerie = pontos.map((ponto) => ({ x: ponto.rotulo, y: ponto.quantidade }))
+  const pontosDetalhados = pontos.filter(temDetalhePorStatus)
 
   return (
     <main id="conteudo" className={estilos.pagina}>
@@ -258,47 +359,53 @@ export function Dashboard(): ReactElement {
         <div className={estilos.gridCards}>
           <CardKpi
             rotulo="Aguardando"
-            valor={String(metricas.contagem.enviado)}
+            valor={String(resumo.porStatus.enviado.quantidade)}
             descricao="Enviados sem decisão"
             icone={<Send24Regular aria-hidden />}
           />
           <CardKpi
             rotulo="Aprovados"
-            valor={String(metricas.contagem.aprovado)}
+            valor={String(resumo.porStatus.aprovado.quantidade)}
             icone={<CheckmarkCircle24Regular aria-hidden />}
           />
           <CardKpi
             rotulo="Reprovados"
-            valor={String(metricas.contagem.reprovado)}
+            valor={String(resumo.porStatus.reprovado.quantidade)}
             icone={<DismissCircle24Regular aria-hidden />}
           />
           <CardKpi
             rotulo="Rascunhos"
-            valor={String(metricas.contagem.rascunho)}
+            valor={String(resumo.porStatus.rascunho.quantidade)}
             icone={<DocumentMultiple24Regular aria-hidden />}
           />
           <CardKpi
             rotulo="Total de orçamentos"
-            valor={String(metricas.total)}
+            valor={String(total)}
             icone={<DocumentMultiple24Regular aria-hidden />}
           />
           <CardKpi
             rotulo="Valor em aberto"
-            valor={formatarMoeda(metricas.emAberto)}
+            valor={formatarMoeda(resumo.valorEmAberto)}
             descricao="Soma dos enviados aguardando decisão"
             icone={<Money24Regular aria-hidden />}
           />
           <CardKpi
             rotulo="Valor total enviado"
-            valor={formatarMoeda(metricas.enviado)}
+            valor={formatarMoeda(resumo.valorEnviado)}
             descricao="Enviados + aprovados + reprovados"
             icone={<Money24Regular aria-hidden />}
           />
           <CardKpi
             rotulo="Taxa de conversão"
-            valor={formatarPercentual(metricas.taxa)}
-            descricao="Aprovados sobre os que saíram de rascunho"
+            valor={formatarPercentual(resumo.taxaConversao)}
+            descricao="Aprovados sobre enviados, aprovados e reprovados"
             icone={<DataTrending24Regular aria-hidden />}
+          />
+          <CardKpi
+            rotulo="Tempo mediano até a decisão"
+            valor={formatarDias(tempoDecisao.geral.medianaDias)}
+            descricao={descricaoTempoDecisao(tempoDecisao)}
+            icone={<Clock24Regular aria-hidden />}
           />
         </div>
       </section>
@@ -320,7 +427,19 @@ export function Dashboard(): ReactElement {
       </section>
 
       <section className={estilos.secao} aria-labelledby="secao-serie">
-        <h2 id="secao-serie">Orçamentos criados</h2>
+        <h2 id="secao-serie">{TITULO_SERIE[tipoSerie]}</h2>
+        <Text size={200} className={estilos.textoSecundario}>
+          {DESCRICAO_SERIE[tipoSerie]}
+        </Text>
+        <TabList
+          selectedValue={tipoSerie}
+          onTabSelect={aoSelecionarSerie}
+          aria-label="Série do gráfico"
+        >
+          <Tab value="criados">Criação</Tab>
+          <Tab value="enviados">Envio</Tab>
+          <Tab value="aprovados">Aprovação</Tab>
+        </TabList>
         <TabList
           selectedValue={granularidade}
           onTabSelect={aoSelecionarGranularidade}
@@ -331,10 +450,16 @@ export function Dashboard(): ReactElement {
           <Tab value="ano">Ano</Tab>
         </TabList>
         <div className={estilos.grafico} id={serieId}>
-          {pontosSerie.length > 0 ? (
+          {serie.isError ? (
+            <div role="alert" aria-live="assertive">
+              <MessageBar intent="error">
+                <MessageBarBody>Não foi possível carregar a série. Tente novamente.</MessageBarBody>
+              </MessageBar>
+            </div>
+          ) : pontosSerie.length > 0 ? (
             <VerticalBarChart
               data={pontosSerie}
-              chartTitle="Orçamentos criados por período"
+              chartTitle={`${TITULO_SERIE[tipoSerie]} por período`}
               hideLegend
             />
           ) : (
@@ -343,13 +468,20 @@ export function Dashboard(): ReactElement {
             </Text>
           )}
         </div>
+        {!serie.isError && pontosDetalhados.length > 0 ? (
+          <TabelaSerie
+            titulo={TITULO_SERIE[tipoSerie]}
+            pontos={pontosDetalhados}
+            mostrarExpirados={tipoSerie === 'enviados'}
+          />
+        ) : null}
       </section>
 
       <section className={estilos.listas} aria-label="Listas de orçamentos">
         <div className={estilos.secao}>
           <h2 id="secao-recentes">Orçamentos recentes</h2>
           <ul className={estilos.lista} aria-labelledby="secao-recentes">
-            {metricas.maisRecentes.map((orcamento) => (
+            {recentes.map((orcamento) => (
               <ItemOrcamento key={orcamento.id} orcamento={orcamento} />
             ))}
           </ul>
@@ -357,15 +489,42 @@ export function Dashboard(): ReactElement {
 
         <div className={estilos.secao}>
           <h2 id="secao-aguardando">Aguardando há mais tempo</h2>
-          {metricas.aguardando.length > 0 ? (
+          {pendentes.length > 0 ? (
             <ul className={estilos.lista} aria-labelledby="secao-aguardando">
-              {metricas.aguardando.map((orcamento) => (
-                <ItemOrcamento key={orcamento.id} orcamento={orcamento} />
+              {pendentes.map((orcamento) => (
+                <ItemOrcamento
+                  key={orcamento.id}
+                  orcamento={orcamento}
+                  detalhe={
+                    orcamento.diasAguardando === null
+                      ? undefined
+                      : textoDiasAguardando(orcamento.diasAguardando)
+                  }
+                />
               ))}
             </ul>
           ) : (
             <Text className={estilos.textoSecundario}>
               Nenhum orçamento aguardando decisão.
+            </Text>
+          )}
+        </div>
+
+        <div className={estilos.secao}>
+          <h2 id="secao-vencendo">{`Vencendo nos próximos ${DIAS_VENCIMENTO} dias`}</h2>
+          {vencendo.length > 0 ? (
+            <ul className={estilos.lista} aria-labelledby="secao-vencendo">
+              {vencendo.map((orcamento) => (
+                <ItemOrcamento
+                  key={orcamento.id}
+                  orcamento={orcamento}
+                  detalhe={textoDiasParaVencer(orcamento.diasParaVencer)}
+                />
+              ))}
+            </ul>
+          ) : (
+            <Text className={estilos.textoSecundario}>
+              Nenhum orçamento vence nesse período.
             </Text>
           )}
         </div>
