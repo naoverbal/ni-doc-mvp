@@ -89,9 +89,14 @@ export function criarOrcamentoService(deps: OrcamentoServiceDeps): OrcamentoServ
     for (const item of refs.itens ?? []) {
       if (item.responsavelId !== undefined) responsaveis.add(item.responsavelId)
     }
-    for (const responsavelId of responsaveis) {
-      if (!(await responsavelRepo.buscarPorId(tenantId, responsavelId))) {
-        throw new AppError(409, 'Responsável técnico não encontrado')
+    if (responsaveis.size > 0) {
+      // Uma consulta `IN (...)` em vez de uma por responsável.
+      const encontrados = await responsavelRepo.buscarPorIds(tenantId, [...responsaveis])
+      const idsEncontrados = new Set(encontrados.map((r) => r.id))
+      for (const responsavelId of responsaveis) {
+        if (!idsEncontrados.has(responsavelId)) {
+          throw new AppError(409, 'Responsável técnico não encontrado')
+        }
       }
     }
   }

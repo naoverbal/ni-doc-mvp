@@ -200,13 +200,29 @@ describe('AuthService', () => {
       expect(result).toBeNull()
     })
 
-    it('chama atualizarAtividade para sessão válida', async () => {
-      const deps = makeDeps()
+    it('chama atualizarAtividade quando a última atividade tem mais de 60s', async () => {
+      const deps = makeDeps({
+        sessaoRepo: {
+          buscarPorId: vi
+            .fn()
+            .mockResolvedValue({ ...sessaoMock, ultimaAtividade: new Date(Date.now() - 61_000) }),
+        },
+      })
       const service = criarAuthService(deps)
 
       await service.validarSessao('sessao-id-1')
 
       expect(deps.sessaoRepo.atualizarAtividade).toHaveBeenCalledWith('sessao-id-1')
+    })
+
+    it('não chama atualizarAtividade quando a última atividade tem menos de 60s', async () => {
+      const deps = makeDeps()
+      const service = criarAuthService(deps)
+
+      const result = await service.validarSessao('sessao-id-1')
+
+      expect(result).not.toBeNull()
+      expect(deps.sessaoRepo.atualizarAtividade).not.toHaveBeenCalled()
     })
   })
 })

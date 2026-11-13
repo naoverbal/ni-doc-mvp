@@ -101,6 +101,11 @@ function makeDeps(overrides?: {
   const empresaRepo = { buscarPorId: existe, ...overrides?.empresaRepo } as EmpresaRepository
   const responsavelRepo = {
     buscarPorId: existe,
+    buscarPorIds: vi
+      .fn()
+      .mockImplementation((_t: string, ids: string[]) =>
+        Promise.resolve(ids.map((id) => ({ id }))),
+      ),
     ...overrides?.responsavelRepo,
   } as ResponsavelRepository
   return { orcamentoRepo, auditoriaService, clienteRepo, empresaRepo, responsavelRepo }
@@ -157,7 +162,7 @@ describe('OrcamentoService', () => {
     })
 
     it('lança AppError(409) quando o responsável de um item não existe no tenant', async () => {
-      const deps = makeDeps({ responsavelRepo: { buscarPorId: vi.fn().mockResolvedValue(null) } })
+      const deps = makeDeps({ responsavelRepo: { buscarPorIds: vi.fn().mockResolvedValue([]) } })
       const service = criarOrcamentoService(deps)
       const itens = [{ nome: 'A', quantidade: 1, valorUnitario: 1, responsavelId: 'resp-1' }]
 

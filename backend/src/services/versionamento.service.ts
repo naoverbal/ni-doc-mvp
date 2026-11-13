@@ -137,11 +137,10 @@ export function criarVersionamentoService(deps: VersionamentoServiceDeps): Versi
         ),
       ]
       const responsaveisPorId = new Map<string, ResponsavelPublico>()
-      for (const id of idsResponsaveis) {
-        const responsavel = await responsavelRepo.buscarPorId(ctx.tenantId, id)
-        if (responsavel) {
-          responsaveisPorId.set(id, responsavel)
-        }
+      // Uma consulta `IN (...)` em vez de uma por responsável.
+      const responsaveis = await responsavelRepo.buscarPorIds(ctx.tenantId, idsResponsaveis)
+      for (const responsavel of responsaveis) {
+        responsaveisPorId.set(responsavel.id, responsavel)
       }
 
       const snapshot = snapshotService.montar({

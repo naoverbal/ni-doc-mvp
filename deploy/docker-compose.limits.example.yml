@@ -1,0 +1,49 @@
+# =============================================================================
+# Limites de recursos para a VPS de produção (exemplo)
+#
+# Dimensionado para 1 vCPU / 4 GB RAM / 50 GB NVMe (plano inicial). Use como
+# override do compose de produção:
+#   docker compose -f docker-compose.prod.yml -f deploy/docker-compose.limits.example.yml up -d
+#
+# Por que existe: a VPS tem preço fixo, então o "corte de gasto" real é limitar o
+# quanto cada serviço pode consumir. Sem isso, uma consulta ou geração de PDF
+# descontrolada pode esgotar RAM/CPU e derrubar a VPS inteira (Postgres incluso).
+#
+# Se fizer upgrade para 2 vCPU / 8 GB: dobre mem_limit/cpus abaixo e suba
+# shared_buffers para 1GB, effective_cache_size para 4GB e max_connections para 40.
+# =============================================================================
+services:
+  postgres:
+    mem_limit: 1g
+    cpus: 0.5
+    # Margem de 4GB: 1g (postgres) + 1.5g (backend/Puppeteer) + SO e nginx.
+    command:
+      - postgres
+      - -c
+      - max_connections=30 # pool do app = 10; folga para migrate/psql/backup
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=8MB # por operação de sort/hash; mantém baixo para não estourar RAM
+      - -c
+      - log_min_duration_statement=500 # loga consultas acima de 500 ms (achar as lentas)
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m' # evita o log encher o disco de 50 GB
+        max-file: '3'
+
+  backend:
+    mem_limit: 1536m # Puppeteer (PDF) é o maior consumidor de RAM
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+  frontend:
+    mem_limit: 256m
+    cpus: 0.1

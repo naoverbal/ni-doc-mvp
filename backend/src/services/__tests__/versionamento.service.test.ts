@@ -202,6 +202,11 @@ function makeDeps(overrides?: {
     buscarPorId: vi
       .fn()
       .mockImplementation((_t: string, id: string) => Promise.resolve(responsavelMock(id))),
+    buscarPorIds: vi
+      .fn()
+      .mockImplementation((_t: string, ids: string[]) =>
+        Promise.resolve(ids.map((id) => responsavelMock(id))),
+      ),
     buscarPorNome: vi.fn(),
     atualizar: vi.fn(),
     desativar: vi.fn(),
@@ -487,8 +492,9 @@ describe('VersionamentoService', () => {
 
     await service.enviar(ctx, 'orcamento-1')
 
-    // 2 ids distintos não-nulos → 2 buscas (não 3; e o null é ignorado).
-    expect(deps.responsavelRepo.buscarPorId).toHaveBeenCalledTimes(2)
+    // 2 ids distintos não-nulos → 1 única busca com os 2 ids (o null é ignorado).
+    expect(deps.responsavelRepo.buscarPorIds).toHaveBeenCalledTimes(1)
+    expect(deps.responsavelRepo.buscarPorIds).toHaveBeenCalledWith('tenant-1', ['resp-1', 'resp-2'])
     const montarArg = (deps.snapshotService.montar as ReturnType<typeof vi.fn>).mock
       .calls[0]?.[0] as { responsaveisPorId: Map<string, ResponsavelPublico> }
     expect(montarArg.responsaveisPorId.size).toBe(2)
@@ -502,7 +508,7 @@ describe('VersionamentoService', () => {
           .fn()
           .mockResolvedValue(orcamentoMock({ itens: [itemMock({ responsavelId: 'resp-x' })] })),
       },
-      responsavelRepo: { buscarPorId: vi.fn().mockResolvedValue(null) },
+      responsavelRepo: { buscarPorIds: vi.fn().mockResolvedValue([]) },
     })
     const service = criarVersionamentoService(deps)
 

@@ -42,6 +42,7 @@ interface AuthServiceDeps {
 }
 
 const OITO_HORAS_MS = 8 * 60 * 60 * 1000
+const INTERVALO_TOQUE_SESSAO_MS = 60 * 1000
 
 export function criarAuthService(deps: AuthServiceDeps): AuthService {
   const { usuarioRepo, sessaoRepo, auditoriaService, escopoTenant = (_tenantId, fn) => fn() } = deps
@@ -128,7 +129,12 @@ export function criarAuthService(deps: AuthServiceDeps): AuthService {
       const usuario = await usuarioRepo.buscarPorId(sessao.usuarioId)
       if (!usuario) return null
 
-      await sessaoRepo.atualizarAtividade(sessaoId)
+      // Throttle: `ultima_atividade` só é regravada se o último registro tiver mais
+      // de 60s. Evita um UPDATE por requisição (linhas mortas e vacuum em
+      // `sessoes`). A expiração da sessão usa `expira_em`, não este carimbo.
+      if (Date.now() - sessao.ultimaAtividade.getTime() >= INTERVALO_TOQUE_SESSAO_MS) {
+        await sessaoRepo.atualizarAtividade(sessaoId)
+      }
 
       return { usuario, sessao }
     },

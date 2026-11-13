@@ -31,6 +31,9 @@ export interface ResponsavelPublico {
 export interface ResponsavelRepository {
   criar(input: CriarResponsavelInput): Promise<ResponsavelPublico>
   buscarPorId(tenantId: string, id: string): Promise<ResponsavelPublico | null>
+  // Busca vários responsáveis do tenant numa única consulta (`id IN (...)`).
+  // Ids inexistentes simplesmente não aparecem no resultado.
+  buscarPorIds(tenantId: string, ids: string[]): Promise<ResponsavelPublico[]>
   buscarPorNome(tenantId: string, termo: string): Promise<ResponsavelPublico[]>
   atualizar(
     tenantId: string,
@@ -107,6 +110,19 @@ export function criarResponsavelRepository(db: Kysely<Database>): ResponsavelRep
 
       if (!row) return null
       return mapRowToPublico(row as ResponsavelRow)
+    },
+
+    async buscarPorIds(tenantId: string, ids: string[]): Promise<ResponsavelPublico[]> {
+      if (ids.length === 0) return []
+
+      const rows = await db
+        .selectFrom('responsaveis_tecnicos')
+        .select(COLUNAS_PUBLICAS)
+        .where('tenant_id', '=', tenantId)
+        .where('id', 'in', ids)
+        .execute()
+
+      return rows.map((row) => mapRowToPublico(row as ResponsavelRow))
     },
 
     async buscarPorNome(tenantId: string, termo: string): Promise<ResponsavelPublico[]> {

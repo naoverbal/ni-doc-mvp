@@ -161,6 +161,9 @@ export interface ListaOrcamentos {
   tamanhoPagina: number
 }
 
+// Teto de itens por página em `listarPorTenant` (o padrão continua 20).
+export const TAMANHO_PAGINA_MAXIMO = 100
+
 export const STATUS_REABRIVEL = ['reprovado', 'cancelado', 'expirado'] as const
 
 export type StatusReabrivel = (typeof STATUS_REABRIVEL)[number]
@@ -915,7 +918,8 @@ export function criarOrcamentoRepository(deps: { db: Kysely<Database> }): Orcame
       filtro?: ListarOrcamentosFiltro,
     ): Promise<ListaOrcamentos> {
       const pagina = filtro?.pagina ?? 1
-      const tamanhoPagina = filtro?.tamanhoPagina ?? 20
+      // Teto de linhas por página: sem ele, tamanhoPagina=100000 lê o tenant inteiro.
+      const tamanhoPagina = Math.min(filtro?.tamanhoPagina ?? 20, TAMANHO_PAGINA_MAXIMO)
       const offset = (pagina - 1) * tamanhoPagina
 
       let listaQuery = db

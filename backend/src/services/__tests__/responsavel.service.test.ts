@@ -24,6 +24,7 @@ function makeDeps(overrides?: {
   const responsavelRepo: ResponsavelRepository = {
     criar: vi.fn().mockResolvedValue(responsavelMock),
     buscarPorId: vi.fn().mockResolvedValue(responsavelMock),
+    buscarPorIds: vi.fn().mockResolvedValue([responsavelMock]),
     buscarPorNome: vi.fn().mockResolvedValue([responsavelMock]),
     atualizar: vi.fn().mockResolvedValue(responsavelMock),
     desativar: vi.fn().mockResolvedValue(undefined),

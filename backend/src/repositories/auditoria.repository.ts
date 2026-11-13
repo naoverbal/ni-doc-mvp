@@ -27,6 +27,8 @@ export interface FiltroAuditoria {
   limite?: number
 }
 
+export const LIMITE_MAXIMO_AUDITORIA = 200
+
 export interface AuditoriaRepository {
   criar(input: CriarEventoInput): Promise<{ id: string }>
   listar(filtro: FiltroAuditoria): Promise<EventoAuditoria[]>
@@ -79,7 +81,8 @@ export function criarAuditoriaRepository(db: Kysely<Database>): AuditoriaReposit
       }
 
       const pagina = filtro.pagina ?? 1
-      const limite = filtro.limite ?? 50
+      // Teto de linhas por consulta (a listagem não tinha limite máximo).
+      const limite = Math.min(filtro.limite ?? 50, LIMITE_MAXIMO_AUDITORIA)
       query = query.limit(limite).offset((pagina - 1) * limite)
 
       return query.execute()
