@@ -16,6 +16,14 @@ Padrões visuais, de componentes e de interação do ni-doc. A UI é construída
   reutilizável vive em `components/common/` e deve ser documentado aqui.
 - Prefira semântica Fluent/HTML nativa; só use ARIA quando a nativa não cobrir.
 - Textos de UI em pt-BR. Veja também `Acessibilidade.md` e `.kiro/specs/ni-doc-mvp/design.md`.
+- Estilize com `makeStyles` (Griffel) + `tokens`; evite `style={{}}` inline e CSS avulso
+  para cor, espaçamento, tipografia e raio. Ícones vêm de `@fluentui/react-icons`.
+- Estado do servidor via TanStack Query; estado de UI global via Zustand (`stores/`);
+  formulários com React Hook Form + Zod. Não introduza outras bibliotecas de UI, estado ou
+  formulário.
+- Componentes de `components/common/` não conhecem o domínio; lógica de orçamento fica em
+  `components/domain/`, `hooks/` e `services/`.
+- Ao concluir tarefa de UI, valide light e dark mode, navegação por teclado e a seção 6.
 
 ---
 
